@@ -1,14 +1,19 @@
 """LangGraph orchestration for the physics database pipeline.
 
-Phase 1 (Indexer) is wired: START -> pre_check -> gate -> abort | indexer loop -> END.
-Phase 2 (Extractor) plugs in later: indexer completion will route to the
-extractor node instead of END. State already carries both phases' fields.
+Phase 1 (Indexer): START -> pre_check -> gate -> abort | indexer loop.
+Phase 2 (Extractor): extractor_init (boundaries from DB) -> extractor loop.
+
+Three compiled entry points share the same nodes:
+- ``phase1_app``: Phase 1 only (used by run_indexer.py).
+- ``extractor_app``: Phase 2 only, from ``extractor_init`` (used by
+  run_extractor.py with ``{"paper_id": ..., "messages": []}``).
+- ``app``: full pipeline, indexer completion routes into extractor_init.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
@@ -16,6 +21,13 @@ from typing_extensions import TypedDict
 
 import database
 from llm import get_llm
+from tools_extractor import (
+    get_page_image,
+    polygon_crop,
+    submit_question,
+    submit_solution,
+    verify_latex_syntax,
+)
 from tools_indexer import (
     get_page_text,
     get_pdf_info,
@@ -25,13 +37,20 @@ from tools_indexer import (
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
-# Tools the Indexer LLM may call. get_pdf_info is deliberately EXCLUDED --
+# Tools per agent. get_pdf_info is deliberately EXCLUDED from both --
 # the deterministic pre_check_node owns it, so a scanned PDF never reaches
-# the agent.
+# an agent.
 INDEXER_TOOLS = [search_pdf_text, get_page_text, submit_metadata_and_boundaries]
-_INDEXER_TOOLS_BY_NAME = {t.name: t for t in INDEXER_TOOLS}
+EXTRACTOR_TOOLS = [
+    get_page_image,
+    polygon_crop,
+    verify_latex_syntax,
+    submit_question,
+    submit_solution,
+    get_page_text,  # key-sheet reads
+]
 
-SUBMIT_TOOL_NAME = "submit_metadata_and_boundaries"
+INDEXER_SUBMIT_TOOL = "submit_metadata_and_boundaries"
 
 
 class PipelineState(TypedDict):
@@ -48,11 +67,17 @@ class PipelineState(TypedDict):
     q_page_count: int
     s_page_count: Optional[int]
 
+    # Phase 2 boundaries (populated by extractor_init_node from the DB)
+    q_start: Optional[int]
+    q_end: Optional[int]
+    s_start: Optional[int]
+    s_end: Optional[int]
+
     # LangGraph message state (for LLM memory)
     messages: List[BaseMessage]
 
     # Graph control & metrics
-    status: str  # "running", "aborted_no_text", "indexer_complete"
+    status: str  # "running", "aborted_no_text", "indexer_complete", "extractor_complete"
     token_usage: dict
     execution_time_sec: float
 
@@ -69,6 +94,10 @@ def initial_state(
         "s_has_text": False,
         "q_page_count": 0,
         "s_page_count": None,
+        "q_start": None,
+        "q_end": None,
+        "s_start": None,
+        "s_end": None,
         "messages": [],
         "status": "running",
         "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
@@ -111,6 +140,23 @@ def _load_indexer_prompt(paper_id: int) -> str:
     return text.replace("{paper_id}", str(paper_id))
 
 
+def _load_extractor_prompt(
+    paper_id: int,
+    q_start: Optional[int],
+    q_end: Optional[int],
+    s_start: Optional[int],
+    s_end: Optional[int],
+) -> str:
+    text = (PROMPTS_DIR / "extractor_prompt.md").read_text(encoding="utf-8")
+    return (
+        text.replace("{paper_id}", str(paper_id))
+        .replace("{q_start}", str(q_start))
+        .replace("{q_end}", str(q_end))
+        .replace("{s_start}", "none" if s_start is None else str(s_start))
+        .replace("{s_end}", "none" if s_end is None else str(s_end))
+    )
+
+
 def _accumulate_usage(into: dict, msg: AIMessage) -> dict:
     usage = getattr(msg, "usage_metadata", None) or {}
     return {
@@ -121,32 +167,23 @@ def _accumulate_usage(into: dict, msg: AIMessage) -> dict:
     }
 
 
-def indexer_node(state: PipelineState) -> dict:
+def _run_agent_turn(
+    state: PipelineState,
+    tools: list,
+    opener: Callable[[], List[BaseMessage]],
+    submit_names: set,
+    done_status: Optional[str],
+) -> dict:
     """One ReAct turn: LLM step, then execute any requested tools.
 
-    Returns updated messages (+ token totals). Sets status to
-    "indexer_complete" only when the submit tool executed successfully.
+    ``submit_names``: tool names whose success sets ``done_status``.
+    If ``done_status`` is None, completion is decided by routing only.
     """
-    llm = get_llm().bind_tools(INDEXER_TOOLS)
+    llm = get_llm().bind_tools(tools)
+    by_name = {t.name: t for t in tools}
     messages: List[BaseMessage] = list(state.get("messages") or [])
     if not messages:
-        if state.get("solution_pdf_path"):
-            sol_line = (
-                f"Solution PDF: {state['solution_pdf_path']} "
-                f"({state['s_page_count']} pages, text layer present)"
-            )
-        else:
-            sol_line = "Solution PDF: none provided"
-        messages = [
-            SystemMessage(content=_load_indexer_prompt(state["paper_id"])),
-            HumanMessage(
-                content=(
-                    f"Question PDF: {state['question_pdf_path']} "
-                    f"({state['q_page_count']} pages, text layer present)\n"
-                    f"{sol_line}"
-                )
-            ),
-        ]
+        messages = opener()
 
     response = llm.invoke(messages)
     messages.append(response)
@@ -154,11 +191,11 @@ def indexer_node(state: PipelineState) -> dict:
 
     update: dict = {"messages": messages, "token_usage": token_usage}
     for call in getattr(response, "tool_calls", None) or []:
-        tool = _INDEXER_TOOLS_BY_NAME.get(call["name"])
+        tool = by_name.get(call["name"])
         if tool is None:
             messages.append(
                 ToolMessage(
-                    content=f"Error: unknown tool '{call['name']}'",
+                    content=f"Error: unknown tool '{call['name']}",
                     tool_call_id=call["id"],
                 )
             )
@@ -166,13 +203,45 @@ def indexer_node(state: PipelineState) -> dict:
         try:
             result = tool.invoke(call["args"])
             messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
-            if call["name"] == SUBMIT_TOOL_NAME:
-                update["status"] = "indexer_complete"
+            if call["name"] in submit_names and done_status is not None:
+                update["status"] = done_status
         except Exception as exc:  # tool errors go back to the LLM, not up
             messages.append(
                 ToolMessage(content=f"Error: {exc}", tool_call_id=call["id"])
             )
     return update
+
+
+def _pdf_context_lines(state: PipelineState) -> str:
+    if state.get("solution_pdf_path"):
+        sol_line = f"Solution PDF: {state['solution_pdf_path']}"
+    else:
+        sol_line = "Solution PDF: none provided"
+    return f"Question PDF: {state['question_pdf_path']}\n{sol_line}"
+
+
+def indexer_node(state: PipelineState) -> dict:
+    """One Indexer ReAct turn; sets "indexer_complete" on submit success."""
+    if state.get("solution_pdf_path"):
+        sol_line = (
+            f"Solution PDF: {state['solution_pdf_path']} "
+            f"({state['s_page_count']} pages, text layer present)"
+        )
+    else:
+        sol_line = "Solution PDF: none provided"
+    opener = lambda: [  # noqa: E731
+        SystemMessage(content=_load_indexer_prompt(state["paper_id"])),
+        HumanMessage(
+            content=(
+                f"Question PDF: {state['question_pdf_path']} "
+                f"({state['q_page_count']} pages, text layer present)\n"
+                f"{sol_line}"
+            )
+        ),
+    ]
+    return _run_agent_turn(
+        state, INDEXER_TOOLS, opener, {INDEXER_SUBMIT_TOOL}, "indexer_complete"
+    )
 
 
 def route_indexer(state: PipelineState) -> str:
@@ -184,31 +253,127 @@ def route_indexer(state: PipelineState) -> str:
     for msg in reversed(state.get("messages") or []):
         if isinstance(msg, AIMessage):
             names = [c["name"] for c in (msg.tool_calls or [])]
-            if SUBMIT_TOOL_NAME in names:
+            if INDEXER_SUBMIT_TOOL in names:
                 return "done"
             return "done" if not names else "continue"
     return "continue"
 
 
-# --------------------------------------------------------------- graph ---
+def extractor_init_node(state: PipelineState) -> dict:
+    """Deterministic Phase 2 entry: load boundaries + paths from the DB.
+
+    Aborted/never-indexed papers have NULL boundaries: route them out with
+    "aborted_no_text" instead of waking the vision agent for nothing.
+    """
+    row = database.get_paper(state["paper_id"])
+    if row is None:
+        raise ValueError(f"paper_id {state['paper_id']} does not exist")
+    if row["q_start"] is None or row["q_end"] is None:
+        return {"status": "aborted_no_text"}
+    return {
+        "question_pdf_path": row["question_pdf_path"],
+        "solution_pdf_path": row["solution_pdf_path"],
+        "q_start": row["q_start"],
+        "q_end": row["q_end"],
+        "s_start": row["s_start"],
+        "s_end": row["s_end"],
+    }
 
 
-def build_graph():
-    """Assemble the Phase 1 graph (Phase 2 attaches at the "done" edge)."""
-    graph = StateGraph(PipelineState)
+def route_extractor_init(state: PipelineState) -> str:
+    """Skip the vision agent for papers with nothing to extract."""
+    return "end" if state.get("status") == "aborted_no_text" else "extractor"
+
+
+def extractor_node(state: PipelineState) -> dict:
+    """One Extractor ReAct turn (vision-heavy); stopping means finished."""
+    opener = lambda: [  # noqa: E731
+        SystemMessage(
+            content=_load_extractor_prompt(
+                state["paper_id"],
+                state.get("q_start"),
+                state.get("q_end"),
+                state.get("s_start"),
+                state.get("s_end"),
+            )
+        ),
+        HumanMessage(content=_pdf_context_lines(state)),
+    ]
+    update = _run_agent_turn(state, EXTRACTOR_TOOLS, opener, set(), None)
+    # Per the extractor prompt, the agent stops only when every physics
+    # question + solution in range is submitted -- so an idle turn marks
+    # completion. (Verify via Outputs/ + questions rows, not this flag.)
+    last_ai: Optional[AIMessage] = None
+    for msg in reversed(update["messages"]):
+        if isinstance(msg, AIMessage):
+            last_ai = msg
+            break
+    if last_ai is not None and not (last_ai.tool_calls or []):
+        update["status"] = "extractor_complete"
+    return update
+
+
+def route_extractor(state: PipelineState) -> str:
+    """Standard tool loop: tool calls present -> back to the agent."""
+    for msg in reversed(state.get("messages") or []):
+        if isinstance(msg, AIMessage):
+            return "continue" if (msg.tool_calls or []) else "done"
+    return "continue"
+
+
+# --------------------------------------------------------------- graphs ---
+
+
+def _add_phase1(graph: StateGraph, indexer_done_target: str) -> None:
     graph.add_node("pre_check", pre_check_node)
     graph.add_node("abort", abort_node)
     graph.add_node("indexer", indexer_node)
-
     graph.add_edge(START, "pre_check")
     graph.add_conditional_edges(
         "pre_check", text_layer_gate, {"abort": "abort", "indexer": "indexer"}
     )
     graph.add_edge("abort", END)
     graph.add_conditional_edges(
-        "indexer", route_indexer, {"continue": "indexer", "done": END}
+        "indexer", route_indexer, {"continue": "indexer", "done": indexer_done_target}
     )
+
+
+def _add_extractor(graph: StateGraph) -> None:
+    graph.add_node("extractor_init", extractor_init_node)
+    graph.add_node("extractor", extractor_node)
+    graph.add_conditional_edges(
+        "extractor_init",
+        route_extractor_init,
+        {"end": END, "extractor": "extractor"},
+    )
+    graph.add_conditional_edges(
+        "extractor", route_extractor, {"continue": "extractor", "done": END}
+    )
+
+
+def build_phase1_graph():
+    """Phase 1 only: indexer completion routes to END."""
+    graph = StateGraph(PipelineState)
+    _add_phase1(graph, END)
     return graph.compile()
 
 
+def build_extractor_graph():
+    """Phase 2 only: starts at extractor_init (Phase 1 bypassed)."""
+    graph = StateGraph(PipelineState)
+    graph.add_edge(START, "extractor_init")
+    _add_extractor(graph)
+    return graph.compile()
+
+
+def build_graph():
+    """Full pipeline: indexer completion routes into extractor_init."""
+    graph = StateGraph(PipelineState)
+    _add_phase1(graph, "extractor_init")
+    _add_extractor(graph)
+    return graph.compile()
+
+
+phase1_app = build_phase1_graph()
+extractor_app = build_extractor_graph()
 app = build_graph()

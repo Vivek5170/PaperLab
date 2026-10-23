@@ -14,7 +14,7 @@ import time
 
 import config  # noqa: F401 -- must be first: pins env from config.yaml + .env
 import database
-from graph import app, initial_state
+from graph import initial_state, phase1_app
 from preflight import preflight_register
 
 
@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     state = initial_state(paper_id, question_pdf, solution_pdf)
     start = time.time()
     try:
-        final = app.invoke(state, config={"recursion_limit": 25})
+        final = phase1_app.invoke(state, config={"recursion_limit": 25})
     except Exception as exc:
         print(f"Graph run failed: {type(exc).__name__}: {exc}")
         return 1
