@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from pathlib import Path
 
 import config  # noqa: F401 -- must be first: pins env from config.yaml + .env
 import database
@@ -112,6 +113,19 @@ def main(argv: list[str] | None = None) -> int:
 
     elapsed = time.time() - t0
     _per_turn_log(final["messages"])
+    from tools_extractor import analyze_and_trim
+
+    touching = []
+    base = Path(config.OUTPUT_BASE) / str(paper_id)
+    if base.is_dir():
+        for fig in sorted(base.rglob("figures/*.png")):
+            sides, _ = analyze_and_trim(fig, dry_run=True)
+            if sides:
+                touching.append(
+                    f"{fig.parent.parent.name}/{fig.name}: {', '.join(sides)}"
+                )
+    print("Crops with touching edges:")
+    print("  none -- all clean" if not touching else "\n".join(f"  {t}" for t in touching))
     print("---- Phase 2 summary ----")
     print(f"Status:       {final.get('status')}")
     print(f"Time Taken:   {elapsed:.2f}s (resumed: {resumed})")

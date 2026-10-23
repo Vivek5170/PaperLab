@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from PIL import Image
 
 import database
-from tools_extractor import get_page_image, img_block, polygon_crop
+from tools_extractor import analyze_and_trim, get_page_image, img_block, polygon_crop
 from tools_indexer import get_page_text, get_pdf_info, search_pdf_text
 
 
@@ -108,11 +108,14 @@ def test_polygon_crop_scaling_and_save(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     saved = out_dir / "figures" / "fig1.png"
     assert saved.is_file()
 
-    # Scaling math: full-page crop keeps full dims; preview is downscaled.
+    # Scaling math: full-page crop is auto-trimmed to the ink bbox + margins,
+    # so it is smaller than the full render but stable under re-trimming.
     from tools_extractor import _render_page_to_pil
     full = _render_page_to_pil(dummy_pdf, 1)
     cropped = Image.open(saved)
-    assert cropped.size == full.size
+    assert cropped.size[0] < full.size[0] and cropped.size[1] < full.size[1]
+    touching2, trimmed2 = analyze_and_trim(saved)
+    assert trimmed2 == []  # re-run trims nothing further (touching may repeat)
     assert max(preview.size) <= 600
 
     # Quarter-page polygon -> roughly quarter dims (bbox crop).
@@ -129,8 +132,11 @@ def test_polygon_crop_scaling_and_save(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     _, preview_q, _ = _image_messages(cmd_q)
     assert max(preview_q.size) <= 600
     q = Image.open(out_dir / "figures" / "figQ.png")
-    assert abs(q.size[0] - full.size[0] // 2) <= 2
-    assert abs(q.size[1] - full.size[1] // 2) <= 2
+    # Quarter-page bbox, auto-trimmed: within the bbox, never larger.
+    assert q.size[0] <= full.size[0] // 2 + 2
+    assert q.size[1] <= full.size[1] // 2 + 2
+    _, trimmed_q2 = analyze_and_trim(out_dir / "figures" / "figQ.png")
+    assert trimmed_q2 == []  # re-run trims nothing further
 
 
 def test_polygon_crop_rejects_bad_points(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
@@ -202,7 +208,74 @@ def test_polygon_crop_lands_in_question_dir(dummy_pdf, scanned_pdf, tmp_db, tmp_
     assert saved.is_file()
 
 
-def test_polygon_crop_unknown_paper_id_fails(dummy_pdf, tmp_db, tmp_outputs):
+def test_analyze_and_trim_trims_clean_sides(tmp_path):
+    from PIL import Image as PILImage, ImageDraw
+
+    im = PILImage.new("RGB", (100, 100), "white")
+    ImageDraw.Draw(im).rectangle([30, 30, 70, 70], fill="black")
+    p = tmp_path / "box.png"
+    im.save(str(p))
+    touching, trimmed = analyze_and_trim(p)
+    assert touching == []
+    assert set(trimmed) == {"top", "bottom", "left", "right"}
+    out = PILImage.open(p)
+    # 41px ink (inclusive rect) + 4px margins each side
+    assert out.size == (49, 49)
+
+
+def test_analyze_and_trim_reports_touching_sides(tmp_path):
+    from PIL import Image as PILImage, ImageDraw
+
+    im = PILImage.new("RGB", (100, 100), "white")
+    d = ImageDraw.Draw(im)
+    d.rectangle([30, 30, 70, 70], fill="black")
+    d.rectangle([0, 40, 100, 60], fill="black")  # bar touches left+right
+    p = tmp_path / "bar.png"
+    im.save(str(p))
+    touching, trimmed = analyze_and_trim(p)
+    assert "left" in touching and "right" in touching
+    assert "left" not in trimmed and "right" not in trimmed
+    assert "top" in trimmed and "bottom" in trimmed
+
+
+def test_analyze_and_trim_empty(tmp_path):
+    from PIL import Image as PILImage
+
+    p = tmp_path / "blank.png"
+    PILImage.new("RGB", (50, 50), "white").save(str(p))
+    touching, note = analyze_and_trim(p)
+    assert touching == []
+    assert isinstance(note, str) and "EMPTY" in note
+
+
+def test_analyze_and_trim_dry_run_read_only(tmp_path):
+    from PIL import Image as PILImage, ImageDraw
+
+    im = PILImage.new("RGB", (100, 100), "white")
+    ImageDraw.Draw(im).rectangle([30, 30, 70, 70], fill="black")
+    p = tmp_path / "box.png"
+    im.save(str(p))
+    before = p.read_bytes()
+    touching, trimmed = analyze_and_trim(p, dry_run=True)
+    assert touching == []
+    assert set(trimmed) == {"top", "bottom", "left", "right"}
+    assert p.read_bytes() == before  # untouched on disk
+
+
+def test_polygon_crop_reports_edge_note(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    cmd = polygon_crop.invoke(_tc(
+        "polygon_crop", {
+            "pdf_path": dummy_pdf,
+            "page_number": 1,
+            "points": [(0, 0), (1000, 0), (1000, 1000), (0, 1000)],
+            "output_filename": "fig1.png",
+            "paper_id": pid,
+            "question_number": "1",
+        },
+    ))
+    tool_text, _, _ = _image_messages(cmd)
+    assert "Edge check" in tool_text or "WARNING" in tool_text
     with pytest.raises(Exception):
         polygon_crop.invoke(_tc(
             "polygon_crop", {

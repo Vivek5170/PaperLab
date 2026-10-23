@@ -31,6 +31,8 @@ from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.types import Command
 from PIL import Image, ImageDraw
 
+import numpy as np
+
 import database
 import directory_manager
 
@@ -111,6 +113,72 @@ def image_reply(
             ]
         }
     )
+
+
+def _longest_run(v) -> int:
+    best = run = 0
+    for x in v:
+        run = run + 1 if x else 0
+        best = max(best, run)
+    return best
+
+
+def analyze_and_trim(
+    path: str | Path,
+    dark: int = 110,
+    band: int = 2,
+    min_run: int = 3,
+    margin: int = 4,
+    dry_run: bool = False,
+) -> tuple[list, list | str]:
+    """Trim whitespace on clean sides in place; report ink-touching sides.
+
+    Measures which edges have dark ink touching them on the raw crop, then
+    trims each NON-touching side inward to just past the outermost ink
+    (plus ``margin``) -- i.e. trim until a new black edge would be created,
+    in one step instead of a loop. Touching sides are left alone and
+    reported by name so the agent can expand them. The ``dark`` threshold
+    ignores light-gray watermarks: they neither stop the trim nor flag.
+    With ``dry_run=True`` nothing is written; only the report is returned.
+
+    Returns (touching, trimmed) where touching is a list of side names and
+    trimmed is the list of sides actually trimmed -- or, when no dark ink
+    exists at all, ([], note: str) flagging a probably-misplaced box.
+    """
+    im = Image.open(path).convert("RGB")
+    ink = np.array(im.convert("L")) < dark
+    h, w = ink.shape
+    if not ink.any():
+        return [], "crop looks EMPTY (no dark ink). The box is probably in the wrong place."
+
+    edges = {
+        "top": ink[:band, :].any(axis=0),
+        "bottom": ink[-band:, :].any(axis=0),
+        "left": ink[:, :band].any(axis=1),
+        "right": ink[:, -band:].any(axis=1),
+    }
+    touching = [n for n, v in edges.items() if _longest_run(v) >= min_run]
+
+    ys = np.where(ink.any(axis=1))[0]
+    xs = np.where(ink.any(axis=0))[0]
+    top = 0 if "top" in touching else max(int(ys[0]) - margin, 0)
+    bottom = h if "bottom" in touching else min(int(ys[-1]) + 1 + margin, h)
+    left = 0 if "left" in touching else max(int(xs[0]) - margin, 0)
+    right = w if "right" in touching else min(int(xs[-1]) + 1 + margin, w)
+
+    trimmed = [
+        n
+        for n, v in (
+            ("top", top),
+            ("bottom", h - bottom),
+            ("left", left),
+            ("right", w - right),
+        )
+        if v > 0
+    ]
+    if not dry_run:
+        im.crop((left, top, right, bottom)).save(path)  # overwrite trimmed
+    return touching, trimmed
 
 
 @tool
@@ -212,10 +280,29 @@ def polygon_crop(
     qdir = directory_manager.ensure_question_dir(paper_id, question_number)
     dest = qdir / directory_manager.FIGURES_DIR / filename
     background.save(str(dest), format="PNG")
+
+    touching, trimmed = analyze_and_trim(dest)
+    if isinstance(trimmed, str):  # empty-crop case
+        note = trimmed
+    else:
+        parts = []
+        if touching:
+            parts.append(
+                f"WARNING: dark ink touches the {', '.join(touching)} edge(s), so the figure is "
+                f"probably CUT OFF there. Expand those edges by about 15-25 units and re-crop with "
+                f"the same filename. (If the ink on that edge is neighbouring text, not the figure, "
+                f"shrink instead.)"
+            )
+        else:
+            parts.append("Edge check: clean on all four sides.")
+        if trimmed:
+            parts.append(f"Auto-trimmed whitespace on: {', '.join(trimmed)}.")
+        note = " ".join(parts)
+
     return image_reply(
         tool_call_id,
-        f"Saved {filename} to {dest}. A preview is in the next message; "
-        "inspect all four edges for clipping or leakage.",
+        f"Saved {filename} to {dest}. {note} "
+        "A preview is in the next message; inspect all four edges.",
         f"[Crop preview: {filename}]",
         dest,
         CROP_PX,
