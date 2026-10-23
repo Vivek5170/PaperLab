@@ -177,3 +177,26 @@ def test_mark_paper_archived_abort_path(tmp_db, tmp_path):
 def test_mark_paper_archived_unknown_id_fails(tmp_db):
     with pytest.raises(ValueError):
         database.mark_paper_archived(99999)
+
+
+def test_migrate_old_db_gets_status_and_token_table(tmp_path, monkeypatch):
+    """Pre-status DBs gain status/error columns + token_usage on init_db."""
+    import sqlite3
+
+    db = tmp_path / "old.db"
+    monkeypatch.setattr(database, "DB_PATH", db)
+    conn = sqlite3.connect(str(db))
+    conn.execute("CREATE TABLE papers (id INTEGER PRIMARY KEY, paper_name TEXT, pdf_hash TEXT UNIQUE)")
+    conn.execute("CREATE TABLE questions (id INTEGER PRIMARY KEY, paper_id INTEGER, question_number TEXT)")
+    conn.commit()
+    conn.close()
+    database.init_db()
+    conn = database.get_connection()
+    try:
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(papers)")}
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        conn.close()
+    assert "status" in cols and "error" in cols
+    assert "token_usage" in tables

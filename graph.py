@@ -164,11 +164,13 @@ def _run_agent_turn(
     opener: Callable[[], List[BaseMessage]],
     submit_names: set,
     done_status: Optional[str],
+    phase: str,
 ) -> dict:
     """One ReAct turn: LLM step, then execute any requested tools.
 
     ``submit_names``: tool names whose success sets ``done_status``.
     If ``done_status`` is None, completion is decided by routing only.
+    Every AI message's usage is appended to the token_usage table.
 
     Ordering: parallel tool calls are disabled so each image-bearing result
     lands immediately after its own tool call, keeping history append-only.
@@ -182,6 +184,17 @@ def _run_agent_turn(
     response = llm.invoke(messages)
     messages.append(response)
     token_usage = _accumulate_usage(state.get("token_usage") or {}, response)
+    usage = getattr(response, "usage_metadata", None) or {}
+    in_det = usage.get("input_token_details", None) or {}
+    out_det = usage.get("output_token_details", None) or {}
+    database.log_token_usage(
+        state["paper_id"],
+        phase,
+        input_tokens=usage.get("input_tokens", 0),
+        cache_read=in_det.get("cache_read", 0),
+        output_tokens=usage.get("output_tokens", 0),
+        reasoning_tokens=out_det.get("reasoning", 0),
+    )
 
     update: dict = {"messages": messages, "token_usage": token_usage}
     for call in getattr(response, "tool_calls", None) or []:
@@ -244,7 +257,8 @@ def indexer_node(state: PipelineState) -> dict:
         ),
     ]
     return _run_agent_turn(
-        state, INDEXER_TOOLS, opener, {INDEXER_SUBMIT_TOOL}, "indexer_complete"
+        state, INDEXER_TOOLS, opener, {INDEXER_SUBMIT_TOOL}, "indexer_complete",
+        phase="indexer",
     )
 
 
@@ -311,7 +325,8 @@ def extractor_node(state: PipelineState) -> dict:
             )
         ),
     ]
-    update = _run_agent_turn(state, EXTRACTOR_TOOLS, opener, set(), None)
+    update = _run_agent_turn(state, EXTRACTOR_TOOLS, opener, set(), None,
+                               phase="extractor")
     # Per the extractor prompt, the agent stops only when every physics
     # question + solution in range is submitted -- so an idle turn marks
     # completion. (Verify via Outputs/ + questions rows, not this flag.)

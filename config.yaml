@@ -24,3 +24,9 @@ llm:
   # low roughly halves reasoning tokens vs default on substantive tasks.
   # Transcription is not reasoning-heavy; raise if drafts get sloppy.
   reasoning_effort: low
+
+# Optional price-per-million-tokens for the run cost line.
+pricing:
+  input_per_mtok: 0.10
+  cache_read_per_mtok: 0.002
+  output_per_mtok: 0.20

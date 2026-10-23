@@ -10,7 +10,8 @@ import pytest
 ROOT = Path(__file__).parent.parent
 PINNED_KEYS = ("PHYSICS_ARCHIVE_DB", "PHYSICS_OUTPUT_BASE", "PIPELINE_CONFIG",
                "META_API_KEY", "LLM_MODEL", "LLM_BASE_URL", "LLM_USE_RESPONSES_API",
-               "LLM_REASONING_EFFORT")
+               "LLM_REASONING_EFFORT", "PRICE_INPUT", "PRICE_CACHE_READ",
+               "PRICE_OUTPUT")
 
 
 def _load_fresh(monkeypatch, tmp_path, yaml_text=None, extra_env=None):
@@ -71,7 +72,7 @@ def test_defaults_without_yaml(tmp_path, monkeypatch):
     assert set(mod.as_dict()) == {"config_file", "database_path", "outputs_dir",
                                   "llm_model", "llm_base_url",
                                   "llm_use_responses_api", "llm_reasoning_effort",
-                                  "llm_api_key_set"}
+                                  "llm_api_key_set", "pricing"}
     assert mod.LLM_REASONING_EFFORT == "low"
 
 

@@ -40,6 +40,11 @@ _DEFAULTS = {
         "use_responses_api": False,
         "reasoning_effort": "low",
     },
+    "pricing": {
+        "input_per_mtok": 0.10,
+        "cache_read_per_mtok": 0.002,
+        "output_per_mtok": 0.20,
+    },
 }
 
 
@@ -64,6 +69,7 @@ def _resolve(raw: str) -> str:
 
 _raw = {**_DEFAULTS, **_load_yaml(CONFIG_PATH)}
 _llm = {**_DEFAULTS["llm"], **(_raw.get("llm") or {})}
+_pricing = {**_DEFAULTS["pricing"], **(_raw.get("pricing") or {})}
 
 ARCHIVE_DB: str = os.environ.get(
     "PHYSICS_ARCHIVE_DB", _resolve(str(_raw["database_path"]))
@@ -86,6 +92,14 @@ LLM_REASONING_EFFORT: str | None = os.environ.get(
 ) or None
 LLM_API_KEY: str | None = os.environ.get("META_API_KEY")
 
+PRICING: dict = {
+    "input_per_mtok": float(os.environ.get("PRICE_INPUT", _pricing["input_per_mtok"])),
+    "cache_read_per_mtok": float(
+        os.environ.get("PRICE_CACHE_READ", _pricing["cache_read_per_mtok"])
+    ),
+    "output_per_mtok": float(os.environ.get("PRICE_OUTPUT", _pricing["output_per_mtok"])),
+}
+
 # Pin for subsequently imported modules (setdefault: explicit env wins).
 os.environ.setdefault("PHYSICS_ARCHIVE_DB", ARCHIVE_DB)
 os.environ.setdefault("PHYSICS_OUTPUT_BASE", OUTPUT_BASE)
@@ -102,4 +116,5 @@ def as_dict() -> dict:
         "llm_use_responses_api": LLM_USE_RESPONSES_API,
         "llm_reasoning_effort": LLM_REASONING_EFFORT,
         "llm_api_key_set": LLM_API_KEY is not None,
+        "pricing": dict(PRICING),
     }

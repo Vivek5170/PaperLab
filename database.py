@@ -67,7 +67,23 @@ CREATE TABLE IF NOT EXISTS papers (
     q_start INTEGER,
     q_end INTEGER,
     s_start INTEGER,
-    s_end INTEGER
+    s_end INTEGER,
+    status TEXT DEFAULT 'uploaded',
+    error TEXT
+);
+"""
+
+SCHEMA_TOKEN_USAGE = """
+CREATE TABLE IF NOT EXISTS token_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id INTEGER NOT NULL,
+    phase TEXT NOT NULL,
+    input INTEGER NOT NULL DEFAULT 0,
+    cache_read INTEGER NOT NULL DEFAULT 0,
+    output INTEGER NOT NULL DEFAULT 0,
+    reasoning INTEGER NOT NULL DEFAULT 0,
+    ts TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE CASCADE
 );
 """
 
@@ -94,7 +110,7 @@ def get_connection(db_path: str | Path | None = None) -> sqlite3.Connection:
 
 
 def init_db(db_path: str | Path | None = None) -> Path:
-    """Create ``physics_archive.db`` and both tables if they do not exist.
+    """Create tables if missing; migrate old DBs (status/error/token_usage).
 
     Returns the path of the database file used.
     """
@@ -106,6 +122,12 @@ def init_db(db_path: str | Path | None = None) -> Path:
     try:
         conn.execute(SCHEMA_PAPERS)
         conn.execute(SCHEMA_QUESTIONS)
+        conn.execute(SCHEMA_TOKEN_USAGE)
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(papers)")}
+        if "status" not in cols:
+            conn.execute("ALTER TABLE papers ADD COLUMN status TEXT DEFAULT 'uploaded'")
+        if "error" not in cols:
+            conn.execute("ALTER TABLE papers ADD COLUMN error TEXT")
         conn.commit()
     finally:
         conn.close()
@@ -161,6 +183,49 @@ def get_paper(paper_id: int) -> sqlite3.Row | None:
         return conn.execute(
             "SELECT * FROM papers WHERE id = ?", (paper_id,)
         ).fetchone()
+    finally:
+        conn.close()
+
+
+def set_paper_status(paper_id: int, status: str, error: str | None = None) -> None:
+    """Set a paper's pipeline status (uploaded/indexing/extracting/done/failed).
+
+    Passing ``error`` records the failure reason (use with "failed").
+    Raises ValueError for an unknown paper_id.
+    """
+    init_db()
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE papers SET status = ?, error = ? WHERE id = ?",
+            (status, error, paper_id),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            raise ValueError(f"paper_id {paper_id} does not exist")
+    finally:
+        conn.close()
+
+
+def log_token_usage(
+    paper_id: int,
+    phase: str,
+    input_tokens: int = 0,
+    cache_read: int = 0,
+    output_tokens: int = 0,
+    reasoning_tokens: int = 0,
+) -> None:
+    """Append one token_usage row (append-only; never updated or deleted)."""
+    init_db()
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO token_usage "
+            "(paper_id, phase, input, cache_read, output, reasoning) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (paper_id, phase, input_tokens, cache_read, output_tokens, reasoning_tokens),
+        )
+        conn.commit()
     finally:
         conn.close()
 
