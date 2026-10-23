@@ -19,9 +19,10 @@ import time
 import config  # noqa: F401 -- must be first: pins env from config.yaml + .env
 import database
 import directory_manager
+from app.pairing import relocate_managed_files
 from graph import extractor_app, initial_state, phase1_app
 from preflight import preflight_register
-from run_extractor import _coverage
+from run_extractor import get_coverage
 
 
 def _wipe_paper(paper_id: int) -> None:
@@ -115,7 +116,7 @@ def run_pipeline(paper_id: int, force: bool = False) -> dict:
             {"paper_id": paper_id, "messages": []},
             config={"recursion_limit": 200},
         )
-        submitted, missing = _coverage(paper_id)
+        submitted, missing = get_coverage(paper_id)
         elapsed = time.time() - t0
         if missing:
             crow = database.get_paper(paper_id)
@@ -136,7 +137,7 @@ def run_pipeline(paper_id: int, force: bool = False) -> dict:
                     },
                     config={"recursion_limit": 200},
                 )
-                submitted, missing = _coverage(paper_id)
+                submitted, missing = get_coverage(paper_id)
                 elapsed = time.time() - t0
         if missing:
             database.set_paper_status(
@@ -146,6 +147,8 @@ def run_pipeline(paper_id: int, force: bool = False) -> dict:
         else:
             database.set_paper_status(paper_id, "done", elapsed_sec=elapsed)
             status = "done"
+            # Lifecycle: finished papers rest in data/archive/.
+            relocate_managed_files(paper_id, directory_manager.ARCHIVE_DIR)
         return {
             "paper_id": paper_id,
             "status": status,

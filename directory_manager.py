@@ -24,6 +24,15 @@ import config  # noqa: F401 -- must precede OUTPUT_BASE: pins env from config.ya
 
 OUTPUT_BASE = Path(os.environ.get("PHYSICS_OUTPUT_BASE", Path(__file__).parent / "Outputs"))
 
+# Managed source-PDF lifecycle root: uploads/ (staged) -> processing/
+# (confirmed) -> archive/ (done). Only files under DATA_ROOT are ever
+# moved or swept; outside paths (example_data/, /tmp, CLI one-offs) are
+# left alone. Overridable for tests via the DATA_ROOT env var.
+DATA_ROOT = Path(os.environ.get("DATA_ROOT", Path(__file__).parent / "data"))
+UPLOADS_DIR = DATA_ROOT / "uploads"
+PROCESSING_DIR = DATA_ROOT / "processing"
+ARCHIVE_DIR = DATA_ROOT / "archive"
+
 QUESTION_TEX = "question.tex"
 SOLUTION_TEX = "solution.tex"
 FIGURES_DIR = "figures"
@@ -80,14 +89,6 @@ def ensure_question_dir(
     qdir = get_question_dir(paper_id, question_number, output_base)
     (qdir / FIGURES_DIR).mkdir(parents=True, exist_ok=True)
     return qdir
-
-
-def ensure_solution_placeholder(qdir: str | Path) -> Path:
-    """Write the placeholder solution.tex if none exists; return its path."""
-    sol = Path(qdir) / SOLUTION_TEX
-    if not sol.exists():
-        sol.write_text(SOLUTION_PLACEHOLDER, encoding="utf-8")
-    return sol
 
 
 def paper_dir(paper_id: int, output_base: str | Path | None = None) -> Path:

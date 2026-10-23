@@ -38,7 +38,7 @@ def _per_turn_log(messages: list) -> None:
         )
 
 
-def _coverage(paper_id: int) -> tuple[list[str], list[str]]:
+def get_coverage(paper_id: int) -> tuple[list[str], list[str]]:
     """Return (submitted question_numbers, those missing solution.tex)."""
     base = directory_manager.get_question_dir(paper_id, "__probe__").parent
     submitted, missing = [], []
@@ -93,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
 
     t0 = time.time()
     final = run_once([])
-    submitted, missing = _coverage(paper_id)
+    submitted, missing = get_coverage(paper_id)
 
     # Completion gate: every submitted question needs its solution on disk.
     # Resume once with the gap list instead of starting over.
@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         from langchain_core.messages import HumanMessage
 
         final = run_once(list(final["messages"]) + [HumanMessage(content=gap)])
-        submitted, missing = _coverage(paper_id)
+        submitted, missing = get_coverage(paper_id)
 
     elapsed = time.time() - t0
     _per_turn_log(final["messages"])

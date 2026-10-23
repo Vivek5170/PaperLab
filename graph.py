@@ -21,7 +21,7 @@ from langgraph.types import Command
 from typing_extensions import TypedDict
 
 import database
-from llm import get_llm
+from llm import get_llm, invoke_with_retry
 from tools_extractor import (
     get_page_image,
     polygon_crop,
@@ -83,7 +83,6 @@ class PipelineState(TypedDict):
 
     # Graph control & metrics
     status: str  # "running", "aborted_no_text", "indexer_complete", "extractor_complete"
-    token_usage: dict
     execution_time_sec: float
 
 
@@ -105,7 +104,6 @@ def initial_state(
         "s_end": None,
         "messages": [],
         "status": "running",
-        "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         "execution_time_sec": 0.0,
     }
 
@@ -148,16 +146,6 @@ def _load_extractor_prompt() -> str:
     return (PROMPTS_DIR / "extractor_prompt.md").read_text(encoding="utf-8")
 
 
-def _accumulate_usage(into: dict, msg: AIMessage) -> dict:
-    usage = getattr(msg, "usage_metadata", None) or {}
-    return {
-        "prompt_tokens": into.get("prompt_tokens", 0) + usage.get("input_tokens", 0),
-        "completion_tokens": into.get("completion_tokens", 0)
-        + usage.get("output_tokens", 0),
-        "total_tokens": into.get("total_tokens", 0) + usage.get("total_tokens", 0),
-    }
-
-
 def _run_agent_turn(
     state: PipelineState,
     tools: list,
@@ -181,9 +169,8 @@ def _run_agent_turn(
     if not messages:
         messages = opener()
 
-    response = llm.invoke(messages)
+    response = invoke_with_retry(llm, messages)
     messages.append(response)
-    token_usage = _accumulate_usage(state.get("token_usage") or {}, response)
     usage = getattr(response, "usage_metadata", None) or {}
     in_det = usage.get("input_token_details", None) or {}
     out_det = usage.get("output_token_details", None) or {}
@@ -196,7 +183,7 @@ def _run_agent_turn(
         reasoning_tokens=out_det.get("reasoning", 0),
     )
 
-    update: dict = {"messages": messages, "token_usage": token_usage}
+    update: dict = {"messages": messages}
     for call in getattr(response, "tool_calls", None) or []:
         tool = by_name.get(call["name"])
         if tool is None:

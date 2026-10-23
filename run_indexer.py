@@ -16,23 +16,7 @@ import config  # noqa: F401 -- must be first: pins env from config.yaml + .env
 import database
 from graph import initial_state, phase1_app
 from preflight import preflight_register
-
-
-def _summarize_tokens(state: dict) -> dict:
-    """Prefer node-accumulated totals; fall back to summing message metadata."""
-    usage = state.get("token_usage") or {}
-    if usage.get("total_tokens"):
-        return usage
-    prompt = completion = 0
-    for msg in state.get("messages") or []:
-        meta = getattr(msg, "usage_metadata", None) or {}
-        prompt += meta.get("input_tokens", 0)
-        completion += meta.get("output_tokens", 0)
-    return {
-        "prompt_tokens": prompt,
-        "completion_tokens": completion,
-        "total_tokens": prompt + completion,
-    }
+from run_pipeline import summarize_tokens
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -66,15 +50,17 @@ def main(argv: list[str] | None = None) -> int:
     elapsed = time.time() - start
     final["execution_time_sec"] = elapsed
 
-    tokens = _summarize_tokens(final)
+    tokens = summarize_tokens(paper_id)["total"]
     row = database.get_paper(paper_id)
 
     print("---- Phase 1 summary ----")
     print(f"Status:       {final.get('status')}")
     print(f"Time Taken:   {elapsed:.2f}s")
-    print(f"Prompt Tokens:      {tokens['prompt_tokens']}")
-    print(f"Completion Tokens:  {tokens['completion_tokens']}")
-    print(f"Total Tokens:       {tokens['total_tokens']}")
+    print(f"Prompt Tokens:      {tokens['input']} "
+          f"(fresh {tokens['fresh_input']}, cached {tokens['cache_read']})")
+    print(f"Completion Tokens:  {tokens['output']} "
+          f"(reasoning {tokens['reasoning']})")
+    print(f"Total Tokens:       {tokens['input'] + tokens['output']}")
     print(f"DB row:       {dict(row) if row else None}")
     return 0
 

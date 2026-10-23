@@ -24,9 +24,10 @@ as ONE question and ONE solution, never as separate sub-questions.
 For each required figure, use `polygon_crop` with 0-1000 normalized coordinates.
 - **Include essentials:** labels, arrows, wires, hatching, boundaries.
 - **Exclude noise:** neighboring text, headers, footers, ads, or other questions.
-- **Verification:** After each crop, a preview image arrives in the next message. Inspect all four edges of the preview. If clipped, expand that edge. If leaked, shrink past the glyph height (bottom rows often sit above option text -- check pixel by pixel).
+- **Verification:** After each crop, a preview image arrives in the next message. Inspect all four edges of the preview. If clipped, expand that edge. If leaked text, retry a tighter crop.
 - **Correction:** If wrong, call `polygon_crop` again with the EXACT SAME `output_filename` and new coordinates to overwrite it. Do NOT create a "v2" file.
-- **Naming:** Name figures relative to the question (e.g., `fig1.png`, `fig2.png`). Different questions can use the same names because they are saved in isolated question folders, but names must be unique within a single question.
+- **Naming:** question-side figures are `qfig1.png`, `qfig2.png`, ...; solution-side figures are `sfig1.png`, `sfig2.png`, ... Number each side independently from 1.
+- **Side separation (non-negotiable):** `question.tex` may reference ONLY `qfig*` files cropped from question pages; `solution.tex` may reference ONLY `sfig*` files cropped from solution pages. Never share one file between the two -- if both sides need the "same" figure, crop it twice (once per side) under the two names. The submits reject cross-side references.
 
 # EXECUTION WORKFLOW
 Process the document efficiently to save tokens:

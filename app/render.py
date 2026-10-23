@@ -218,6 +218,15 @@ def _trim_vertical_whitespace(img):
     return img.crop((0, top, img.width, bot))
 
 
+def _fig_bytes_for_hash(work_dir: str | Path, tex_path: str) -> bytes:
+    """Raw bytes of a figure referenced by the tex (b"" if unresolvable)."""
+    try:
+        p = Path(work_dir) / tex_path
+        return p.read_bytes() if p.is_file() else b""
+    except OSError:
+        return b""
+
+
 def render_tex_to_png(tex: str, work_dir: str | Path, out_name: str) -> Path | None:
     """Compile a tex fragment to PNG (article class only). Cached by mtime.
 
@@ -238,7 +247,13 @@ def render_tex_to_png(tex: str, work_dir: str | Path, out_name: str) -> Path | N
         except ValueError:
             return False
 
-    digest = hashlib.sha256((_WRAPPER_REV + "\n" + tex).encode()).hexdigest()
+    # Digest covers the tex, the wrapper revision, AND every referenced
+    # figure's bytes: swapping a crop with identical tex must recompile.
+    h = hashlib.sha256((_WRAPPER_REV + "\n" + tex).encode())
+    for m in INCLUDEGRAPHIC_RE.finditer(tex):
+        h.update(m.group("path").encode())
+        h.update(_fig_bytes_for_hash(work, m.group("path")))
+    digest = h.hexdigest()
     if out.exists() and marker.exists() and marker.read_text() == digest:
         return out
     doc = ("\\documentclass{article}\n\\usepackage{amsmath,amssymb,graphicx}\n"

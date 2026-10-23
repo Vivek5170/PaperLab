@@ -7,3 +7,7 @@ numpy>=1.26
 pyyaml>=6
 python-dotenv>=1.0
 pytest>=8
+streamlit>=1.30
+
+# System binary (not pip): tectonic — probed at runtime by app/render.py.
+# Install via https://tectonic-typesetting.github.io (e.g. `brew install tectonic`).

@@ -39,11 +39,18 @@ _DEFAULTS = {
         "base_url": "https://api.meta.ai/v1",
         "use_responses_api": False,
         "reasoning_effort": "low",
+        "retry_max_attempts": 8,
+        "retry_base_sec": 2.0,
+        "retry_budget_sec": 300.0,
     },
     "pricing": {
         "input_per_mtok": 0.10,
         "cache_read_per_mtok": 0.002,
         "output_per_mtok": 0.20,
+    },
+    "currency": {
+        "default": "INR",
+        "usd_to_inr": 95.0,
     },
 }
 
@@ -70,6 +77,7 @@ def _resolve(raw: str) -> str:
 _raw = {**_DEFAULTS, **_load_yaml(CONFIG_PATH)}
 _llm = {**_DEFAULTS["llm"], **(_raw.get("llm") or {})}
 _pricing = {**_DEFAULTS["pricing"], **(_raw.get("pricing") or {})}
+_currency = {**_DEFAULTS["currency"], **(_raw.get("currency") or {})}
 
 ARCHIVE_DB: str = os.environ.get(
     "PHYSICS_ARCHIVE_DB", _resolve(str(_raw["database_path"]))
@@ -91,6 +99,15 @@ LLM_REASONING_EFFORT: str | None = os.environ.get(
     "LLM_REASONING_EFFORT", str(_llm.get("reasoning_effort", "") or "")
 ) or None
 LLM_API_KEY: str | None = os.environ.get("META_API_KEY")
+LLM_RETRY_MAX_ATTEMPTS: int = int(
+    os.environ.get("LLM_RETRY_MAX_ATTEMPTS", _llm.get("retry_max_attempts", 8))
+)
+LLM_RETRY_BASE_SEC: float = float(
+    os.environ.get("LLM_RETRY_BASE_SEC", _llm.get("retry_base_sec", 2.0))
+)
+LLM_RETRY_BUDGET_SEC: float = float(
+    os.environ.get("LLM_RETRY_BUDGET_SEC", _llm.get("retry_budget_sec", 300.0))
+)
 
 PRICING: dict = {
     "input_per_mtok": float(os.environ.get("PRICE_INPUT", _pricing["input_per_mtok"])),
@@ -99,6 +116,10 @@ PRICING: dict = {
     ),
     "output_per_mtok": float(os.environ.get("PRICE_OUTPUT", _pricing["output_per_mtok"])),
 }
+
+# Display currency for the Admin cost table (env overrides yaml).
+CURRENCY_DEFAULT: str = os.environ.get("CURRENCY_DEFAULT", str(_currency["default"]))
+USD_TO_INR: float = float(os.environ.get("USD_TO_INR", _currency["usd_to_inr"]))
 
 # Pin for subsequently imported modules (setdefault: explicit env wins).
 os.environ.setdefault("PHYSICS_ARCHIVE_DB", ARCHIVE_DB)
@@ -116,5 +137,10 @@ def as_dict() -> dict:
         "llm_use_responses_api": LLM_USE_RESPONSES_API,
         "llm_reasoning_effort": LLM_REASONING_EFFORT,
         "llm_api_key_set": LLM_API_KEY is not None,
+        "llm_retry_max_attempts": LLM_RETRY_MAX_ATTEMPTS,
+        "llm_retry_base_sec": LLM_RETRY_BASE_SEC,
+        "llm_retry_budget_sec": LLM_RETRY_BUDGET_SEC,
         "pricing": dict(PRICING),
+        "currency_default": CURRENCY_DEFAULT,
+        "usd_to_inr": USD_TO_INR,
     }

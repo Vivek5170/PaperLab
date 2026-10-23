@@ -2,11 +2,7 @@
 from __future__ import annotations
 
 import database
-from preflight import main, preflight_register, register_paper
-
-
-def test_register_alias_matches():
-    assert register_paper is preflight_register
+from preflight import main, preflight_register
 
 
 def test_preflight_register_returns_paper_id(tmp_db, tmp_path):

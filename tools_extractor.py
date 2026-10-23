@@ -41,6 +41,23 @@ PAGE_PX, CROP_PX = 1600, 600
 _PREVIEW_JPEG_Q = 80
 _ENC_CACHE = Path("/tmp/enc")
 _RENDER_CACHE = Path("/tmp/physics_pages")
+# Disk caches are content-keyed and unbounded by design; cap the file count
+# so /tmp cannot grow forever across runs (oldest entries go first).
+_CACHE_FILE_CAP = 1000
+
+
+def _prune_cache(cache_dir: Path, keep: int = _CACHE_FILE_CAP) -> None:
+    """Delete oldest files beyond `keep`; best-effort, never raises."""
+    try:
+        files = sorted(cache_dir.glob("*"), key=lambda p: p.stat().st_mtime)
+        for stale in files[: max(0, len(files) - keep)]:
+            try:
+                if stale.is_file():
+                    stale.unlink()
+            except OSError:
+                pass
+    except OSError:
+        pass
 
 # Minimum bbox-vs-embedded-image overlap that counts as "the same figure".
 SNAP_IOU = 0.5
@@ -182,6 +199,7 @@ def _render_page_to_file(pdf_path: str, page_number: int, dpi: int = _RENDER_DPI
     out = _RENDER_CACHE / f"{key}.png"
     if not out.exists():
         _render_page_to_pil(pdf_path, page_number, dpi).save(str(out), format="PNG")
+        _prune_cache(_RENDER_CACHE)
     return out
 
 
@@ -201,6 +219,7 @@ def img_block(path: str | Path, max_side: int, q: int = _PREVIEW_JPEG_Q) -> dict
         im = Image.open(path).convert("RGB")
         im.thumbnail((max_side, max_side))
         im.save(cached, "JPEG", quality=q)
+        _prune_cache(_ENC_CACHE)
     b64 = base64.b64encode(cached.read_bytes()).decode()
     return {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
 
@@ -438,7 +457,8 @@ def submit_question(paper_id: int, question_number: str, latex_content: str) -> 
     question.tex and creates/updates the questions-table row (status 'draft'
     on insert). Resubmitting the SAME question_number overwrites -- use that
     to correct mistakes. Reference cropped figures with a relative path, e.g.
-    \\includegraphics[width=\\linewidth]{figures/fig1.png}.
+    \\includegraphics[width=\\linewidth]{figures/qfig1.png} (question-side
+    crops only; sfig* references are rejected).
 
     Args:
         paper_id: Integer PK from LangGraph state; never invent one.
@@ -457,7 +477,10 @@ def submit_question(paper_id: int, question_number: str, latex_content: str) -> 
         )
     errs: list[str] = []
     for f in re.findall(r"figures/([\w\-\.]+)", latex_content):
-        if not (
+        if f.startswith("sfig"):
+            errs.append(f"solution-side figure in question: {f} -- crop it "
+                        "from a question page as qfig* instead")
+        elif not (
             directory_manager.get_question_dir(paper_id, question_number)
             / directory_manager.FIGURES_DIR
             / f
@@ -502,7 +525,9 @@ def submit_solution(paper_id: int, question_number: str, latex_content: str) -> 
 
     Writes ``latex_content`` to Outputs/{paper_id}/{question_number}/
     solution.tex (overwrites on resubmit -- reuse the SAME question_number to
-    correct). Empty input or exactly "no_solution_found" saves
+    correct). Reference solution-side crops, e.g.
+    \\includegraphics[width=\\linewidth]{figures/sfig1.png} (qfig*
+    references are rejected). Empty input or exactly "no_solution_found" saves
     \\textit{No solution provided.} instead. Call submit_question for the
     question first; submitting a solution for an unknown question fails.
 
@@ -559,7 +584,10 @@ def submit_solution(paper_id: int, question_number: str, latex_content: str) -> 
         if not re.search(r"[A-D]|\d", first):
             errs.append("first line must contain the final answer key")
         for f in re.findall(r"figures/([\w\-\.]+)", content):
-            if not (
+            if f.startswith("qfig"):
+                errs.append(f"question-side figure in solution: {f} -- crop it "
+                            "from a solution page as sfig* instead")
+            elif not (
                 directory_manager.get_question_dir(paper_id, question_number)
                 / directory_manager.FIGURES_DIR
                 / f

@@ -24,9 +24,20 @@ llm:
   # low roughly halves reasoning tokens vs default on substantive tasks.
   # Transcription is not reasoning-heavy; raise if drafts get sloppy.
   reasoning_effort: low
+  # Rate-limit riding: total attempts per model call, first backoff step,
+  # and cumulative wait ceiling. Defaults absorb a storm for ~5 minutes
+  # (2+4+8+16+32+64+128s) before the run fails and can be re-run.
+  retry_max_attempts: 8
+  retry_base_sec: 2.0
+  retry_budget_sec: 300.0
 
 # Optional price-per-million-tokens for the run cost line.
 pricing:
   input_per_mtok: 0.10
   cache_read_per_mtok: 0.002
   output_per_mtok: 0.20
+
+# Display currency for the Admin cost table.
+currency:
+  default: "INR"
+  usd_to_inr: 95.0

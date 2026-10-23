@@ -335,6 +335,56 @@ def register_paper(question_pdf_path: str, solution_pdf_path: str | None = None)
         conn.close()
 
 
+def update_paper_paths(
+    paper_id: int,
+    question_pdf_path: str | None,
+    solution_pdf_path: str | None,
+) -> None:
+    """Point a paper row at relocated source PDFs (lifecycle moves).
+
+    Raises ValueError for an unknown paper_id.
+    """
+    init_db()
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE papers SET question_pdf_path = ?, solution_pdf_path = ?"
+            " WHERE id = ?",
+            (question_pdf_path, solution_pdf_path, paper_id),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            raise ValueError(f"paper_id {paper_id} does not exist")
+    finally:
+        conn.close()
+
+
+def reset_stuck_running() -> list[int]:
+    """Fail papers left mid-flight by a dead server restart; return their ids.
+
+    A server restart kills background threads, so ``indexing``/``extracting``
+    rows that survive a fresh boot can never complete. Failing them keeps the
+    Processing page honest; re-running resumes normally.
+    """
+    init_db()
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id FROM papers WHERE status IN ('indexing', 'extracting')"
+        ).fetchall()
+        ids = [int(r["id"]) for r in rows]
+        if ids:
+            conn.execute(
+                "UPDATE papers SET status = 'failed', "
+                "error = 'interrupted by server restart — re-run to resume' "
+                "WHERE status IN ('indexing', 'extracting')"
+            )
+            conn.commit()
+        return ids
+    finally:
+        conn.close()
+
+
 def delete_paper(paper_id: int) -> bool:
     """Delete a paper row; its questions and token rows cascade.
 

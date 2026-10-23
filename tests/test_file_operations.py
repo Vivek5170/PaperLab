@@ -23,15 +23,6 @@ def test_get_question_dir_no_side_effects(tmp_outputs):
     assert not p.exists()
 
 
-def test_solution_placeholder_created_once(tmp_outputs):
-    qdir = dm.ensure_question_dir(1, "1", tmp_outputs)
-    sol = dm.ensure_solution_placeholder(qdir)
-    assert sol.read_text(encoding="utf-8") == dm.SOLUTION_PLACEHOLDER
-    # Second call must not overwrite a real solution.
-    sol.write_text("real", encoding="utf-8")
-    assert dm.ensure_solution_placeholder(qdir).read_text(encoding="utf-8") == "real"
-
-
 def test_idempotent_dir_creation(tmp_outputs):
     a = dm.ensure_question_dir(5, "1", tmp_outputs)
     b = dm.ensure_question_dir(5, "1", tmp_outputs)

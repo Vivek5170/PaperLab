@@ -360,3 +360,63 @@ def test_end_to_end_preflight_to_submit(tmp_db, tmp_outputs, tmp_path):
     qdir = tmp_outputs / str(pid) / "1"
     assert (qdir / "question.tex").read_text() == "Q1"
     assert (qdir / "solution.tex").read_text() == dm.SOLUTION_PLACEHOLDER
+
+
+def _paper_with_figs(tmp_db, tmp_path, tmp_outputs):
+    """Paper 1/question 1 with both qfig1.png and sfig1.png present."""
+    import database
+    import directory_manager
+
+    q = tmp_path / "q.pdf"
+    q.write_bytes(b"Q")
+    pid = database.register_paper(str(q), None)
+    qdir = directory_manager.ensure_question_dir(pid, "1")
+    (qdir / "figures" / "qfig1.png").write_bytes(b"fake")
+    (qdir / "figures" / "sfig1.png").write_bytes(b"fake")
+    return pid
+
+
+def test_submit_question_rejects_solution_side_figure(tmp_db, tmp_path, tmp_outputs):
+    from tools_extractor import submit_question
+
+    pid = _paper_with_figs(tmp_db, tmp_path, tmp_outputs)
+    out = submit_question.invoke({
+        "paper_id": pid, "question_number": "1",
+        "latex_content": r"See \includegraphics{figures/sfig1.png}.",
+    })
+    assert "NOT SAVED" in out and "sfig1.png" in out
+
+
+def test_submit_solution_rejects_question_side_figure(tmp_db, tmp_path, tmp_outputs):
+    from tools_extractor import submit_question, submit_solution
+
+    pid = _paper_with_figs(tmp_db, tmp_path, tmp_outputs)
+    assert submit_question.invoke({
+        "paper_id": pid, "question_number": "1",
+        "latex_content": r"See \includegraphics{figures/qfig1.png}.",
+    }) == "saved"
+    out = submit_solution.invoke({
+        "paper_id": pid, "question_number": "1",
+        "latex_content": "\\textbf{Answer: 1) A}\n\nBody "
+                         r"\includegraphics{figures/qfig1.png}.",
+    })
+    assert "NOT SAVED" in out and "qfig1.png" in out
+
+
+def test_submit_allows_legacy_unnamed_figures(tmp_db, tmp_path, tmp_outputs):
+    """Grandfathered fig*.png names (papers 3/4) keep passing both submits."""
+    import directory_manager
+    from tools_extractor import submit_question, submit_solution
+
+    pid = _paper_with_figs(tmp_db, tmp_path, tmp_outputs)
+    qdir = directory_manager.get_question_dir(pid, "1")
+    (qdir / "figures" / "fig1.png").write_bytes(b"fake")
+    assert submit_question.invoke({
+        "paper_id": pid, "question_number": "1",
+        "latex_content": r"See \includegraphics{figures/fig1.png}.",
+    }) == "saved"
+    assert submit_solution.invoke({
+        "paper_id": pid, "question_number": "1",
+        "latex_content": "\\textbf{Answer: 1) A}\n\nBody "
+                         r"\includegraphics{figures/fig1.png}.",
+    }) == "saved"

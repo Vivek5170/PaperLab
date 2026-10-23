@@ -28,11 +28,6 @@ def preflight_register(question_pdf_path: str, solution_pdf_path: str | None = N
     return database.register_paper(question_pdf_path, solution_pdf_path)
 
 
-# Alias so both ``preflight.register_paper`` and ``preflight.preflight_register``
-# resolve to the entry point.
-register_paper = preflight_register
-
-
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if not (1 <= len(args) <= 2):
