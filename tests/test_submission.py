@@ -85,6 +85,15 @@ def test_submit_metadata_question_only_paper(tmp_db, tmp_path):
     assert row["s_start"] is None and row["s_end"] is None
 
 
+def test_submit_metadata_zero_means_no_solutions(tmp_db, tmp_path):
+    """Prompt convention: agent passes 0 for solution bounds -> stored NULL."""
+    pid = _paper_id(tmp_db, tmp_path)
+    meta = {**_META, "s_start": 0, "s_end": 0}
+    assert submit_metadata_and_boundaries.invoke({"paper_id": pid, **meta}) is True
+    row = database.get_paper(pid)
+    assert row["s_start"] is None and row["s_end"] is None
+
+
 def test_submit_metadata_rejects_bad_boundaries(tmp_db, tmp_path):
     pid = _paper_id(tmp_db, tmp_path)
     bad_cases = [

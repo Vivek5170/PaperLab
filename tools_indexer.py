@@ -153,14 +153,21 @@ def submit_metadata_and_boundaries(
         q_start: 1-based first page of the questions section (>= 1).
         q_end: 1-based last page of the questions section (>= q_start).
         s_start: 1-based first page of the solutions section, or null/None
+            (the indexer prompt uses 0, which is normalized to null here)
             when the paper has no solutions.
         s_end: 1-based last page of the solutions section (>= s_start),
-            or null/None when the paper has no solutions.
+            or null/None (0 accepted, normalized to null) when the paper
+            has no solutions.
 
     Returns:
         True on success. Fails with an error if ``paper_id`` does not exist
-        or any boundary is invalid (< 1, or start > end).
+        or any boundary is invalid (< 1 and not 0-for-null, or start > end).
     """
+    # Prompt convention: the agent passes 0 for missing solution boundaries.
+    if s_start == 0:
+        s_start = None
+    if s_end == 0:
+        s_end = None
     _check_range("q_start", q_start, minimum=1)
     _check_range("q_end", q_end, minimum=q_start)
     if s_start is not None:
