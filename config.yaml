@@ -1,0 +1,22 @@
+# Single source of truth for pipeline filesystem wiring.
+#
+# Precedence (highest wins): explicit environment variables
+# (PHYSICS_ARCHIVE_DB / PHYSICS_OUTPUT_BASE / LLM_*) > this file > built-in defaults.
+# Secrets never live here -- META_API_KEY belongs in .env (see .env.example).
+# Every entry point (preflight.py, the future LangGraph launcher, tests)
+# goes through config.py, so pre-flight and graph workers always agree on
+# which database file and which Outputs tree a paper_id refers to.
+#
+# Paths may be absolute, or relative to THIS file's directory.
+
+database_path: ./physics_archive.db
+outputs_dir: ./Outputs
+
+# LLM used by the LangGraph agents (OpenAI-compatible endpoint).
+# For langchain-openai ChatOpenAI: base "https://api.meta.ai/v1" (the client
+# appends /chat/completions, or /responses when use_responses_api is true).
+# NOTE: ".../v1/responses" is the full Responses endpoint path, NOT the base.
+llm:
+  model: muse-spark-1.3-contributor
+  base_url: https://api.meta.ai/v1
+  use_responses_api: false

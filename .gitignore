@@ -1,0 +1,16 @@
+# Secrets & local environment
+.env
+
+# Generated runtime artifacts (recreated by init_db / pipeline runs)
+physics_archive.db
+Outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# macOS
+.DS_Store
