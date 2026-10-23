@@ -4,6 +4,7 @@
 # Generated runtime artifacts (recreated by init_db / pipeline runs)
 physics_archive.db
 Outputs/
+uploads/
 
 # Python
 __pycache__/

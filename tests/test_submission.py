@@ -227,6 +227,31 @@ def test_submit_solution_graceful_placeholder(tmp_db, tmp_outputs, tmp_path, emp
     assert sol == dm.SOLUTION_PLACEHOLDER
 
 
+@pytest.mark.parametrize("body", ["21. no_solution_found", "21) no_solution_found",
+                                   "no_solution_found"])
+def test_submit_solution_placeholder_with_key_line(tmp_db, tmp_outputs, tmp_path, body):
+    """'no solution' body keeps the real key line and marks the missing body."""
+    pid = _paper_id(tmp_db, tmp_path)
+    submit_question.invoke({"paper_id": pid, "question_number": "21", "latex_content": "Q"})
+    content = f"% Answer: 21-B\n{body}"
+    assert submit_solution.invoke({
+        "paper_id": pid, "question_number": "21", "latex_content": content,
+    }) == "saved"
+    sol = (tmp_outputs / str(pid) / "21" / "solution.tex").read_text(encoding="utf-8")
+    assert sol == "% Answer: 21-B\n" + dm.SOLUTION_PLACEHOLDER
+
+
+def test_submit_solution_key_only_body_saved(tmp_db, tmp_outputs, tmp_path):
+    """A key-only solution has real content (the key) and is saved as-is."""
+    pid = _paper_id(tmp_db, tmp_path)
+    submit_question.invoke({"paper_id": pid, "question_number": "22", "latex_content": "Q"})
+    assert submit_solution.invoke({
+        "paper_id": pid, "question_number": "22", "latex_content": "% Answer: B",
+    }) == "saved"
+    sol = (tmp_outputs / str(pid) / "22" / "solution.tex").read_text(encoding="utf-8")
+    assert sol == "% Answer: B"
+
+
 def test_submit_solution_real_content_and_overwrite(tmp_db, tmp_outputs, tmp_path):
     pid = _paper_id(tmp_db, tmp_path)
     submit_question.invoke({"paper_id": pid, "question_number": "2", "latex_content": "Q"})
@@ -282,6 +307,33 @@ def test_submit_solution_requires_key_on_first_line(tmp_db, tmp_outputs, tmp_pat
     assert out.startswith("NOT SAVED")
     assert "first line" in out.lower()
     assert not (tmp_outputs / str(pid) / "3" / "solution.tex").exists()
+
+
+def test_submit_solution_accepts_bold_answer_first_line(tmp_db, tmp_outputs, tmp_path):
+    pid = _paper_id(tmp_db, tmp_path)
+    submit_question.invoke({"paper_id": pid, "question_number": "8", "latex_content": "Q"})
+    body = "\\textbf{Answer: 23-A, 23-C}\nTranscribed body $x=1$."
+    assert submit_solution.invoke({
+        "paper_id": pid, "question_number": "8", "latex_content": body,
+    }) == "saved"
+    assert (tmp_outputs / str(pid) / "8" / "solution.tex").read_text() == body
+
+
+def test_submit_solution_accepts_repeated_block_format(tmp_db, tmp_outputs, tmp_path):
+    """Grouped solutions repeat the single-question block per sub-question."""
+    pid = _paper_id(tmp_db, tmp_path)
+    submit_question.invoke({"paper_id": pid, "question_number": "33-34_paragraph",
+                            "latex_content": "Q"})
+    body = ("\\textbf{Answer: 33) 18}\n\n"
+            "\\underline{\\textbf{Solution for 33}}\n\n"
+            "First sub-solution $x=1$.\n\n"
+            "\\textbf{Answer: 34) 4}\n\n"
+            "\\underline{\\textbf{Solution for 34}}\n\n"
+            "Second sub-solution $y=2$.")
+    assert submit_solution.invoke({
+        "paper_id": pid, "question_number": "33-34_paragraph", "latex_content": body,
+    }) == "saved"
+    assert (tmp_outputs / str(pid) / "33-34_paragraph" / "solution.tex").read_text() == body
 
 
 def test_submit_solution_rejects_missing_figure(tmp_db, tmp_outputs, tmp_path):

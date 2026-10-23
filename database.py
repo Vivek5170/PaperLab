@@ -69,7 +69,8 @@ CREATE TABLE IF NOT EXISTS papers (
     s_start INTEGER,
     s_end INTEGER,
     status TEXT DEFAULT 'uploaded',
-    error TEXT
+    error TEXT,
+    elapsed_sec REAL
 );
 """
 
@@ -103,7 +104,7 @@ CREATE TABLE IF NOT EXISTS questions (
 def get_connection(db_path: str | Path | None = None) -> sqlite3.Connection:
     """Return a SQLite connection with foreign keys enforced."""
     path = Path(db_path) if db_path is not None else DB_PATH
-    conn = sqlite3.connect(str(path))
+    conn = sqlite3.connect(str(path), timeout=30.0)
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.row_factory = sqlite3.Row
     return conn
@@ -128,6 +129,8 @@ def init_db(db_path: str | Path | None = None) -> Path:
             conn.execute("ALTER TABLE papers ADD COLUMN status TEXT DEFAULT 'uploaded'")
         if "error" not in cols:
             conn.execute("ALTER TABLE papers ADD COLUMN error TEXT")
+        if "elapsed_sec" not in cols:
+            conn.execute("ALTER TABLE papers ADD COLUMN elapsed_sec REAL")
         conn.commit()
     finally:
         conn.close()
@@ -187,19 +190,31 @@ def get_paper(paper_id: int) -> sqlite3.Row | None:
         conn.close()
 
 
-def set_paper_status(paper_id: int, status: str, error: str | None = None) -> None:
+def set_paper_status(
+    paper_id: int,
+    status: str,
+    error: str | None = None,
+    elapsed_sec: float | None = None,
+) -> None:
     """Set a paper's pipeline status (uploaded/indexing/extracting/done/failed).
 
     Passing ``error`` records the failure reason (use with "failed").
+    ``elapsed_sec`` records wall time when known (set on terminal states).
     Raises ValueError for an unknown paper_id.
     """
     init_db()
     conn = get_connection()
     try:
-        cur = conn.execute(
-            "UPDATE papers SET status = ?, error = ? WHERE id = ?",
-            (status, error, paper_id),
-        )
+        if elapsed_sec is None:
+            cur = conn.execute(
+                "UPDATE papers SET status = ?, error = ? WHERE id = ?",
+                (status, error, paper_id),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE papers SET status = ?, error = ?, elapsed_sec = ? WHERE id = ?",
+                (status, error, elapsed_sec, paper_id),
+            )
         conn.commit()
         if cur.rowcount == 0:
             raise ValueError(f"paper_id {paper_id} does not exist")
@@ -316,5 +331,21 @@ def register_paper(question_pdf_path: str, solution_pdf_path: str | None = None)
             ) from None
         conn.commit()
         return int(cur.lastrowid)
+    finally:
+        conn.close()
+
+
+def delete_paper(paper_id: int) -> bool:
+    """Delete a paper row; its questions and token rows cascade.
+
+    Returns True if a row was deleted, False if the id did not exist.
+    (The Outputs/ folder is filesystem state -- remove it separately.)
+    """
+    init_db()
+    conn = get_connection()
+    try:
+        cur = conn.execute("DELETE FROM papers WHERE id = ?", (paper_id,))
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()

@@ -26,7 +26,7 @@ from run_extractor import _coverage
 
 def _wipe_paper(paper_id: int) -> None:
     """Clear a paper's Outputs, question rows and token rows for a fresh run."""
-    out = directory_manager.get_question_dir(paper_id, "__probe__").parent
+    out = directory_manager.paper_dir(paper_id)
     if out.is_dir():
         shutil.rmtree(out)
     conn = database.get_connection()
@@ -101,12 +101,13 @@ def run_pipeline(paper_id: int, force: bool = False) -> dict:
             initial_state(paper_id, qpdf, spdf), config={"recursion_limit": 25}
         )
         if final1.get("status") == "aborted_no_text":
-            database.set_paper_status(paper_id, "failed", "no text layer")
+            elapsed = time.time() - t0
+            database.set_paper_status(paper_id, "failed", "no text layer", elapsed)
             return {
                 "paper_id": paper_id,
                 "status": "failed",
                 "summary": summarize_tokens(paper_id),
-                "elapsed_sec": time.time() - t0,
+                "elapsed_sec": elapsed,
             }
 
         database.set_paper_status(paper_id, "extracting")
@@ -115,6 +116,7 @@ def run_pipeline(paper_id: int, force: bool = False) -> dict:
             config={"recursion_limit": 200},
         )
         submitted, missing = _coverage(paper_id)
+        elapsed = time.time() - t0
         if missing:
             crow = database.get_paper(paper_id)
             if crow["s_start"] is not None:
@@ -135,22 +137,25 @@ def run_pipeline(paper_id: int, force: bool = False) -> dict:
                     config={"recursion_limit": 200},
                 )
                 submitted, missing = _coverage(paper_id)
+                elapsed = time.time() - t0
         if missing:
             database.set_paper_status(
-                paper_id, "failed", f"missing solutions: {', '.join(missing)}"
+                paper_id, "failed", f"missing solutions: {', '.join(missing)}", elapsed
             )
             status = "failed"
         else:
-            database.set_paper_status(paper_id, "done")
+            database.set_paper_status(paper_id, "done", elapsed_sec=elapsed)
             status = "done"
         return {
             "paper_id": paper_id,
             "status": status,
             "summary": summarize_tokens(paper_id),
-            "elapsed_sec": time.time() - t0,
+            "elapsed_sec": elapsed,
         }
     except Exception as exc:
-        database.set_paper_status(paper_id, "failed", f"{type(exc).__name__}: {exc}")
+        database.set_paper_status(
+            paper_id, "failed", f"{type(exc).__name__}: {exc}", time.time() - t0
+        )
         raise
 
 

@@ -88,3 +88,8 @@ def ensure_solution_placeholder(qdir: str | Path) -> Path:
     if not sol.exists():
         sol.write_text(SOLUTION_PLACEHOLDER, encoding="utf-8")
     return sol
+
+
+def paper_dir(paper_id: int, output_base: str | Path | None = None) -> Path:
+    """Return the path ``Outputs/{paper_id}`` (no creation)."""
+    return _base(output_base) / str(paper_id)

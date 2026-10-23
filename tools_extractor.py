@@ -538,9 +538,22 @@ def submit_solution(paper_id: int, question_number: str, latex_content: str) -> 
         )
 
     content = latex_content if isinstance(latex_content, str) else str(latex_content)
-    if not content.strip() or content.strip() == "no_solution_found":
+    stripped = content.strip()
+    if not stripped or stripped.lower() == "no_solution_found":
         content = directory_manager.SOLUTION_PLACEHOLDER
     else:
+        lines = stripped.split("\n")
+        if len(lines) > 1:
+            # Body = everything below a possible key line, minus an optional
+            # leading "NN. " question-number prefix the agent sometimes adds.
+            body = "\n".join(lines[1:])
+            body_core = re.sub(r"^\s*\d+\s*[\.\)]\s*", "", body.strip(), count=1)
+            if body_core.strip().lower() in ("", "no_solution_found"):
+                # Keep the real key, mark the missing body explicitly.
+                content = lines[0].rstrip() + "\n" + directory_manager.SOLUTION_PLACEHOLDER
+                qdir = directory_manager.ensure_question_dir(paper_id, question_number)
+                (qdir / directory_manager.SOLUTION_TEX).write_text(content, encoding="utf-8")
+                return "saved"
         errs: list[str] = []
         first = content.strip().splitlines()[0]
         if not re.search(r"[A-D]|\d", first):
