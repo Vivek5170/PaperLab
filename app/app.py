@@ -1,4 +1,4 @@
-"""PaperLab: three-stage UI (Upload & verify / Processing / Paper library)."""
+"""PaperLab: public library view + password-gated admin area."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import config  # noqa: F401  (pins env first)
 import database
 import directory_manager
+from app.auth import SESSION_KEY, check_password, uses_default_password
 from app.library import bucket_papers, display_name, exam_options, filter_papers
 from app.pairing import (UPLOAD_DIR, auto_pair, delete_paper_everywhere,
                          reconcile_missing_sources, register_pair, save_uploads,
@@ -25,11 +26,50 @@ from app.render import render_tex_to_png, split_tex, tex_engine_available
 from app.runs import get_registry, reset_stuck_running_once
 from run_pipeline import run_pipeline, summarize_tokens
 
-st.set_page_config(page_title="PaperLab", page_icon="📄", layout="wide")
+st.set_page_config(page_title="PaperLab · Physics extraction", page_icon="⚛️", layout="wide")
 database.init_db()
 
-st.title("PaperLab")
-st.caption("Question bank · Mathematics & CS")
+st.markdown(
+    """
+    <style>
+    [data-testid="stSidebar"],
+    [data-testid="stSidebar"] > div {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+    [data-testid="stSidebar"] .stButton {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+    [data-testid="stSidebar"] .stButton > button {
+        font-size: 1.12rem !important;
+        font-weight: 700 !important;
+        padding: 0.6rem 0.75rem !important;
+        border-radius: 0 !important;
+        border-left: none !important;
+        border-right: none !important;
+    }
+    [data-testid="stSidebar"] .stMarkdown p,
+    [data-testid="stSidebar"] .stCaption {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    [data-testid="stSidebar"] hr {
+        margin-left: 1rem !important;
+        margin-right: 1rem !important;
+    }
+    [data-testid="stSidebar"] .stCaption {
+        font-size: 0.92rem !important;
+    }
+    .side-brand {
+        font-size: 1.45rem !important;
+        font-weight: 800 !important;
+        margin-bottom: 0 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # Offline discipline: non-done papers whose source PDFs were deleted from
 # data/uploads or data/processing are hard-deleted (DB row + Outputs; done
@@ -38,14 +78,40 @@ _swept = reconcile_missing_sources()
 if _swept:
     st.toast(f"Removed papers with missing source files: {sorted(_swept)}")
 
-stage = st.sidebar.radio(
-    "Stage",
-    ["01 · Upload & verify", "02 · Processing", "03 · Paper library", "Admin"],
-    key="stage",
-)
+
+def is_admin() -> bool:
+    """Session flag only: a refresh or new tab starts logged out."""
+    return bool(st.session_state.get(SESSION_KEY))
 
 
-# ------------------------------------------------- shared data access ---
+@st.dialog("Admin login")
+def _login_dialog() -> None:
+    pw = st.text_input("Password", type="password", key="pw_login")
+    if st.button("Unlock", key="pw_go", type="primary"):
+        if check_password(pw):
+            st.session_state[SESSION_KEY] = True
+            st.session_state.pop("pw_login", None)
+            st.toast("Admin mode on.")
+            st.rerun()
+        else:
+            st.error("Wrong password.")
+
+
+def _topbar() -> None:
+    """Slim utility bar: breadcrumb left, admin toggle right."""
+    h1, h2 = st.columns([5, 1])
+    with h1:
+        st.caption(f"📍 {st.session_state.get('page', '📖 Library')}")
+    with h2:
+        if is_admin():
+            if st.button("🔓 Admin · Logout", key="admin_off"):
+                st.session_state.pop(SESSION_KEY, None)
+                st.session_state["page"] = "📖 Library"
+                st.toast("Admin mode off.")
+                st.rerun()
+        else:
+            if st.button("🔒 Admin", key="admin_on"):
+                _login_dialog()
 
 
 def _all_papers():
@@ -66,18 +132,55 @@ def _paper_questions(pid: int):
         conn.close()
 
 
+_topbar()
+
+with st.sidebar:
+    st.markdown('<p class="side-brand">PaperLab</p>', unsafe_allow_html=True)
+    st.caption("Physics extraction console · JEE / NEET archive")
+    st.divider()
+    st.caption("🧭 Navigate")
+    _nav_choice = st.session_state.setdefault("page", "📖 Library")
+    if st.button("📖  Library", key="nav_lib", width="stretch",
+                 type="primary" if _nav_choice == "📖 Library" else "secondary"):
+        st.session_state["page"] = "📖 Library"
+        st.rerun()
+    _adm_label = "🛠  Admin" + ("  🔓" if is_admin() else "")
+    if st.button(_adm_label, key="nav_admin", width="stretch",
+                 type="primary" if _nav_choice == "🛠 Admin" else "secondary"):
+        st.session_state["page"] = "🛠 Admin"
+        st.rerun()
+    st.divider()
+    _rows = _all_papers()
+    _b = bucket_papers(_rows)
+    _lock = "🔓 admin" if is_admin() else "🔒 locked"
+    st.caption(f"✅ {len(_b['done'])} done · ⏳ {len(_b['queued'])} queued")
+    st.caption(f"⚙️ {len(_b['running'])} running · "
+               f"❌ {len(_b['failed'])} failed · {_lock}")
+page = st.session_state.get("page", "📖 Library")
+
+
+# ------------------------------------------------- figures & tex ---
+
+
 def _show_figure(path: str) -> None:
-    """Show a figure at natural size, capped so small diagrams stay small."""
+    """Show a figure capped so plain (200dpi) crops don't dominate.
+
+    Snapped originals are tiny (their native pixels) while plain crops are
+    full render-scale; without a cap the same diagram shows at 265px in one
+    question and 700px in the next. 480px matches the compiled view's
+    ~0.6\\linewidth feel and stays readable.
+    """
     from PIL import Image
 
     try:
         w = Image.open(path).size[0]
     except Exception:
-        w = 700
-    st.image(path, caption=Path(path).name, width=min(w, 700))
+        w = 480
+    st.image(path, caption=Path(path).name, width=min(w, 480))
 
 
-def _render_tex_block(tex: str, base_dir: Path, key: str, label: str) -> None:
+def _render_tex_block(tex: str, base_dir: Path, key: str, label: str,
+                      allow_render: bool = True) -> None:
     for kind, payload in split_tex(tex, base_dir):
         if kind == "fig":
             if payload:
@@ -86,7 +189,7 @@ def _render_tex_block(tex: str, base_dir: Path, key: str, label: str) -> None:
                 st.warning("Referenced figure file is missing on disk.")
         elif payload:
             st.markdown(payload)
-    if tex_engine_available():
+    if allow_render and tex_engine_available():
         if st.button(f"Render {label} as image", key=f"tex_{key}"):
             out = render_tex_to_png(tex, base_dir, f"_{label}.png")
             if out is not None:
@@ -99,7 +202,7 @@ def _render_tex_block(tex: str, base_dir: Path, key: str, label: str) -> None:
 
 
 def stage_upload() -> None:
-    st.header("01 · Upload & verify")
+    st.header("📥 Upload & verify")
     st.caption("Nothing enters processing until you explicitly confirm the pairs.")
     if "_staged_msg" in st.session_state:
         st.success(st.session_state.pop("_staged_msg"))
@@ -167,7 +270,7 @@ def stage_upload() -> None:
 
 
 def stage_processing() -> None:
-    st.header("02 · Processing")
+    st.header("⚙️ Processing")
     st.caption("Only confirmed pairs. Done papers never re-enter except by explicit rerun. "
                "Runs execute in the background; this page refreshes live.")
     stuck = reset_stuck_running_once()
@@ -261,9 +364,12 @@ def stage_processing() -> None:
 
 
 def stage_library() -> None:
+    if st.session_state.get("paper") is not None:
+        _paper_page()
+        return
     h1, h2 = st.columns([5, 1])
     with h1:
-        st.header("03 · Paper library")
+        st.header("📖 Paper library")
     with h2:
         st.write("")
         if st.button("Refresh", key="lib_refresh"):
@@ -293,6 +399,16 @@ def stage_library() -> None:
                 st.session_state["paper"] = r["id"]
                 st.session_state["q"] = None
                 st.session_state["show_ans"] = False
+                st.rerun()  # stop here: the fresh run renders the sub-page
+    _reader()
+
+
+def _paper_page() -> None:
+    """Focused sub-page for one opened paper, with a way back."""
+    if st.button("← Back to library", key="back_lib"):
+        for k in ("paper", "q", "show_ans"):
+            st.session_state.pop(k, None)
+        st.rerun()
     _reader()
 
 
@@ -325,20 +441,26 @@ def _reader() -> None:
     with reading:
         qn = st.session_state["q"]
         qdir = directory_manager.get_question_dir(pid, qn)
+        editable = is_admin()
         st.subheader(f"Question {qn}")
         with st.container():
             qtex = (qdir / "question.tex").read_text(encoding="utf-8") \
                 if (qdir / "question.tex").is_file() else "*missing*"
-            _render_tex_block(qtex, qdir, f"{pid}_{qn}_q", "question")
+            _render_tex_block(qtex, qdir, f"{pid}_{qn}_q", "question",
+                              allow_render=editable)
         if st.button("Show solution" if not st.session_state.get("show_ans")
                      else "Hide solution", key=f"ans_{pid}_{qn}"):
             st.session_state["show_ans"] = not st.session_state.get("show_ans")
         if st.session_state.get("show_ans"):
             stex = (qdir / "solution.tex").read_text(encoding="utf-8") \
                 if (qdir / "solution.tex").is_file() else "*missing*"
-            _render_tex_block(stex, qdir, f"{pid}_{qn}_s", "solution")
-        with st.expander("Manage figures", expanded=False):
-            _figure_manager(pid, qn, qdir)
+            _render_tex_block(stex, qdir, f"{pid}_{qn}_s", "solution",
+                              allow_render=editable)
+        if editable:
+            with st.expander("Manage figures", expanded=False):
+                _figure_manager(pid, qn, qdir)
+        elif list_figures(qdir):
+            st.caption("🔒 Figure editing needs admin mode.")
         prev_id, next_id = neighbor_ids(ids, qn)
         p1, p2, p3 = st.columns([1, 1, 2])
         if p1.button("← Previous", key=f"prev_{pid}_{qn}", disabled=prev_id is None):
@@ -459,7 +581,25 @@ def _figure_manager(pid: int, qn: str, qdir) -> None:
 # -------------------------------------------------------------- Admin ---
 
 def stage_admin() -> None:
-    st.header("Admin · diagnostics")
+    st.header("🛠 Admin")
+    if not is_admin():
+        st.warning("This area needs admin mode — use the 🔒 Admin button at the top right.")
+        if st.button("Log in", key="admin_wall_go"):
+            _login_dialog()
+        return
+    if uses_default_password():
+        st.warning('Admin password is still the default "admin" — '
+                   "set PAPERLAB_ADMIN_PASSWORD in .env before hosting.")
+    tab_stats, tab_flow = st.tabs(["📊 Statistics", "📥 Upload & Processing"])
+    with tab_stats:
+        _admin_statistics()
+    with tab_flow:
+        stage_upload()
+        st.divider()
+        stage_processing()
+
+
+def _admin_statistics() -> None:
     st.caption("Token accounting and cost. Student views stay clean.")
     if st.button("Refresh metrics", key="admin_refresh"):
         st.rerun()
@@ -546,10 +686,7 @@ def stage_admin() -> None:
                 st.rerun()
 
 
-STAGES = {
-    "01 · Upload & verify": stage_upload,
-    "02 · Processing": stage_processing,
-    "03 · Paper library": stage_library,
-    "Admin": stage_admin,
-}
-STAGES[stage]()
+if page == "🛠 Admin":
+    stage_admin()
+else:
+    stage_library()

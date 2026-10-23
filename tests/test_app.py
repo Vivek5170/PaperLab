@@ -610,3 +610,18 @@ def test_ui_edited_tex_still_submits(tmp_db, tmp_path, tmp_outputs):
     assert n == 1
     assert submit_question.invoke(
         {"paper_id": pid, "question_number": "1", "latex_content": trimmed}) == "saved"
+
+
+def test_admin_password_gate(monkeypatch):
+    from app import auth
+
+    monkeypatch.delenv("PAPERLAB_ADMIN_PASSWORD", raising=False)
+    assert auth.uses_default_password() is True
+    assert auth.check_password("admin") is True
+    assert auth.check_password("wrong") is False
+    assert auth.check_password("") is False
+    assert auth.check_password(None) is False
+    monkeypatch.setenv("PAPERLAB_ADMIN_PASSWORD", "s3cret!")
+    assert auth.uses_default_password() is False
+    assert auth.check_password("s3cret!") is True
+    assert auth.check_password("admin") is False  # default stops working
