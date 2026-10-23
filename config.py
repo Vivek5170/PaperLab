@@ -38,6 +38,7 @@ _DEFAULTS = {
         "model": "muse-spark-1.3-contributor",
         "base_url": "https://api.meta.ai/v1",
         "use_responses_api": False,
+        "reasoning_effort": "low",
     },
 }
 
@@ -80,6 +81,9 @@ LLM_USE_RESPONSES_API: bool = (
     os.environ.get("LLM_USE_RESPONSES_API", str(_llm["use_responses_api"])).lower()
     == "true"
 )
+LLM_REASONING_EFFORT: str | None = os.environ.get(
+    "LLM_REASONING_EFFORT", str(_llm.get("reasoning_effort", "") or "")
+) or None
 LLM_API_KEY: str | None = os.environ.get("META_API_KEY")
 
 # Pin for subsequently imported modules (setdefault: explicit env wins).
@@ -96,5 +100,6 @@ def as_dict() -> dict:
         "llm_model": LLM_MODEL,
         "llm_base_url": LLM_BASE_URL,
         "llm_use_responses_api": LLM_USE_RESPONSES_API,
+        "llm_reasoning_effort": LLM_REASONING_EFFORT,
         "llm_api_key_set": LLM_API_KEY is not None,
     }

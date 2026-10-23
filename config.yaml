@@ -20,3 +20,7 @@ llm:
   model: muse-spark-1.3-contributor
   base_url: https://api.meta.ai/v1
   use_responses_api: false
+  # Reasoning budget: low/medium/high. Measured on this endpoint:
+  # low roughly halves reasoning tokens vs default on substantive tasks.
+  # Transcription is not reasoning-heavy; raise if drafts get sloppy.
+  reasoning_effort: low

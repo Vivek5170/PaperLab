@@ -9,7 +9,8 @@ import pytest
 
 ROOT = Path(__file__).parent.parent
 PINNED_KEYS = ("PHYSICS_ARCHIVE_DB", "PHYSICS_OUTPUT_BASE", "PIPELINE_CONFIG",
-               "META_API_KEY", "LLM_MODEL", "LLM_BASE_URL", "LLM_USE_RESPONSES_API")
+               "META_API_KEY", "LLM_MODEL", "LLM_BASE_URL", "LLM_USE_RESPONSES_API",
+               "LLM_REASONING_EFFORT")
 
 
 def _load_fresh(monkeypatch, tmp_path, yaml_text=None, extra_env=None):
@@ -69,7 +70,9 @@ def test_defaults_without_yaml(tmp_path, monkeypatch):
     assert mod.OUTPUT_BASE.endswith("Outputs")
     assert set(mod.as_dict()) == {"config_file", "database_path", "outputs_dir",
                                   "llm_model", "llm_base_url",
-                                  "llm_use_responses_api", "llm_api_key_set"}
+                                  "llm_use_responses_api", "llm_reasoning_effort",
+                                  "llm_api_key_set"}
+    assert mod.LLM_REASONING_EFFORT == "low"
 
 
 def test_explicit_missing_config_errors(tmp_path, monkeypatch):
@@ -98,11 +101,13 @@ def test_llm_env_overrides_yaml(tmp_path, monkeypatch):
         monkeypatch, tmp_path,
         "llm:\n  model: yaml-model\n  base_url: https://yaml.example/v1\n",
         extra_env={"LLM_MODEL": "env-model", "META_API_KEY": "sk-test",
-                   "LLM_USE_RESPONSES_API": "true"},
+                   "LLM_USE_RESPONSES_API": "true",
+                   "LLM_REASONING_EFFORT": "high"},
     )
     assert mod.LLM_MODEL == "env-model"
     assert mod.LLM_BASE_URL == "https://yaml.example/v1"
     assert mod.LLM_USE_RESPONSES_API is True
+    assert mod.LLM_REASONING_EFFORT == "high"
     assert mod.LLM_API_KEY == "sk-test"
 
 

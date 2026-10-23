@@ -26,5 +26,6 @@ def get_llm() -> ChatOpenAI:
         openai_api_base=config.LLM_BASE_URL,
         openai_api_key=config.LLM_API_KEY,
         use_responses_api=config.LLM_USE_RESPONSES_API,
+        reasoning_effort=config.LLM_REASONING_EFFORT,
         temperature=0,
     )
