@@ -31,8 +31,6 @@ from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.types import Command
 from PIL import Image, ImageDraw
 
-import numpy as np
-
 import database
 import directory_manager
 
@@ -43,6 +41,117 @@ PAGE_PX, CROP_PX = 1600, 600
 _PREVIEW_JPEG_Q = 80
 _ENC_CACHE = Path("/tmp/enc")
 _RENDER_CACHE = Path("/tmp/physics_pages")
+
+# Minimum bbox-vs-embedded-image overlap that counts as "the same figure".
+SNAP_IOU = 0.5
+# ...or the request box contains at least this fraction of ONE image, as
+# long as the box is not absurdly larger than the image itself.
+SNAP_COVERAGE = 0.8
+SNAP_MAX_BOX_RATIO = 5.0
+
+# Per-PDF memo caches (keyed by resolved abspath; PDFs are treated as stable).
+_CHROME_CACHE: dict[str, set[int]] = {}  # pdf -> xrefs repeating on most pages
+_SNAP_CACHE: dict[tuple[str, int], tuple[str, bytes]] = {}  # (pdf, xref) -> (ext, bytes)
+
+# Per-figure snap record for run reports: (paper_id, question_number,
+# filename, "snap:<xref>" | "plain"). In-process only.
+SNAP_LOG: list[tuple] = []
+
+
+def _chrome_xrefs(pdf_path: str) -> set[int]:
+    """Xrefs behaving as page chrome (headers/footers/logos): on >50% of pages."""
+    key = str(Path(pdf_path).resolve())
+    if key not in _CHROME_CACHE:
+        doc = fitz.open(pdf_path)
+        try:
+            counts: dict[int, int] = {}
+            n = len(doc)
+            for i in range(n):
+                for img in doc[i].get_images(full=True):
+                    counts[img[0]] = counts.get(img[0], 0) + 1
+            _CHROME_CACHE[key] = {x for x, c in counts.items() if c > n / 2}
+        finally:
+            doc.close()
+    return _CHROME_CACHE[key]
+
+
+def _try_snap(
+    pdf_path: str, page_number: int, norm_pts: list[tuple[int, int]]
+) -> tuple[str, bytes] | None:
+    """Snap a 0-1000 polygon bbox to an embedded figure image, if any.
+
+    Converts the polygon's bounding box to PDF points and returns the
+    original bytes (ext, data, xref) of the embedded image in either of two cases:
+    1. IoU between the box and the image rect >= SNAP_IOU (tight box), or
+    2. the box contains >= SNAP_COVERAGE of exactly one image AND the box
+       is at most SNAP_MAX_BOX_RATIO times the image area (generous but
+       sane box around a single figure).
+    Chrome xrefs (headers/footers/logos) never qualify. Returns None on any
+    failure so callers fall back to a plain crop.
+    """
+    doc = None
+    try:
+        doc = fitz.open(pdf_path)
+        if page_number < 1 or page_number > len(doc):
+            return None
+        page = doc[page_number - 1]
+        r = page.rect
+        xs = [x / 1000.0 * r.width for x, _ in norm_pts]
+        ys = [y / 1000.0 * r.height for _, y in norm_pts]
+        want = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
+        if want.is_empty or want.width <= 0 or want.height <= 0:
+            return None
+        want_area = want.width * want.height
+        chrome = _chrome_xrefs(pdf_path)
+        key = str(Path(pdf_path).resolve())
+        best_iou: tuple[float, int] | None = None
+        covered: list[int] = []  # xrefs the box contains >= SNAP_COVERAGE of
+        for img in page.get_images(full=True):
+            xref = img[0]
+            if xref == 0 or xref in chrome:
+                continue
+            for rect in page.get_image_rects(xref):
+                ix0, iy0 = max(want.x0, rect.x0), max(want.y0, rect.y0)
+                ix1, iy1 = min(want.x1, rect.x1), min(want.y1, rect.y1)
+                inter = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
+                if inter <= 0:
+                    continue
+                union = want_area + (rect.width * rect.height) - inter
+                iou = inter / union if union > 0 else 0.0
+                if best_iou is None or iou > best_iou[0]:
+                    best_iou = (iou, xref)
+                if rect.width > 0 and rect.height > 0:
+                    if inter / (rect.width * rect.height) >= SNAP_COVERAGE:
+                        if want_area <= SNAP_MAX_BOX_RATIO * rect.width * rect.height:
+                            if xref not in covered:
+                                covered.append(xref)
+        target: int | None = None
+        if best_iou is not None and best_iou[0] >= SNAP_IOU:
+            target = best_iou[1]
+        elif len(covered) == 1:
+            target = covered[0]
+        if target is None:
+            return None
+        ckey = (key, target)
+        cached = _SNAP_CACHE.get(ckey)
+        if cached is None:
+            info = doc.extract_image(target)
+            cached = (str(info.get("ext", "")), bytes(info["image"]), target)
+            _SNAP_CACHE[ckey] = cached
+        return cached
+    except Exception:
+        return None
+    finally:
+        if doc is not None:
+            doc.close()
+
+
+def _ext_matches(filename: str, ext: str) -> bool:
+    suffix = Path(filename).suffix.lower().lstrip(".")
+    ext = ext.lower()
+    if ext in ("jpg", "jpeg"):
+        return suffix in ("jpg", "jpeg")
+    return bool(suffix) and suffix == ext
 
 
 def _render_page_to_pil(pdf_path: str, page_number: int, dpi: int = _RENDER_DPI) -> Image.Image:
@@ -115,72 +224,6 @@ def image_reply(
     )
 
 
-def _longest_run(v) -> int:
-    best = run = 0
-    for x in v:
-        run = run + 1 if x else 0
-        best = max(best, run)
-    return best
-
-
-def analyze_and_trim(
-    path: str | Path,
-    dark: int = 110,
-    band: int = 2,
-    min_run: int = 3,
-    margin: int = 4,
-    dry_run: bool = False,
-) -> tuple[list, list | str]:
-    """Trim whitespace on clean sides in place; report ink-touching sides.
-
-    Measures which edges have dark ink touching them on the raw crop, then
-    trims each NON-touching side inward to just past the outermost ink
-    (plus ``margin``) -- i.e. trim until a new black edge would be created,
-    in one step instead of a loop. Touching sides are left alone and
-    reported by name so the agent can expand them. The ``dark`` threshold
-    ignores light-gray watermarks: they neither stop the trim nor flag.
-    With ``dry_run=True`` nothing is written; only the report is returned.
-
-    Returns (touching, trimmed) where touching is a list of side names and
-    trimmed is the list of sides actually trimmed -- or, when no dark ink
-    exists at all, ([], note: str) flagging a probably-misplaced box.
-    """
-    im = Image.open(path).convert("RGB")
-    ink = np.array(im.convert("L")) < dark
-    h, w = ink.shape
-    if not ink.any():
-        return [], "crop looks EMPTY (no dark ink). The box is probably in the wrong place."
-
-    edges = {
-        "top": ink[:band, :].any(axis=0),
-        "bottom": ink[-band:, :].any(axis=0),
-        "left": ink[:, :band].any(axis=1),
-        "right": ink[:, -band:].any(axis=1),
-    }
-    touching = [n for n, v in edges.items() if _longest_run(v) >= min_run]
-
-    ys = np.where(ink.any(axis=1))[0]
-    xs = np.where(ink.any(axis=0))[0]
-    top = 0 if "top" in touching else max(int(ys[0]) - margin, 0)
-    bottom = h if "bottom" in touching else min(int(ys[-1]) + 1 + margin, h)
-    left = 0 if "left" in touching else max(int(xs[0]) - margin, 0)
-    right = w if "right" in touching else min(int(xs[-1]) + 1 + margin, w)
-
-    trimmed = [
-        n
-        for n, v in (
-            ("top", top),
-            ("bottom", h - bottom),
-            ("left", left),
-            ("right", w - right),
-        )
-        if v > 0
-    ]
-    if not dry_run:
-        im.crop((left, top, right, bottom)).save(path)  # overwrite trimmed
-    return touching, trimmed
-
-
 @tool
 def get_page_image(
     pdf_path: str,
@@ -226,11 +269,15 @@ def polygon_crop(
     points in clockwise order (see the page image first, it arrives in the
     message after get_page_image).
 
-    The image is saved to Outputs/{paper_id}/{question_number}/figures/
-    {output_filename} (folders created as needed). A preview image arrives
-    in the next message: inspect all four edges. To fix a bad crop, call
-    again with the SAME paper_id, question_number and output_filename plus
-    corrected points -- the file is overwritten.
+    If the box closely overlaps an embedded figure image -- IoU >= 0.5, or
+    the box contains >= 80% of exactly one embedded image while staying
+    under 5x that image's area -- the image's ORIGINAL bytes are saved: no
+    re-render blur, no cut edges, no leaked neighbors. Otherwise a plain
+    crop of the rendered page is used. Either way the image is saved to
+    Outputs/{paper_id}/{question_number}/figures/{output_filename} (folders
+    created as needed). A preview image arrives in the next message. To fix
+    a bad crop, call again with the SAME paper_id, question_number and
+    output_filename plus corrected points -- the file is overwritten.
 
     Args:
         pdf_path: Filesystem path to the PDF file.
@@ -268,41 +315,45 @@ def polygon_crop(
     if right <= left or lower <= upper:
         raise ValueError("polygon has zero area after scaling to pixels")
 
-    # Polygon mask at full-page size, then crop both image and mask to bbox.
-    mask = Image.new("L", (w, h), 0)
-    ImageDraw.Draw(mask).polygon(px_pts, fill=255)
-    cropped = img.crop((left, upper, right, lower))
-    mask_cropped = mask.crop((left, upper, right, lower))
-    # White background outside the polygon (clean for paper figures).
-    background = Image.new("RGB", cropped.size, (255, 255, 255))
-    background.paste(cropped, mask=mask_cropped)
-
     qdir = directory_manager.ensure_question_dir(paper_id, question_number)
     dest = qdir / directory_manager.FIGURES_DIR / filename
-    background.save(str(dest), format="PNG")
 
-    touching, trimmed = analyze_and_trim(dest)
-    if isinstance(trimmed, str):  # empty-crop case
-        note = trimmed
-    else:
-        parts = []
-        if touching:
-            parts.append(
-                f"WARNING: dark ink touches the {', '.join(touching)} edge(s), so the figure is "
-                f"probably CUT OFF there. Expand those edges by about 15-25 units and re-crop with "
-                f"the same filename. (If the ink on that edge is neighbouring text, not the figure, "
-                f"shrink instead.)"
-            )
+    snapped = _try_snap(pdf_path, page_number, norm_pts)
+    snap_xref: int | None = None
+    if snapped is not None:
+        ext, data, snap_xref = snapped
+        if _ext_matches(filename, ext):
+            dest.write_bytes(data)
         else:
-            parts.append("Edge check: clean on all four sides.")
-        if trimmed:
-            parts.append(f"Auto-trimmed whitespace on: {', '.join(trimmed)}.")
-        note = " ".join(parts)
+            try:
+                Image.open(io.BytesIO(data)).convert("RGB").save(str(dest), format="PNG")
+            except Exception:
+                snapped = None  # fall through to plain crop
+                snap_xref = None
+    if snapped is None:
+        # Plain crop fallback: polygon mask at full-page size, then crop
+        # both image and mask to the bbox. White background outside polygon.
+        mask = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(mask).polygon(px_pts, fill=255)
+        cropped = img.crop((left, upper, right, lower))
+        mask_cropped = mask.crop((left, upper, right, lower))
+        background = Image.new("RGB", cropped.size, (255, 255, 255))
+        background.paste(cropped, mask=mask_cropped)
+        background.save(str(dest), format="PNG")
 
+    SNAP_LOG.append(
+        (paper_id, str(question_number), filename,
+         f"snap:{snap_xref}" if snapped is not None else "plain")
+    )
+    how = (
+        f"Snapped to embedded image xref {snap_xref} (original bytes). "
+        if snapped is not None
+        else "Plain crop of the rendered page. "
+    )
     return image_reply(
         tool_call_id,
-        f"Saved {filename} to {dest}. {note} "
-        "A preview is in the next message; inspect all four edges.",
+        f"Saved {filename} to {dest}. {how}"
+        "A preview is in the next message; inspect it before moving on.",
         f"[Crop preview: {filename}]",
         dest,
         CROP_PX,

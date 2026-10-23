@@ -12,8 +12,7 @@ For each required figure, use `polygon_crop` with 0-1000 normalized coordinates.
 - **Include essentials:** labels, arrows, wires, hatching, boundaries.
 - **Exclude noise:** neighboring text, headers, footers, ads, or other questions.
 - **Verification:** After each crop, a preview image arrives in the next message. Inspect all four edges of the preview. If clipped, expand that edge. If leaked, shrink past the glyph height (bottom rows often sit above option text -- check pixel by pixel).
-- **Correction:** Never settle for "almost clean". If wrong, call `polygon_crop` again with the EXACT SAME `output_filename` and new coordinates to overwrite it. Do NOT create a "v2" file.
-- **Edge check:** Each crop result includes an edge check. If it names an edge where ink touches, the figure is likely cut off there: expand that edge and re-crop with the same filename until it reports clean. Don't accept a crop that still lists a touching edge unless the preview shows that the figure itself ends there.
+- **Correction:** If wrong, call `polygon_crop` again with the EXACT SAME `output_filename` and new coordinates to overwrite it. Do NOT create a "v2" file.
 - **Naming:** Name figures relative to the question (e.g., `fig1.png`, `fig2.png`). Different questions can use the same names because they are saved in isolated question folders, but names must be unique within a single question.
 
 # EXECUTION WORKFLOW
