@@ -17,6 +17,7 @@ from typing import Callable, List, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command
 from typing_extensions import TypedDict
 
 import database
@@ -39,16 +40,20 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 # Tools per agent. get_pdf_info is deliberately EXCLUDED from both --
 # the deterministic pre_check_node owns it, so a scanned PDF never reaches
-# an agent.
+# an agent. verify_latex_syntax is NOT bound either -- the merged submit
+# tools compile-check internally and return NOT SAVED on errors.
 INDEXER_TOOLS = [search_pdf_text, get_page_text, submit_metadata_and_boundaries]
 EXTRACTOR_TOOLS = [
     get_page_image,
     polygon_crop,
-    verify_latex_syntax,
     submit_question,
     submit_solution,
     get_page_text,  # key-sheet reads
 ]
+
+# Tools whose results arrive as a Command (text ToolMessage + image
+# HumanMessage). They need the LangChain tool_call_id injected at invoke.
+COMMAND_TOOLS = {get_page_image.name, polygon_crop.name}
 
 INDEXER_SUBMIT_TOOL = "submit_metadata_and_boundaries"
 
@@ -135,26 +140,12 @@ def abort_node(state: PipelineState) -> dict:
     return {"status": "aborted_no_text"}
 
 
-def _load_indexer_prompt(paper_id: int) -> str:
-    text = (PROMPTS_DIR / "indexer_prompt.md").read_text(encoding="utf-8")
-    return text.replace("{paper_id}", str(paper_id))
+def _load_indexer_prompt() -> str:
+    return (PROMPTS_DIR / "indexer_prompt.md").read_text(encoding="utf-8")
 
 
-def _load_extractor_prompt(
-    paper_id: int,
-    q_start: Optional[int],
-    q_end: Optional[int],
-    s_start: Optional[int],
-    s_end: Optional[int],
-) -> str:
-    text = (PROMPTS_DIR / "extractor_prompt.md").read_text(encoding="utf-8")
-    return (
-        text.replace("{paper_id}", str(paper_id))
-        .replace("{q_start}", str(q_start))
-        .replace("{q_end}", str(q_end))
-        .replace("{s_start}", "none" if s_start is None else str(s_start))
-        .replace("{s_end}", "none" if s_end is None else str(s_end))
-    )
+def _load_extractor_prompt() -> str:
+    return (PROMPTS_DIR / "extractor_prompt.md").read_text(encoding="utf-8")
 
 
 def _accumulate_usage(into: dict, msg: AIMessage) -> dict:
@@ -178,8 +169,11 @@ def _run_agent_turn(
 
     ``submit_names``: tool names whose success sets ``done_status``.
     If ``done_status`` is None, completion is decided by routing only.
+
+    Ordering: parallel tool calls are disabled so each image-bearing result
+    lands immediately after its own tool call, keeping history append-only.
     """
-    llm = get_llm().bind_tools(tools)
+    llm = get_llm().bind_tools(tools, parallel_tool_calls=False)
     by_name = {t.name: t for t in tools}
     messages: List[BaseMessage] = list(state.get("messages") or [])
     if not messages:
@@ -201,8 +195,25 @@ def _run_agent_turn(
             )
             continue
         try:
-            result = tool.invoke(call["args"])
-            messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
+            if call["name"] in COMMAND_TOOLS:
+                # InjectedToolCallId tools need the full model ToolCall shape.
+                result = tool.invoke(
+                    {
+                        "name": call["name"],
+                        "args": dict(call["args"]),
+                        "id": call["id"],
+                        "type": "tool_call",
+                    }
+                )
+            else:
+                result = tool.invoke(call["args"])
+            if isinstance(result, Command):
+                # Image-bearing result: text ToolMessage + image HumanMessage.
+                messages.extend(result.update.get("messages", []))
+            else:
+                messages.append(
+                    ToolMessage(content=str(result), tool_call_id=call["id"])
+                )
             if call["name"] in submit_names and done_status is not None:
                 update["status"] = done_status
         except Exception as exc:  # tool errors go back to the LLM, not up
@@ -210,14 +221,6 @@ def _run_agent_turn(
                 ToolMessage(content=f"Error: {exc}", tool_call_id=call["id"])
             )
     return update
-
-
-def _pdf_context_lines(state: PipelineState) -> str:
-    if state.get("solution_pdf_path"):
-        sol_line = f"Solution PDF: {state['solution_pdf_path']}"
-    else:
-        sol_line = "Solution PDF: none provided"
-    return f"Question PDF: {state['question_pdf_path']}\n{sol_line}"
 
 
 def indexer_node(state: PipelineState) -> dict:
@@ -230,9 +233,10 @@ def indexer_node(state: PipelineState) -> dict:
     else:
         sol_line = "Solution PDF: none provided"
     opener = lambda: [  # noqa: E731
-        SystemMessage(content=_load_indexer_prompt(state["paper_id"])),
+        SystemMessage(content=_load_indexer_prompt()),
         HumanMessage(
             content=(
+                f"paper_id: {state['paper_id']}\n"
                 f"Question PDF: {state['question_pdf_path']} "
                 f"({state['q_page_count']} pages, text layer present)\n"
                 f"{sol_line}"
@@ -287,17 +291,25 @@ def route_extractor_init(state: PipelineState) -> str:
 
 def extractor_node(state: PipelineState) -> dict:
     """One Extractor ReAct turn (vision-heavy); stopping means finished."""
+    q_range = f"pages {state.get('q_start')}-{state.get('q_end')}"
+    if state.get("s_start") is not None and state.get("s_end") is not None:
+        s_range = f"pages {state['s_start']}-{state['s_end']}"
+    else:
+        s_range = "none provided"
+    if state.get("solution_pdf_path"):
+        sol_line = f"Solution PDF: {state['solution_pdf_path']} (solutions {s_range})"
+    else:
+        sol_line = "Solution PDF: none provided"
     opener = lambda: [  # noqa: E731
-        SystemMessage(
-            content=_load_extractor_prompt(
-                state["paper_id"],
-                state.get("q_start"),
-                state.get("q_end"),
-                state.get("s_start"),
-                state.get("s_end"),
+        SystemMessage(content=_load_extractor_prompt()),
+        HumanMessage(
+            content=(
+                f"paper_id: {state['paper_id']}\n"
+                f"Question PDF: {state['question_pdf_path']} "
+                f"(physics questions {q_range})\n"
+                f"{sol_line}"
             )
         ),
-        HumanMessage(content=_pdf_context_lines(state)),
     ]
     update = _run_agent_turn(state, EXTRACTOR_TOOLS, opener, set(), None)
     # Per the extractor prompt, the agent stops only when every physics

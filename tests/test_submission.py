@@ -184,7 +184,7 @@ def test_submit_question_grouped_number(tmp_db, tmp_outputs, tmp_path):
         "question_number": "15-17_paragraph",
         "latex_content": r"\begin{equation} F=ma \end{equation}",
     })
-    assert ok is True
+    assert ok == "saved"
     qdir = tmp_outputs / str(pid) / "15-17_paragraph"
     assert (qdir / "question.tex").is_file()
     assert (qdir / "figures").is_dir()
@@ -222,7 +222,7 @@ def test_submit_solution_graceful_placeholder(tmp_db, tmp_outputs, tmp_path, emp
     submit_question.invoke({"paper_id": pid, "question_number": "1", "latex_content": "Q"})
     assert submit_solution.invoke({
         "paper_id": pid, "question_number": "1", "latex_content": empty,
-    }) is True
+    }) == "saved"
     sol = (tmp_outputs / str(pid) / "1" / "solution.tex").read_text(encoding="utf-8")
     assert sol == dm.SOLUTION_PLACEHOLDER
 
@@ -230,14 +230,69 @@ def test_submit_solution_graceful_placeholder(tmp_db, tmp_outputs, tmp_path, emp
 def test_submit_solution_real_content_and_overwrite(tmp_db, tmp_outputs, tmp_path):
     pid = _paper_id(tmp_db, tmp_path)
     submit_question.invoke({"paper_id": pid, "question_number": "2", "latex_content": "Q"})
-    body = r"\begin{solution} $F=ma$ \end{solution}"
+    body = "Key: B\n" r"\begin{solution} $F=ma$ \end{solution}"
     assert verify_latex_syntax.invoke({"latex_string": body}) == "Valid"
-    submit_solution.invoke({"paper_id": pid, "question_number": "2", "latex_content": body})
+    assert submit_solution.invoke({
+        "paper_id": pid, "question_number": "2", "latex_content": body,
+    }) == "saved"
     assert (tmp_outputs / str(pid) / "2" / "solution.tex").read_text() == body
     # Correction reuses the same question_number and overwrites.
-    fixed = r"\begin{solution} $F=ma^2$ \end{solution}"
-    submit_solution.invoke({"paper_id": pid, "question_number": "2", "latex_content": fixed})
+    fixed = "Key: C\n" r"\begin{solution} $F=ma^2$ \end{solution}"
+    assert submit_solution.invoke({
+        "paper_id": pid, "question_number": "2", "latex_content": fixed,
+    }) == "saved"
     assert (tmp_outputs / str(pid) / "2" / "solution.tex").read_text() == fixed
+
+
+def test_submit_question_rejects_missing_figure(tmp_db, tmp_outputs, tmp_path):
+    pid = _paper_id(tmp_db, tmp_path)
+    out = submit_question.invoke({
+        "paper_id": pid,
+        "question_number": "1",
+        "latex_content": r"See \includegraphics{figures/ghost.png}",
+    })
+    assert out.startswith("NOT SAVED")
+    assert "ghost.png" in out
+    conn = database.get_connection()
+    try:
+        n = conn.execute(
+            "SELECT COUNT(*) AS c FROM questions WHERE paper_id = ?", (pid,)
+        ).fetchone()["c"]
+    finally:
+        conn.close()
+    assert n == 0  # nothing saved on validation failure
+    assert not (tmp_outputs / str(pid) / "1" / "question.tex").exists()
+
+
+def test_submit_question_rejects_bad_latex(tmp_db, tmp_outputs, tmp_path):
+    pid = _paper_id(tmp_db, tmp_path)
+    out = submit_question.invoke({
+        "paper_id": pid, "question_number": "1", "latex_content": r"\textbf{unclosed",
+    })
+    assert out.startswith("NOT SAVED")
+
+
+def test_submit_solution_requires_key_on_first_line(tmp_db, tmp_outputs, tmp_path):
+    pid = _paper_id(tmp_db, tmp_path)
+    submit_question.invoke({"paper_id": pid, "question_number": "3", "latex_content": "Q"})
+    out = submit_solution.invoke({
+        "paper_id": pid, "question_number": "3",
+        "latex_content": r"\begin{solution} $F=ma$ \end{solution}",
+    })
+    assert out.startswith("NOT SAVED")
+    assert "first line" in out.lower()
+    assert not (tmp_outputs / str(pid) / "3" / "solution.tex").exists()
+
+
+def test_submit_solution_rejects_missing_figure(tmp_db, tmp_outputs, tmp_path):
+    pid = _paper_id(tmp_db, tmp_path)
+    submit_question.invoke({"paper_id": pid, "question_number": "4", "latex_content": "Q"})
+    out = submit_solution.invoke({
+        "paper_id": pid, "question_number": "4",
+        "latex_content": "Key: A\n" r"See \includegraphics{figures/ghost.png}",
+    })
+    assert out.startswith("NOT SAVED")
+    assert "ghost.png" in out
 
 
 def test_end_to_end_preflight_to_submit(tmp_db, tmp_outputs, tmp_path):
@@ -246,10 +301,10 @@ def test_end_to_end_preflight_to_submit(tmp_db, tmp_outputs, tmp_path):
     assert _submit_meta(pid) is True
     assert submit_question.invoke({
         "paper_id": pid, "question_number": "1", "latex_content": "Q1",
-    }) is True
+    }) == "saved"
     assert submit_solution.invoke({
         "paper_id": pid, "question_number": "1", "latex_content": "",
-    }) is True
+    }) == "saved"
     qdir = tmp_outputs / str(pid) / "1"
     assert (qdir / "question.tex").read_text() == "Q1"
     assert (qdir / "solution.tex").read_text() == dm.SOLUTION_PLACEHOLDER

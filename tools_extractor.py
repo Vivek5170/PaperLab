@@ -1,26 +1,46 @@
 """Phase 2 (Extractor) vision + LaTeX submission tools.
 
+Image channel: page renders and crop previews travel as typed ``image_url``
+content parts in a HumanMessage that follows each tool result (Version 2:
+this endpoint rejects image blocks inside tool messages). Tool results
+themselves are short text only, so history stays small and prefix-cache
+stable. Previews are downscaled at creation (never afterward), and every
+encoding is byte-stable for a given input.
+
 - ``paper_id`` comes from LangGraph state (pre-flight registration). Use it
   verbatim; never invent one.
 - ``question_number`` is always a STRING ("15a", "15-17_paragraph").
 - All writes overwrite: to correct a mistake, resubmit with the SAME
   ``question_number`` / ``output_filename``.
+- The submit tools compile-check first: nothing is saved when errors are
+  returned -- fix and resubmit.
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import re
+from pathlib import Path
+from typing import Annotated
 
 import fitz  # PyMuPDF
-from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.tools import InjectedToolCallId, tool
+from langgraph.types import Command
 from PIL import Image, ImageDraw
 
 import database
 import directory_manager
 
 _RENDER_DPI = 200
+
+# Preview budgets: pages stay readable, crop previews are small from birth.
+PAGE_PX, CROP_PX = 1600, 600
+_PREVIEW_JPEG_Q = 80
+_ENC_CACHE = Path("/tmp/enc")
+_RENDER_CACHE = Path("/tmp/physics_pages")
 
 
 def _render_page_to_pil(pdf_path: str, page_number: int, dpi: int = _RENDER_DPI) -> Image.Image:
@@ -44,9 +64,62 @@ def _pil_to_b64(img: Image.Image) -> str:
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
+def _render_page_to_file(pdf_path: str, page_number: int, dpi: int = _RENDER_DPI) -> Path:
+    """Render a page to a stable PNG path (byte-stable for identical inputs)."""
+    key = hashlib.md5(f"{pdf_path}|{page_number}|{dpi}".encode()).hexdigest()
+    _RENDER_CACHE.mkdir(parents=True, exist_ok=True)
+    out = _RENDER_CACHE / f"{key}.png"
+    if not out.exists():
+        _render_page_to_pil(pdf_path, page_number, dpi).save(str(out), format="PNG")
+    return out
+
+
+def img_block(path: str | Path, max_side: int, q: int = _PREVIEW_JPEG_Q) -> dict:
+    """Encode a file as an ``image_url`` content block (cached, byte-stable).
+
+    The cache key derives from the file's BYTES (not its path), so the same
+    content always yields identical output -- while an overwritten file
+    (same path, new bytes, e.g. a corrected crop) correctly produces a
+    fresh preview instead of a stale cached one.
+    """
+    raw = Path(path).read_bytes()
+    key = hashlib.md5(raw + f"|{max_side}|{q}".encode()).hexdigest()
+    _ENC_CACHE.mkdir(parents=True, exist_ok=True)
+    cached = _ENC_CACHE / f"{key}.jpg"
+    if not cached.exists():
+        im = Image.open(path).convert("RGB")
+        im.thumbnail((max_side, max_side))
+        im.save(cached, "JPEG", quality=q)
+    b64 = base64.b64encode(cached.read_bytes()).decode()
+    return {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+
+
+def image_reply(
+    tool_call_id: str, text: str, caption: str, path: str | Path, max_side: int
+) -> Command:
+    """Text-only ToolMessage first, then the image as a normal user message."""
+    return Command(
+        update={
+            "messages": [
+                ToolMessage(text, tool_call_id=tool_call_id),
+                HumanMessage(
+                    content=[
+                        {"type": "text", "text": caption},
+                        img_block(path, max_side),
+                    ]
+                ),
+            ]
+        }
+    )
+
+
 @tool
-def get_page_image(pdf_path: str, page_number: int, dpi: int = 200) -> str:
-    """Render a PDF page as an image for VISION inspection.
+def get_page_image(
+    pdf_path: str,
+    page_number: int,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> Command:
+    """Render a PDF page. The page image arrives in the next message.
 
     Call this to SEE the page before emitting polygon coordinates or
     transcribing LaTeX.
@@ -54,13 +127,16 @@ def get_page_image(pdf_path: str, page_number: int, dpi: int = 200) -> str:
     Args:
         pdf_path: Filesystem path to the PDF file.
         page_number: 1-based page number.
-        dpi: Render resolution, default 200 (retry with 300 if illegible).
-
-    Returns:
-        Base64-encoded PNG string of the rendered page.
     """
-    img = _render_page_to_pil(pdf_path, page_number, dpi)
-    return _pil_to_b64(img)
+    out = _render_page_to_file(pdf_path, page_number, _RENDER_DPI)
+    return image_reply(
+        tool_call_id,
+        f"Page {page_number} of {pdf_path} rendered at {out}. "
+        "The image is in the next message.",
+        f"[Image: {pdf_path} page {page_number}]",
+        out,
+        PAGE_PX,
+    )
 
 
 @tool
@@ -71,21 +147,22 @@ def polygon_crop(
     output_filename: str,
     paper_id: int,
     question_number: str,
-) -> str:
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> Command:
     """Crop a polygonal figure from a PDF page into the question's figures/.
 
     Points MUST be normalized to a 1000x1000 grid over the rendered page:
     (0, 0) is TOP-LEFT, (1000, 1000) is BOTTOM-RIGHT. Example middle box:
     [(250, 200), (750, 200), (750, 800), (250, 800)]. Values are integers in
     [0, 1000]; the tool scales them to actual pixels internally. Emit 3+
-    points in clockwise order (see the page via get_page_image first).
+    points in clockwise order (see the page image first, it arrives in the
+    message after get_page_image).
 
     The image is saved to Outputs/{paper_id}/{question_number}/figures/
-    {output_filename} (folders created as needed). Reference it from
-    question.tex as a relative path, e.g.
-    \\includegraphics[width=\\linewidth]{figures/fig1.png}.
-    To fix a bad crop, call again with the SAME paper_id, question_number
-    and output_filename plus corrected points -- the file is overwritten.
+    {output_filename} (folders created as needed). A preview image arrives
+    in the next message: inspect all four edges. To fix a bad crop, call
+    again with the SAME paper_id, question_number and output_filename plus
+    corrected points -- the file is overwritten.
 
     Args:
         pdf_path: Filesystem path to the PDF file.
@@ -96,9 +173,6 @@ def polygon_crop(
         paper_id: Integer PK from LangGraph state; never invent one.
         question_number: STRING matching the submit_question call
             ("1", "15a", "15-17_paragraph"); never cast to int.
-
-    Returns:
-        Base64 PNG of the cropped figure for visual verification.
     """
     if database.get_paper(paper_id) is None:
         raise ValueError(
@@ -138,7 +212,14 @@ def polygon_crop(
     qdir = directory_manager.ensure_question_dir(paper_id, question_number)
     dest = qdir / directory_manager.FIGURES_DIR / filename
     background.save(str(dest), format="PNG")
-    return _pil_to_b64(background)
+    return image_reply(
+        tool_call_id,
+        f"Saved {filename} to {dest}. A preview is in the next message; "
+        "inspect all four edges for clipping or leakage.",
+        f"[Crop preview: {filename}]",
+        dest,
+        CROP_PX,
+    )
 
 
 @tool
@@ -212,28 +293,44 @@ def verify_latex_syntax(latex_string: str) -> str:
 
 
 @tool
-def submit_question(paper_id: int, question_number: str, latex_content: str) -> bool:
-    """Save a question's LaTeX to Outputs/{paper_id}/{question_number}/.
+def submit_question(paper_id: int, question_number: str, latex_content: str) -> str:
+    """Compile-check and save a question. Nothing is saved if errors are returned.
 
-    Writes ``latex_content`` to question.tex and creates/updates the
-    questions-table row (status 'draft' on insert). Resubmitting the SAME
-    question_number overwrites question.tex -- use that to correct mistakes.
-    Reference cropped figures with a relative path, e.g.
+    Writes ``latex_content`` to Outputs/{paper_id}/{question_number}/
+    question.tex and creates/updates the questions-table row (status 'draft'
+    on insert). Resubmitting the SAME question_number overwrites -- use that
+    to correct mistakes. Reference cropped figures with a relative path, e.g.
     \\includegraphics[width=\\linewidth]{figures/fig1.png}.
 
     Args:
         paper_id: Integer PK from LangGraph state; never invent one.
         question_number: STRING ("1", "15a", "15-17_paragraph").
-        latex_content: LaTeX source; verify with verify_latex_syntax first.
+        latex_content: LaTeX source for the question.
 
     Returns:
-        True on success. Fails with an error for an unknown paper_id.
+        "saved" on success, or "NOT SAVED:\\n..." listing every problem
+        (missing figure files, LaTeX errors). Fixes: correct and resubmit
+        with the SAME question_number. Raises for an unknown paper_id.
     """
     if database.get_paper(paper_id) is None:
         raise ValueError(
             f"paper_id {paper_id} does not exist; "
             "it must come from pre-flight registration via LangGraph state"
         )
+    errs: list[str] = []
+    for f in re.findall(r"figures/([\w\-\.]+)", latex_content):
+        if not (
+            directory_manager.get_question_dir(paper_id, question_number)
+            / directory_manager.FIGURES_DIR
+            / f
+        ).exists():
+            errs.append(f"missing figure file: {f}")
+    verdict = verify_latex_syntax.invoke({"latex_string": latex_content})
+    if verdict != "Valid":
+        errs.append(verdict)
+    if errs:
+        return "NOT SAVED:\n" + "\n".join(errs)
+
     qdir = directory_manager.ensure_question_dir(paper_id, question_number)
     (qdir / directory_manager.QUESTION_TEX).write_text(latex_content, encoding="utf-8")
 
@@ -256,29 +353,31 @@ def submit_question(paper_id: int, question_number: str, latex_content: str) -> 
                 (str(qdir), row["id"]),
             )
         conn.commit()
-        return True
     finally:
         conn.close()
+    return "saved"
 
 
 @tool
-def submit_solution(paper_id: int, question_number: str, latex_content: str) -> bool:
-    """Save a solution's LaTeX to Outputs/{paper_id}/{question_number}/.
+def submit_solution(paper_id: int, question_number: str, latex_content: str) -> str:
+    """Compile-check and save a solution. Line 1 must contain the answer key.
 
-    Writes ``latex_content`` to solution.tex (overwrites on resubmit -- reuse
-    the SAME question_number to correct). Empty input or exactly
-    "no_solution_found" writes \\textit{No solution provided.} instead.
-    Call submit_question for the question first; submitting a solution for
-    an unknown question fails.
+    Writes ``latex_content`` to Outputs/{paper_id}/{question_number}/
+    solution.tex (overwrites on resubmit -- reuse the SAME question_number to
+    correct). Empty input or exactly "no_solution_found" saves
+    \\textit{No solution provided.} instead. Call submit_question for the
+    question first; submitting a solution for an unknown question fails.
 
     Args:
         paper_id: Integer PK from LangGraph state; never invent one.
         question_number: STRING matching the submit_question call.
-        latex_content: LaTeX source, or "" / "no_solution_found" if none.
+        latex_content: LaTeX source with the final answer key on the first
+            line, or "" / "no_solution_found" if none exists.
 
     Returns:
-        True on success. Fails with an error for an unknown paper_id or a
-        question_number with no submitted question.
+        "saved" on success, or "NOT SAVED:\\n..." listing every problem.
+        Raises for an unknown paper_id or a question_number with no
+        submitted question.
     """
     if database.get_paper(paper_id) is None:
         raise ValueError(
@@ -299,9 +398,28 @@ def submit_solution(paper_id: int, question_number: str, latex_content: str) -> 
             f"No question {str(question_number)!r} submitted for paper_id {paper_id}; "
             "call submit_question first"
         )
-    qdir = directory_manager.ensure_question_dir(paper_id, question_number)
+
     content = latex_content if isinstance(latex_content, str) else str(latex_content)
     if not content.strip() or content.strip() == "no_solution_found":
         content = directory_manager.SOLUTION_PLACEHOLDER
+    else:
+        errs: list[str] = []
+        first = content.strip().splitlines()[0]
+        if not re.search(r"[A-D]|\d", first):
+            errs.append("first line must contain the final answer key")
+        for f in re.findall(r"figures/([\w\-\.]+)", content):
+            if not (
+                directory_manager.get_question_dir(paper_id, question_number)
+                / directory_manager.FIGURES_DIR
+                / f
+            ).exists():
+                errs.append(f"missing figure file: {f}")
+        verdict = verify_latex_syntax.invoke({"latex_string": content})
+        if verdict != "Valid":
+            errs.append(verdict)
+        if errs:
+            return "NOT SAVED:\n" + "\n".join(errs)
+
+    qdir = directory_manager.ensure_question_dir(paper_id, question_number)
     (qdir / directory_manager.SOLUTION_TEX).write_text(content, encoding="utf-8")
-    return True
+    return "saved"
