@@ -420,3 +420,27 @@ def test_submit_allows_legacy_unnamed_figures(tmp_db, tmp_path, tmp_outputs):
         "latex_content": "\\textbf{Answer: 1) A}\n\nBody "
                          r"\includegraphics{figures/fig1.png}.",
     }) == "saved"
+
+
+def test_submit_question_rejects_backtick_quoting(tmp_db, tmp_outputs, tmp_path):
+    """Previously verified mistake: `$m$' style quoting must not save."""
+    pid = _paper_id(tmp_db, tmp_path)
+    out = submit_question.invoke({
+        "paper_id": pid, "question_number": "1",
+        "latex_content": r"masses `$m$' and `$2m$'",
+    })
+    assert out.startswith("NOT SAVED")
+    assert "backtick" in out
+    assert not (tmp_outputs / str(pid) / "1" / "question.tex").exists()
+
+
+def test_submit_solution_rejects_backtick_quoting(tmp_db, tmp_outputs, tmp_path):
+    pid = _paper_id(tmp_db, tmp_path)
+    submit_question.invoke({"paper_id": pid, "question_number": "4", "latex_content": "Q"})
+    out = submit_solution.invoke({
+        "paper_id": pid, "question_number": "4",
+        "latex_content": "Key: A\nsuppose acceleration is `A' then",
+    })
+    assert out.startswith("NOT SAVED")
+    assert "backtick" in out
+    assert not (tmp_outputs / str(pid) / "4" / "solution.tex").exists()

@@ -7,6 +7,9 @@ Your scope is STRICTLY Physics: extract only the physics questions and physics s
 3. **Visual Structure:** Your LaTeX must visually follow the exact structure, alignment, and formatting of the question in the image.
 4. **Key Sheet:** The final answer key (e.g., A, B, A, C) is located on page 1 of the solution PDF. When writing `solution.tex`, the very first line MUST be the final answer in bold, one entry per sub-question, comma-separated: `\textbf{Answer: 23) A}` or `\textbf{Answer: 33) 18, 34) 4}`. Never write `23-A` (it reads like subtraction) and never put the key in a `%` comment -- comments are invisible in rendered output.
 
+# AGENT NOTES (previously verified mistakes -- do not repeat)
+- Never wrap math in backticks or quotes: write `$m$`, `$k$`, `$O$`, never `` `$m$' ``, `` `k' `` or `'O'`. The submits reject backticks and you will have to redo the submission.
+
 # LINKED QUESTIONS
 A group is a shared passage, figure or data block followed by 2+ sub-questions,
 or a matching / assertion-reason / multi-statement question. Submit each group

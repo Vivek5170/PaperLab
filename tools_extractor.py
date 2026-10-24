@@ -1134,6 +1134,9 @@ def submit_question(paper_id: int, question_number: str, latex_content: str) -> 
             "it must come from pre-flight registration via LangGraph state"
         )
     errs: list[str] = []
+    if "`" in latex_content:
+        errs.append("stray backtick quoting (e.g. `k' or `$m$'): put math in "
+                    "$...$ with no backticks or quote marks around it")
     for f in re.findall(r"figures/([\w\-\.]+)", latex_content):
         if f.startswith("sfig"):
             errs.append(f"solution-side figure in question: {f} -- crop it "
@@ -1238,6 +1241,9 @@ def submit_solution(paper_id: int, question_number: str, latex_content: str) -> 
                 (qdir / directory_manager.SOLUTION_TEX).write_text(content, encoding="utf-8")
                 return "saved"
         errs: list[str] = []
+        if "`" in content:
+            errs.append("stray backtick quoting (e.g. `k' or `$m$'): put math in "
+                        "$...$ with no backticks or quote marks around it")
         first = content.strip().splitlines()[0]
         if not re.search(r"[A-D]|\d", first):
             errs.append("first line must contain the final answer key")

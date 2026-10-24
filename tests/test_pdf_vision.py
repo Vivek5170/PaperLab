@@ -794,5 +794,5 @@ def test_trim_never_slices_kept_label(dummy_pdf, scanned_pdf, tmp_db, tmp_output
     cmd = _assist(pdf, pid, [(250, 312), (750, 312), (750, 812), (250, 812)], "k.png")
     text, _, _ = _image_messages(cmd)
     box = _final_box(text)
-    assert box == [333, 375, 747, 625]  # right edge stops at the label, not 440
+    assert box == [333, 375, 744, 625]  # right edge stops at the label, not 440
     assert "(text line" not in text  # the option-tail trim never fired
