@@ -393,6 +393,19 @@ def stage_processing() -> None:
 # ----------------------------------------------------------- 03 Library ---
 
 
+def _pdf_download_button(slot, path: str, key: str) -> None:
+    """Original-PDF download button; quiet note when the file is gone."""
+    try:
+        data = Path(path).read_bytes() if path and Path(path).is_file() else None
+    except OSError:
+        data = None
+    if data is None:
+        slot.caption("missing")
+    else:
+        slot.download_button("⬇ PDF", data=data, file_name=Path(path).name,
+                             mime="application/pdf", key=key, width="stretch")
+
+
 def stage_library() -> None:
     if st.session_state.get("paper") is not None:
         _paper_page()
@@ -425,6 +438,14 @@ def stage_library() -> None:
             c1.caption(f"{r['exam_type'] or 'Unknown exam'} · "
                        f"{r['paper_date'] or 'undated'} · "
                        f"{nq} questions · #{r['id']}")
+            if r["question_pdf_path"]:
+                q1, q2 = c1.columns([5, 1])
+                q1.caption(f"📄 {r['question_pdf_path']}")
+                _pdf_download_button(q2, r["question_pdf_path"], f"dl_q_{r['id']}")
+            if r["solution_pdf_path"]:
+                s1, s2 = c1.columns([5, 1])
+                s1.caption(f"📝 {r['solution_pdf_path']}")
+                _pdf_download_button(s2, r["solution_pdf_path"], f"dl_s_{r['id']}")
             if c2.button("Open", key=f"lib_{r['id']}", width="stretch"):
                 st.session_state["paper"] = r["id"]
                 st.session_state["q"] = None

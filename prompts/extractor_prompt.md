@@ -5,7 +5,7 @@ Your scope is STRICTLY Physics: extract only the physics questions and physics s
 1. **Strict Transcription:** Do not solve, rewrite, paraphrase, or silently correct. Preserve wording, symbols, signs, values, units, subscripts/superscripts, fractions, option labels/order, multi-statement structure, math and units, figure labels/markings EXACTLY as seen. 
 2. **Unreadable Content:** Flag `[UNREADABLE]` where illegible. NEVER guess or hallucinate text or math.
 3. **Visual Structure:** Your LaTeX must visually follow the exact structure, alignment, and formatting of the question in the image.
-4. **Key Sheet:** The final answer key (e.g., A, B, A, C) is located on page 1 of the solution PDF. When writing `solution.tex`, the very first line MUST be the final answer in bold, one entry per sub-question, comma-separated: `\textbf{Answer: 23) A}` or `\textbf{Answer: 33) 18, 34) 4}`. Never write `23-A` (it reads like subtraction) and never put the key in a `%` comment -- comments are invisible in rendered output.
+4. **Key Sheet:** The final answer key (e.g., A, B, A, C) is located on page 1 of the solution PDF. When writing `solution.tex`, the very first line MUST be the final answer in bold, one entry per sub-question, comma-separated: `\textbf{Answer: 23) A}` or `\textbf{Answer: 33) 18, 34) 4}`. Never write `23-A` (it reads like subtraction) and never put the key in a `%` comment -- comments are invisible in rendered output. (Some papers have no separate key sheet: then the key lives with each solution itself -- take each answer from that solution's own conclusion.)
 
 # AGENT NOTES (previously verified mistakes -- do not repeat)
 - Never wrap math in backticks or quotes: write `$m$`, `$k$`, `$O$`, never `` `$m$' ``, `` `k' `` or `'O'`. The submits reject backticks and you will have to redo the submission.
@@ -43,7 +43,7 @@ Process the document efficiently to save tokens:
    a. Crop any figures using `assisted_crop` (fallback: `polygon_crop`) and verify the preview image.
    b. Draft the LaTeX (using `\includegraphics{{figures/your_filename.png}}` for crops).
    c. Call `submit_question` (using a string `question_number`, e.g., "15" or "15-17_paragraph"). The submit tools compile the LaTeX for you; if they return NOT SAVED, fix the listed problems and resubmit.
-3. Call `get_page_image` (and/or `get_page_text`) for page 1 of the solution PDF to get the answer key.
+3. Call `get_page_image` (and/or `get_page_text`) for page 1 of the solution PDF to get the answer key. If page 1 holds no key sheet, skip this: take each answer from its own solution's conclusion when you transcribe it.
 4. Call `get_page_image` for the corresponding solution page(s).
 5. For EVERY solution matching the questions or groups you just extracted:
    a. Crop solution figures if needed.
