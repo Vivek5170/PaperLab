@@ -217,6 +217,8 @@ def _render_tex_block(tex: str, base_dir: Path, key: str, label: str,
                 _show_figure(payload)
             else:
                 st.warning("Referenced figure file is missing on disk.")
+        elif kind == "display":
+            st.latex(payload)
         elif payload:
             st.markdown(payload)
     if allow_render and tex_engine_available():
@@ -226,6 +228,13 @@ def _render_tex_block(tex: str, base_dir: Path, key: str, label: str,
                 st.image(str(out), caption=f"{label} (compiled TeX)")
             else:
                 st.error("TeX compile failed here; the view above stands.")
+                try:
+                    log = Path(base_dir) / f"_{label}.png.err"
+                    if log.is_file():
+                        with st.expander("Show compile log"):
+                            st.code(log.read_text(encoding="utf-8"))
+                except OSError:
+                    pass
 
 
 # ------------------------------------------------- 01 Upload & verify ---
@@ -402,8 +411,8 @@ def _pdf_download_button(slot, path: str, key: str) -> None:
     if data is None:
         slot.caption("missing")
     else:
-        slot.download_button("⬇ PDF", data=data, file_name=Path(path).name,
-                             mime="application/pdf", key=key, width="stretch")
+        slot.download_button("⬇", data=data, file_name=Path(path).name,
+                             mime="application/pdf", key=key)
 
 
 def stage_library() -> None:
@@ -438,12 +447,14 @@ def stage_library() -> None:
             c1.caption(f"{r['exam_type'] or 'Unknown exam'} · "
                        f"{r['paper_date'] or 'undated'} · "
                        f"{nq} questions · #{r['id']}")
+            if r["source_institute"]:
+                c1.caption(f"🏫 {r['source_institute']}")
             if r["question_pdf_path"]:
-                q1, q2 = c1.columns([5, 1])
+                q1, q2 = c1.columns([11, 1])
                 q1.caption(f"📄 {r['question_pdf_path']}")
                 _pdf_download_button(q2, r["question_pdf_path"], f"dl_q_{r['id']}")
             if r["solution_pdf_path"]:
-                s1, s2 = c1.columns([5, 1])
+                s1, s2 = c1.columns([11, 1])
                 s1.caption(f"📝 {r['solution_pdf_path']}")
                 _pdf_download_button(s2, r["solution_pdf_path"], f"dl_s_{r['id']}")
             if c2.button("Open", key=f"lib_{r['id']}", width="stretch"):

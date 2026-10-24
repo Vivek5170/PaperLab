@@ -58,16 +58,17 @@ def test_tex_stray_dollar_escaped_not_paired():
     from app.render import tex_to_markdown
 
     out = tex_to_markdown("cost is $5 and $x=1$ ok")
-    # "$5 and ..." must not open a math span; the real pair survives
+    # "$5 and ..." must not open a math span; the real pair survives.
+    # The stray $ is escaped (\\$) so downstream KaTeX can't re-pair it.
     assert "$x=1$" in out
-    assert "cost is $5 and" in out
+    assert "cost is \\$5 and" in out
 
 
 def test_tex_escaped_dollar_stays_literal():
     from app.render import tex_to_markdown
 
     out = tex_to_markdown(r"pay \$5 for $x$")
-    assert "$x$" in out and "pay $5 for" in out
+    assert "$x$" in out and "pay \\$5 for" in out
 
 
 def test_tex_keeps_spaces_around_inline_math():
@@ -89,7 +90,7 @@ def test_tex_display_brackets_become_dollars():
 
     out = tex_to_markdown(r"if \[ V_1L_1=V_2L_2 \] Divide")
     assert r"\[" not in out
-    assert "$$V_1L_1=V_2L_2$$" in out
+    assert "$$\nV_1L_1=V_2L_2\n$$" in out
 
 
 def test_tex_dfrac_tamed_only_inline():
@@ -625,3 +626,79 @@ def test_admin_password_gate(monkeypatch):
     assert auth.uses_default_password() is False
     assert auth.check_password("s3cret!") is True
     assert auth.check_password("admin") is False  # default stops working
+
+
+def test_enumerate_label_becomes_letters():
+    from app.render import tex_to_markdown
+
+    tex = ("Pick one:\n\\begin{enumerate}[label=A)]\n\\item first $x=1$\n"
+           "\\item second $y=2$\n\\end{enumerate}")
+    out = tex_to_markdown(tex)
+    assert "[label" not in out and "\\item" not in out and "enumerate" not in out
+    assert "A) first $x=1$" in out and "B) second $y=2$" in out
+
+
+def test_enumerate_alph_label_becomes_letters():
+    from app.render import tex_to_markdown
+
+    tex = ("Pick one:\n\\begin{enumerate}[label=\\Alph*)]\n\\item first\n"
+           "\\item second\n\\end{enumerate}")
+    out = tex_to_markdown(tex)
+    assert "A) first" in out and "B) second" in out
+    assert "Alph" not in out
+
+
+def test_digit_start_math_renders():
+    from app.render import tex_to_markdown
+
+    assert "$2\\pi r$" in tex_to_markdown("circumference $2\\pi r$ here")
+    assert "$2\\sqrt{2}\\omega^2 r$" in tex_to_markdown("C) $2\\sqrt{2}\\omega^2 r$ ok")
+
+
+def test_digit_start_prose_does_not_pair():
+    from app.render import tex_to_markdown
+
+    out = tex_to_markdown("costs $5 and $6 total")
+    assert "\\$" in out and "$5 and $6" not in out.replace("\\$", "")
+
+
+def test_align_env_becomes_single_display_math():
+    from app.render import tex_to_markdown
+
+    tex = ("velocities:\n\\begin{align*}\nv_x(t)&=r\\omega t \\\\\n"
+           "a_x(t)&=-\\omega^2 r\n\\end{align*}\ndone")
+    out = tex_to_markdown(tex)
+    assert out.count("$$") == 2, out
+    assert "\\begin{aligned}" in out and "\\omega" in out
+    assert "begin{align*}" not in out
+
+
+def test_aligned_inside_display_not_double_wrapped():
+    from app.render import tex_to_markdown
+
+    out = tex_to_markdown("\\[ \\begin{aligned} a &= b \\end{aligned} \\]")
+    assert out.count("$$") == 2, out
+
+
+def test_display_and_inline_math_coexist():
+    from app.render import tex_to_markdown
+
+    out = tex_to_markdown("See $$E=mc^2$$ and $x=1$ ok")
+    assert out.count("$$") == 2 and "$x=1$" in out
+
+
+def test_display_row_breaks_survive_markdown():
+    """Row breaks must reach KaTeX intact: markdown-it halves \\\\ to
+    \\\\, so the emitter doubles them up front (transport-transparent)."""
+    from app.render import tex_to_markdown
+
+    out = tex_to_markdown("\\begin{align*}\na_x&=r \\\\\n a_y&=-r\\end{align*}")
+    assert out.count("$$") == 2  # single display span, no doubling
+    try:
+        from markdown_it import MarkdownIt
+    except ImportError:
+        import pytest as _p
+        _p.skip("markdown-it not installed")
+        return
+    html = MarkdownIt().render(out)
+    assert html.count(chr(92) * 2) == 1  # the one row break survived

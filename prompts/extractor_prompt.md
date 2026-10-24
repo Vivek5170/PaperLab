@@ -9,6 +9,7 @@ Your scope is STRICTLY Physics: extract only the physics questions and physics s
 
 # AGENT NOTES (previously verified mistakes -- do not repeat)
 - Never wrap math in backticks or quotes: write `$m$`, `$k$`, `$O$`, never `` `$m$' ``, `` `k' `` or `'O'`. The submits reject backticks and you will have to redo the submission.
+- Never transcribe section headers or section instructions into a question: `SECTION-I`, `(Maximum Marks: 24)`, `This section contains SIX (06) questions`, marking-scheme blocks and other boilerplate are dropped entirely. Each `question.tex` starts at the question number itself.
 
 # LINKED QUESTIONS
 A group is a shared passage, figure or data block followed by 2+ sub-questions,
@@ -19,7 +20,7 @@ as ONE question and ONE solution, never as separate sub-questions.
 - Its solution uses the same number but repeats the single-question block
   once per sub-question, so each sub-solution stays identified:
   `\textbf{Answer: 31) 4}`, blank line, `\underline{\textbf{Solution for 31}}`,
-  blank line, solution for 31 -- then the same block for 32.
+  blank line, solution for 31 -- then the same block for 32. (Don't forget blank line btw questions)
   No combined answer lines. Underline the Solution-for heading.
 - A group may continue onto the next page. Check the next page before submitting.
 
