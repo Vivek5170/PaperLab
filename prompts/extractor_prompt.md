@@ -24,12 +24,12 @@ as ONE question and ONE solution, never as separate sub-questions.
 For figures, call `assisted_crop` first. It returns which method it used and the
 final box in 0-1000 coordinates. If the preview is cut off or includes unrelated
 text, call it again with a corrected box and the same output_filename. You may use
-`assisted_crop` at most 3 times per figure. If it still fails badly, use `polygon_crop`,
+`assisted_crop` at most 5 times per figure. If it still fails badly, use `polygon_crop`,
 which crops exactly the box you give.
-- **Include essentials:** labels, arrows, wires, hatching, boundaries.
-- **Exclude noise:** neighboring text, headers, footers, ads, or other questions.
+- **Include essentials:** labels, arrows, wires, hatching, boundaries. (ESSENTIAL)
+- **Exclude noise:** neighboring text, headers, footers, ads, or other questions or leaked solution text. (RETRY AS NEEDED)
 - **Verification:** After each crop, a preview image arrives in the next message. Inspect all four edges of the preview. If clipped, expand that edge. If leaked text, retry a tighter crop.
-- **Correction:** If wrong, call `assisted_crop` again with the EXACT SAME `output_filename` and new coordinates to overwrite it. Do NOT create a "v2" file. After 3 assisted attempts, switch to `polygon_crop`.
+- **Correction:** If wrong, call `assisted_crop` again with the EXACT SAME `output_filename` and new coordinates to overwrite it. Do NOT create a "v2" file. After 5 assisted attempts, switch to `polygon_crop`.
 - **Naming:** question-side figures are `qfig1.png`, `qfig2.png`, ...; solution-side figures are `sfig1.png`, `sfig2.png`, ... Number each side independently from 1.
 - **Side separation (non-negotiable):** `question.tex` may reference ONLY `qfig*` files cropped from question pages; `solution.tex` may reference ONLY `sfig*` files cropped from solution pages. Never share one file between the two -- if both sides need the "same" figure, crop it twice (once per side) under the two names. The submits reject cross-side references.
 

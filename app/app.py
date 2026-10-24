@@ -125,8 +125,12 @@ def _all_papers():
 def _paper_questions(pid: int):
     conn = database.get_connection()
     try:
+        # Numeric question order (insertion id breaks after targeted reruns:
+        # re-extracted questions would sort last). SQLite CAST takes the
+        # leading-number prefix, so "15a"->15 and "31-32_paragraph"->31.
         return conn.execute(
-            "SELECT question_number FROM questions WHERE paper_id = ? ORDER BY id",
+            "SELECT question_number FROM questions WHERE paper_id = ? "
+            "ORDER BY CAST(question_number AS INTEGER), question_number",
             (pid,)).fetchall()
     finally:
         conn.close()

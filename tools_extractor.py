@@ -21,7 +21,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import json
+import os
 import re
+import tempfile
+import threading
 from pathlib import Path
 from typing import Annotated
 
@@ -74,6 +78,84 @@ _SNAP_CACHE: dict[tuple[str, int], tuple[str, bytes, int]] = {}  # (pdf, xref) -
 # filename, "snap:<xref>" | "vector" | "plain" | "exact"). In-process only.
 SNAP_LOG: list[tuple] = []
 
+
+def _counts_path(paper_id: int, question_number: str) -> Path:
+    """Sidecar holding this question's assisted_crop attempt counts."""
+    return (
+        directory_manager.get_question_dir(paper_id, question_number)
+        / directory_manager.FIGURES_DIR
+        / _ASSIST_COUNTS_NAME
+    )
+
+
+def _assist_attempt(paper_id: int, question_number: str, filename: str) -> int:
+    """Atomically bump and return the 1-based attempt number for a figure.
+
+    Crash-safe: temp-file + os.replace, so a killed process never leaves a
+    half-written count. Corrupt sidecars reset to empty (fail-open, same as
+    a fresh figure) rather than blocking the run.
+    """
+    sidecar = _counts_path(paper_id, question_number)
+    with _ASSIST_LOCK:
+        counts: dict = {}
+        try:
+            if sidecar.is_file():
+                loaded = json.loads(sidecar.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    counts = loaded
+        except Exception:
+            counts = {}
+        attempt = int(counts.get(filename, 0)) + 1
+        counts[filename] = attempt
+        sidecar.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(
+            dir=str(sidecar.parent), prefix="_assist_counts", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(counts, f)
+            os.replace(tmp, sidecar)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        return attempt
+
+
+def reset_assist_attempts(paper_id: int | None = None) -> int:
+    """Delete persisted attempt counters; call at run start so reruns start fresh.
+
+    With paper_id, resets only that paper's figures; without, resets every
+    paper under the outputs tree. Returns the number of counters dropped.
+    """
+    if paper_id is None:
+        base = directory_manager.paper_dir("__probe__").parent
+        roots = [p for p in base.iterdir() if p.is_dir()] if base.is_dir() else []
+    else:
+        roots = [directory_manager.paper_dir(paper_id)]
+    dropped = 0
+    with _ASSIST_LOCK:
+        for root in roots:
+            if not root.is_dir():
+                continue
+            for qdir in root.iterdir():
+                sidecar = qdir / directory_manager.FIGURES_DIR / _ASSIST_COUNTS_NAME
+                if not sidecar.is_file():
+                    continue
+                try:
+                    loaded = json.loads(sidecar.read_text(encoding="utf-8"))
+                    if isinstance(loaded, dict):
+                        dropped += len(loaded)
+                except Exception:
+                    pass
+                try:
+                    sidecar.unlink()
+                except OSError:
+                    pass
+    return dropped
+
 # ---- assisted_crop tuning (all PDF points unless noted) ----
 CHROME_MIN_PAGES = 3  # a stroke/text fingerprint on >= this many pages is chrome
 _VEC_TOUCH = 2.0  # stroke rects within this count as touching (clustering)
@@ -84,31 +166,21 @@ _VEC_LABEL_NEAR = 10.0  # short text within this of a stroke is a label (kept)
 _VEC_GROW_CAP = 3.0  # max final/agent area ratio; beyond this growth is refused
 _MIN_REPORT_DELTA = 3  # 0-1000 units below this are rounding noise, unreported
 _CROP_DPI = 250  # clip-render resolution for assisted/polygon crops
-_ASSIST_MAX_ATTEMPTS = 3
+_ASSIST_MAX_ATTEMPTS = 5
+
+# Attempt counts live on disk (figures/_assist_counts.json per question), not
+# in process memory: stateless across restarts, threads and reruns. One lock
+# guards the read-modify-write so concurrent figures can't lose increments.
+# Portable by design: pathlib paths, stdlib lock, temp-file + os.replace
+# (atomic on both Windows and macOS) -- no fcntl, no POSIX-only calls.
+_ASSIST_LOCK = threading.Lock()
+_ASSIST_COUNTS_NAME = "_assist_counts.json"
 
 # Per-PDF chrome fingerprints (keyed by resolved abspath; PDFs treated as stable).
 _CHROME_STROKES: dict[str, set[tuple]] = {}  # pdf -> {(x0,y0,x1,y1) rounded}
 _CHROME_TEXT: dict[str, set[tuple]] = {}  # pdf -> {(rect, normalized text)}
 # Per-page vector cache: (pdf, pageno) -> (stroke rects, text blocks, clusters).
 _PAGE_VEC_CACHE: dict[tuple[str, int], tuple[list, list, list]] = {}
-# assisted_crop attempt counter: (paper_id, question, filename) -> calls made.
-_ASSIST_ATTEMPTS: dict[tuple[int, str, str], int] = {}
-
-
-def reset_assist_attempts(paper_id: int | None = None) -> int:
-    """Drop cached attempt counters; call at run start so reruns start fresh.
-
-    With paper_id, resets only that paper's figures; without, resets all.
-    Returns the number of counters dropped.
-    """
-    if paper_id is None:
-        n = len(_ASSIST_ATTEMPTS)
-        _ASSIST_ATTEMPTS.clear()
-        return n
-    doomed = [k for k in _ASSIST_ATTEMPTS if k[0] == paper_id]
-    for k in doomed:
-        del _ASSIST_ATTEMPTS[k]
-    return len(doomed)
 
 
 def _pdf_key(pdf_path: str) -> str:
@@ -657,10 +729,18 @@ def _assist_box(
     ink = [s for s in included if not in_zone(s)]
 
     def strip_empty(x0: float, y0: float, x1: float, y1: float) -> bool:
-        # The strip being cut away must hold no figure ink: that is exactly
-        # the condition under which trimming cannot slice the figure.
+        # The strip being cut away must hold no figure ink AND no kept text:
+        # slicing through a label the rules decided to keep is as bad as
+        # slicing ink. (Trimmable text in the strip is simply left for its
+        # own trim pass or dropped with the strip -- it never vetoes.)
         probe = fitz.Rect(x0, y0, x1, y1)
-        return not any(_touches(probe, s, 0.0) for s in ink)
+        if any(_touches(probe, s, 0.0) for s in ink):
+            return False
+        return not any(
+            not trimmable(b)
+            and _touches(probe, fitz.Rect(b[0], b[1], b[2], b[3]), 0.0)
+            for b in blocks
+        )
 
     # Text removal, unified: for every text block, each inward edge alignment
     # is one operation, whether the block crosses the edge or sits inside.
@@ -777,8 +857,8 @@ def assisted_crop(
       and long text lines at the edges are trimmed (short labels stay).
     plain -- no image and no strokes found; your box is saved as-is.
     The reply states the mode, your box, the final box (0-1000), a
-    plain-language change list, and the attempt count. Max 3 assisted calls
-    per figure; the 4th saves nothing and tells you to use polygon_crop.
+    plain-language change list, and the attempt count. Max 5 assisted calls
+    per figure; the 6th saves nothing and tells you to use polygon_crop.
 
     Args:
         pdf_path: Filesystem path to the PDF file.
@@ -803,8 +883,10 @@ def assisted_crop(
         if not (0 <= x <= 1000 and 0 <= y <= 1000):
             raise ValueError(f"point {(x, y)} outside 0-1000 grid")
 
-    akey = (paper_id, str(question_number), filename)
-
+    # Count the attempt only after all input validation passed, so a bad
+    # page number or degenerate box doesn't burn one of the five. The count
+    # persists in figures/_assist_counts.json (per question dir), so it
+    # survives restarts and is shared across threads; runs reset it.
     doc = fitz.open(pdf_path)
     try:
         if page_number < 1 or page_number > len(doc):
@@ -822,15 +904,13 @@ def assisted_crop(
     finally:
         doc.close()
 
-    # Count the attempt only after all input validation passed, so a bad
-    # page number or degenerate box doesn't burn one of the three.
-    attempt = _ASSIST_ATTEMPTS.get(akey, 0) + 1
+    attempt = _assist_attempt(paper_id, str(question_number), filename)
     if attempt > _ASSIST_MAX_ATTEMPTS:
         return Command(
             update={
                 "messages": [
                     ToolMessage(
-                        "attempt limit reached (3 assisted calls for this "
+                        "attempt limit reached (5 assisted calls for this "
                         "figure). Nothing was saved. Use polygon_crop with "
                         "your own coordinates.",
                         tool_call_id=tool_call_id,
@@ -838,7 +918,6 @@ def assisted_crop(
                 ]
             }
         )
-    _ASSIST_ATTEMPTS[akey] = attempt
 
     want1000 = [
         int(round(want.x0 / r.width * 1000)),

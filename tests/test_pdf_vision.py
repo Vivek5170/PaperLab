@@ -227,7 +227,7 @@ def test_snap_hit_saves_original_bytes(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf, red_raw, _ = _pdf_with_images(tmp_path)
     import tools_extractor as te
-    te._ASSIST_ATTEMPTS.clear()
+    te.reset_assist_attempts()
     te._SNAP_CACHE.clear()
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
     cmd = assisted_crop.invoke(_tc("assisted_crop", {
@@ -251,7 +251,7 @@ def test_snap_containment_hit(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_p
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf, red_raw, _ = _pdf_with_images(tmp_path)
     import tools_extractor as te
-    te._ASSIST_ATTEMPTS.clear()
+    te.reset_assist_attempts()
     te._SNAP_CACHE.clear()
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
     cmd = assisted_crop.invoke(_tc("assisted_crop", {
@@ -273,7 +273,7 @@ def test_snap_ambiguous_box_falls_back(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf, _, _ = _pdf_with_images(tmp_path)
     import tools_extractor as te
-    te._ASSIST_ATTEMPTS.clear()
+    te.reset_assist_attempts()
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
     # Second non-chrome figure on page 1 so the box holds two whole images.
     green = Image.new("RGB", (40, 40), "green")
@@ -299,7 +299,7 @@ def test_snap_miss_falls_back_to_plain_crop(dummy_pdf, scanned_pdf, tmp_db, tmp_
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf, red_raw, blue_raw = _pdf_with_images(tmp_path)
     import tools_extractor as te
-    te._ASSIST_ATTEMPTS.clear()
+    te.reset_assist_attempts()
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
     cmd = assisted_crop.invoke(_tc("assisted_crop", {
         "pdf_path": pdf, "page_number": 1,
@@ -320,7 +320,7 @@ def test_chrome_images_are_not_snapped(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf, _, blue_raw = _pdf_with_images(tmp_path)
     import tools_extractor as te
-    te._ASSIST_ATTEMPTS.clear()
+    te.reset_assist_attempts()
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
     assert len(_chrome_xrefs(pdf)) == 1  # the shared logo xref
     cmd = assisted_crop.invoke(_tc("assisted_crop", {
@@ -336,7 +336,7 @@ def test_chrome_images_are_not_snapped(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
 def test_duplicate_xref_reuses_cached_bytes(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
     """Snapping the same xref twice reuses the cached bytes (no re-extract)."""
     import tools_extractor as te
-    te._ASSIST_ATTEMPTS.clear()
+    te.reset_assist_attempts()
 
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf, red_raw, _ = _pdf_with_images(tmp_path)
@@ -362,7 +362,7 @@ def test_snap_huge_box_falls_back(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, t
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf, red_raw, _ = _pdf_with_images(tmp_path)
     import tools_extractor as te
-    te._ASSIST_ATTEMPTS.clear()
+    te.reset_assist_attempts()
     te._SNAP_CACHE.clear()
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
     cmd = assisted_crop.invoke(_tc("assisted_crop", {
@@ -438,7 +438,7 @@ def _vector_pdf(tmp_path):
 def _assist(pdf, pid, pts, name, cid="t1", q="1"):
     import tools_extractor as te
 
-    te._ASSIST_ATTEMPTS.clear()
+    te.reset_assist_attempts()
     return assisted_crop.invoke(
         _tc(
             "assisted_crop",
@@ -510,7 +510,7 @@ def test_assist_idempotent(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path
     pts = [(300, 300), (500, 300), (500, 650), (300, 650)]
     t1, _, _ = _image_messages(_assist(pdf, pid, pts, "d.png"))
     box = _final_box(t1)
-    te._ASSIST_ATTEMPTS.clear()
+    te.reset_assist_attempts()
     t2, _, _ = _image_messages(_assist(
         pdf, pid,
         [(box[0], box[1]), (box[2], box[1]), (box[2], box[3]), (box[0], box[3])],
@@ -521,34 +521,58 @@ def test_assist_idempotent(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path
     assert (out / "d.png").read_bytes() == (out / "d2.png").read_bytes()
 
 
-def test_assist_fourth_call_refused(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
-    """Max 3 assisted calls per figure; the 4th saves nothing."""
+def test_assist_sixth_call_refused(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Max 5 assisted calls per figure; the 6th saves nothing."""
     import tools_extractor as te
     from langchain_core.messages import ToolMessage
 
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _vector_pdf(tmp_path)
     pts = [(300, 300), (500, 300), (500, 650), (300, 650)]
-    te._ASSIST_ATTEMPTS.clear()
-    for cid in ("t1", "t2", "t3"):
-        assisted_crop.invoke(_tc(
+    te.reset_assist_attempts()
+    for i in range(5):
+        cmd = assisted_crop.invoke(_tc(
             "assisted_crop",
             {"pdf_path": pdf, "page_number": 1, "points": pts,
              "output_filename": "e.png", "paper_id": pid, "question_number": "1"},
-            call_id=cid,
+            call_id=f"t{i}",
         ))
+        assert len(cmd.update["messages"]) == 2  # all 5 allowed through
     dest = tmp_outputs / str(pid) / "1" / "figures" / "e.png"
     before = dest.read_bytes()
     cmd = assisted_crop.invoke(_tc(
         "assisted_crop",
         {"pdf_path": pdf, "page_number": 1, "points": pts,
          "output_filename": "e.png", "paper_id": pid, "question_number": "1"},
-        call_id="t4",
+        call_id="t6",
     ))
     assert len(cmd.update["messages"]) == 1  # text only, no preview
     assert "attempt limit" in cmd.update["messages"][0].content
     assert isinstance(cmd.update["messages"][0], ToolMessage)
     assert dest.read_bytes() == before  # nothing saved
+
+
+def test_assist_counts_persist_in_sidecar(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Attempts live in figures/_assist_counts.json; reset drops them."""
+    import json
+
+    import tools_extractor as te
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    pts = [(300, 300), (500, 300), (500, 650), (300, 650)]
+    te.reset_assist_attempts()
+    for i in range(2):
+        assisted_crop.invoke(_tc(
+            "assisted_crop",
+            {"pdf_path": pdf, "page_number": 1, "points": pts,
+             "output_filename": "f.png", "paper_id": pid, "question_number": "1"},
+            call_id=f"c{i}",
+        ))
+    sidecar = tmp_outputs / str(pid) / "1" / "figures" / "_assist_counts.json"
+    assert json.loads(sidecar.read_text()) == {"f.png": 2}
+    assert te.reset_assist_attempts(pid) == 1
+    assert not sidecar.exists()
 
 
 def test_polygon_crop_is_exact_no_snap(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
@@ -745,3 +769,30 @@ def test_grazing_stroke_does_not_veto_trim(dummy_pdf, scanned_pdf, tmp_db, tmp_o
     cmd = _assist(pdf, pid, [(250, 250), (750, 250), (750, 750), (250, 750)], "g.png")
     text, _, _ = _image_messages(cmd)
     assert "mode: vector" in text and "trimmed top by" in text
+
+
+def _label_in_strip_pdf(tmp_path):
+    """Kept label straddles the option block's cut line; wire stays clear."""
+    import fitz
+
+    d = fitz.open()
+    p = d.new_page(width=600, height=800)
+    p.draw_rect(fitz.Rect(200, 300, 400, 500))
+    p.draw_line(fitz.Point(400, 400), fitz.Point(438, 400))  # stops short
+    p.insert_text((432, 408), "V0", fontsize=12)  # hugs wire, straddles x=440
+    p.insert_text((440, 313), "Option D is correct today", fontsize=12)
+    pdf = tmp_path / "strip.pdf"
+    d.save(str(pdf))
+    d.close()
+    return str(pdf)
+
+
+def test_trim_never_slices_kept_label(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """A side trim vetoed when its strip holds a kept label (no ink there)."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _label_in_strip_pdf(tmp_path)
+    cmd = _assist(pdf, pid, [(250, 312), (750, 312), (750, 812), (250, 812)], "k.png")
+    text, _, _ = _image_messages(cmd)
+    box = _final_box(text)
+    assert box == [333, 375, 747, 625]  # right edge stops at the label, not 440
+    assert "(text line" not in text  # the option-tail trim never fired
