@@ -260,13 +260,14 @@ def test_submit_solution_real_content_and_overwrite(tmp_db, tmp_outputs, tmp_pat
     assert submit_solution.invoke({
         "paper_id": pid, "question_number": "2", "latex_content": body,
     }) == "saved"
-    assert (tmp_outputs / str(pid) / "2" / "solution.tex").read_text() == body
+    from tools_extractor import normalize_steps as _ns
+    assert (tmp_outputs / str(pid) / "2" / "solution.tex").read_text() == _ns(body)
     # Correction reuses the same question_number and overwrites.
     fixed = "Key: C\n" r"\begin{solution} $F=ma^2$ \end{solution}"
     assert submit_solution.invoke({
         "paper_id": pid, "question_number": "2", "latex_content": fixed,
     }) == "saved"
-    assert (tmp_outputs / str(pid) / "2" / "solution.tex").read_text() == fixed
+    assert (tmp_outputs / str(pid) / "2" / "solution.tex").read_text() == _ns(fixed)
 
 
 def test_submit_question_rejects_missing_figure(tmp_db, tmp_outputs, tmp_path):
@@ -316,7 +317,8 @@ def test_submit_solution_accepts_bold_answer_first_line(tmp_db, tmp_outputs, tmp
     assert submit_solution.invoke({
         "paper_id": pid, "question_number": "8", "latex_content": body,
     }) == "saved"
-    assert (tmp_outputs / str(pid) / "8" / "solution.tex").read_text() == body
+    from tools_extractor import normalize_steps as _ns2
+    assert (tmp_outputs / str(pid) / "8" / "solution.tex").read_text() == _ns2(body)
 
 
 def test_submit_solution_accepts_repeated_block_format(tmp_db, tmp_outputs, tmp_path):
@@ -422,16 +424,75 @@ def test_submit_allows_legacy_unnamed_figures(tmp_db, tmp_path, tmp_outputs):
     }) == "saved"
 
 
-def test_submit_question_rejects_backtick_quoting(tmp_db, tmp_outputs, tmp_path):
-    """Previously verified mistake: `$m$' style quoting must not save."""
+def test_submit_question_autofixes_backtick_wrapped_math(tmp_db, tmp_outputs, tmp_path):
+    """Unambiguous `` `$m$' `` is unwrapped and saved (no wasted resubmit)."""
     pid = _paper_id(tmp_db, tmp_path)
     out = submit_question.invoke({
         "paper_id": pid, "question_number": "1",
         "latex_content": r"masses `$m$' and `$2m$'",
     })
+    assert out == "saved"
+    saved = (tmp_outputs / str(pid) / "1" / "question.tex").read_text()
+    assert "`" not in saved and "$m$" in saved and "$2m$" in saved
+
+
+def test_submit_question_rejects_bare_backtick(tmp_db, tmp_outputs, tmp_path):
+    """Ambiguous `` `k' `` (no $ delimiters) still rejects: only the agent
+    knows it should have been $k$ rather than plain k'."""
+    pid = _paper_id(tmp_db, tmp_path)
+    out = submit_question.invoke({
+        "paper_id": pid, "question_number": "1",
+        "latex_content": r"masses `m' and `2m'",
+    })
     assert out.startswith("NOT SAVED")
     assert "backtick" in out
     assert not (tmp_outputs / str(pid) / "1" / "question.tex").exists()
+
+
+def test_submit_solution_autofixes_backtick_wrapped_math(tmp_db, tmp_outputs, tmp_path):
+    pid = _paper_id(tmp_db, tmp_path)
+    submit_question.invoke({"paper_id": pid, "question_number": "4", "latex_content": "Q"})
+    out = submit_solution.invoke({
+        "paper_id": pid, "question_number": "4",
+        "latex_content": "Key: A\nsuppose mass is `$m$' then",
+    })
+    assert out == "saved"
+    saved = (tmp_outputs / str(pid) / "4" / "solution.tex").read_text()
+    assert "`" not in saved and "$m$" in saved
+
+
+def test_quoted_plain_words_are_kept(tmp_db, tmp_outputs, tmp_path):
+    """Quotes around plain words ('C') are legitimate prose: untouched."""
+    pid = _paper_id(tmp_db, tmp_path)
+    out = submit_question.invoke({
+        "paper_id": pid, "question_number": "1",
+        "latex_content": r"letter 'C' and 'R' with $x=1$",
+    })
+    assert out == "saved"
+    saved = (tmp_outputs / str(pid) / "1" / "question.tex").read_text()
+    assert "'C'" in saved and "'R'" in saved
+
+
+def test_text_underscores_escaped_math_untouched():
+    from tools_extractor import _escape_text_underscores
+
+    tex = r"is _______ $cm$ and $x_1 + y_{2}$ plus \_ done"
+    out = _escape_text_underscores(tex)
+    assert r"\_\_\_\_\_\_\_" in out  # blank escaped
+    assert "$x_1 + y_{2}$" in out  # math intact
+    assert out.count(r"\_") == 7 + 1  # 7 blank + 1 pre-escaped
+
+
+def test_submit_escapes_blank_underscores(tmp_db, tmp_outputs, tmp_path):
+    pid = _paper_id(tmp_db, tmp_path)
+    body = "Q: value is _______ $cm$ with $x_1$."
+    assert submit_question.invoke({
+        "paper_id": pid, "question_number": "1",
+        "latex_content": body,
+    }) == "saved"
+    saved = (tmp_outputs / str(pid) / "1" / "question.tex").read_text()
+    assert "_______" not in saved and r"\_\_\_\_\_\_\_" in saved
+    assert "$x_1$" in saved
 
 
 def test_submit_solution_rejects_backtick_quoting(tmp_db, tmp_outputs, tmp_path):

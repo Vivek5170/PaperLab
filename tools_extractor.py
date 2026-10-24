@@ -124,6 +124,24 @@ def _assist_attempt(paper_id: int, question_number: str, filename: str) -> int:
         return attempt
 
 
+def _assist_used(paper_id: int, question_number: str, filename: str) -> int:
+    """Attempt count WITHOUT incrementing (for the polygon_crop gate)."""
+    try:
+        loaded = json.loads(
+            _counts_path(paper_id, question_number).read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            return int(loaded.get(filename, 0))
+    except Exception:
+        pass
+    return 0
+
+
+# Polygon is a last resort: refuse until the figure has this many assisted
+# attempts. Lower than _ASSIST_MAX_ATTEMPTS (5) on purpose -- three honest
+# tries are enough signal; beyond that the agent is burning tokens.
+_POLYGON_MIN_ASSIST = 3
+
+
 def reset_assist_attempts(paper_id: int | None = None) -> int:
     """Delete persisted attempt counters; call at run start so reruns start fresh.
 
@@ -576,12 +594,11 @@ def polygon_crop(
     question_number: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
-    """Crop EXACTLY the given polygon -- no snapping, no adjustment, no assist.
+    """Crop exactly the given polygon: what you draw is what gets saved.
 
-    The escape hatch when assisted_crop keeps getting it wrong: what you draw
-    is what gets saved (polygon mask at 250 DPI, white background outside).
-    Nothing about this call changes between retries, so it cannot loop.
-    Overwriting the SAME output_filename replaces the file.
+    Last resort: refuses until the same file already has 3 assisted_crop
+    attempts. You may call this multiple times with corrected
+    coordinates; reuse the SAME output_filename (it overwrites).
 
     Args:
         pdf_path: Filesystem path to the PDF file.
@@ -604,6 +621,56 @@ def polygon_crop(
     for x, y in norm_pts:
         if not (0 <= x <= 1000 and 0 <= y <= 1000):
             raise ValueError(f"point {(x, y)} outside 0-1000 grid")
+
+    # Last-resort gate: cheap plain refusal (no preview burned) that
+    # redirects to assisted_crop, where snap-matching runs.
+    tried = _assist_used(paper_id, str(question_number), filename)
+    if tried < _POLYGON_MIN_ASSIST:
+        return Command(
+            update={
+                "messages": [
+                    ToolMessage(
+                        f"polygon_crop refused: {tried} of "
+                        f"{_POLYGON_MIN_ASSIST} required assisted_crop "
+                        f"attempts used for {filename}. Call assisted_crop "
+                        f"({_POLYGON_MIN_ASSIST - tried} tries left) with a "
+                        "tighter box first; snap-matching only runs there.",
+                        tool_call_id=tool_call_id,
+                    )
+                ]
+            }
+        )
+
+    # Snap-first: same deterministic rule as assisted_crop. A box that
+    # identifies one embedded image yields its original bytes; anything
+    # ambiguous falls through to the exact render below (never a guess).
+    qdir = directory_manager.ensure_question_dir(paper_id, question_number)
+    dest = qdir / directory_manager.FIGURES_DIR / filename
+    snapped = _try_snap(pdf_path, page_number, norm_pts)
+    if snapped is not None:
+        ext, data, snap_xref = snapped
+        try:
+            if _ext_matches(filename, ext):
+                dest.write_bytes(data)
+            else:
+                Image.open(io.BytesIO(data)).convert("RGB").save(
+                    str(dest), format="PNG"
+                )
+        except Exception:
+            snapped = None
+    if snapped is not None:
+        _record_figure_mode(dest.parent, filename, "snap")
+        SNAP_LOG.append(
+            (paper_id, str(question_number), filename, f"snap:{snap_xref}")
+        )
+        return image_reply(
+            tool_call_id,
+            f"mode: snap, matched embedded image (xref {snap_xref}), "
+            "original image returned. Preview attached.",
+            f"[Crop preview: {filename}]",
+            dest,
+            CROP_PX,
+        )
 
     doc = fitz.open(pdf_path)
     try:
@@ -636,8 +703,6 @@ def polygon_crop(
     background = Image.new("RGB", (cw, ch), (255, 255, 255))
     background.paste(img, mask=mask)
 
-    qdir = directory_manager.ensure_question_dir(paper_id, question_number)
-    dest = qdir / directory_manager.FIGURES_DIR / filename
     background.save(str(dest), format="PNG")
 
     _record_figure_mode(dest.parent, filename, "exact")
@@ -645,7 +710,7 @@ def polygon_crop(
     return image_reply(
         tool_call_id,
         f"Saved {filename} to {dest}. Pure crop of exactly your box "
-        "(no snapping, no adjustment). A preview is in the next message.",
+        "(no image matched, no adjustment). A preview is in the next message.",
         f"[Crop preview: {filename}]",
         dest,
         CROP_PX,
@@ -848,7 +913,8 @@ def assisted_crop(
     question_number: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
-    """Crop a figure with small automatic corrections. Call this FIRST.
+    """Crop a figure with small automatic corrections. Call this FIRST
+    for every figure; use polygon_crop only when this tool refuses you.
 
     Your box is the intent; the tool only fixes what it can prove:
     snap -- the box matches one embedded image, so the ORIGINAL bytes are
@@ -857,8 +923,7 @@ def assisted_crop(
       and long text lines at the edges are trimmed (short labels stay).
     plain -- no image and no strokes found; your box is saved as-is.
     The reply states the mode, your box, the final box (0-1000), a
-    plain-language change list, and the attempt count. Max 5 assisted calls
-    per figure; the 6th saves nothing and tells you to use polygon_crop.
+    plain-language change list, and the attempt count.
 
     Args:
         pdf_path: Filesystem path to the PDF file.
@@ -1112,11 +1177,10 @@ def submit_question(paper_id: int, question_number: str, latex_content: str) -> 
     """Compile-check and save a question. Nothing is saved if errors are returned.
 
     Writes ``latex_content`` to Outputs/{paper_id}/{question_number}/
-    question.tex and creates/updates the questions-table row (status 'draft'
-    on insert). Resubmitting the SAME question_number overwrites -- use that
-    to correct mistakes. Reference cropped figures with a relative path, e.g.
-    \\includegraphics[width=\\linewidth]{figures/qfig1.png} (question-side
-    crops only; sfig* references are rejected).
+    question.tex. Resubmitting the SAME question_number overwrites -- use
+    that to correct mistakes. Reference cropped figures with a relative
+    path, e.g. \\includegraphics[width=\\linewidth]{figures/qfig1.png}
+    (question-side crops only; sfig* references are rejected).
 
     Args:
         paper_id: Integer PK from LangGraph state; never invent one.
@@ -1133,6 +1197,14 @@ def submit_question(paper_id: int, question_number: str, latex_content: str) -> 
             f"paper_id {paper_id} does not exist; "
             "it must come from pre-flight registration via LangGraph state"
         )
+    # Inline options ("A) ... B) ..." on one line) merge in both renderers
+    # (single \n is a space in LaTeX and markdown). One paragraph per option
+    # at save time so the PNG and the HTML agree. Hard-wrapped stems are
+    # untouched: only option labels split, never arbitrary prose lines.
+    from app.render import _split_inline_options as _split_q_options
+    latex_content = _split_q_options(latex_content)
+    latex_content = _strip_backtick_quoting(latex_content)
+    latex_content = _escape_text_underscores(latex_content)
     errs: list[str] = []
     if "`" in latex_content:
         errs.append("stray backtick quoting (e.g. `k' or `$m$'): put math in "
@@ -1178,6 +1250,102 @@ def submit_question(paper_id: int, question_number: str, latex_content: str) -> 
     finally:
         conn.close()
     return "saved"
+
+
+# ------------------------------------------------------- auto-fix on save
+# One unambiguous slip is corrected silently so the agent isn't forced
+# into a wasted resubmit cycle. Anything ambiguous still returns NOT SAVED:
+# guessing could silently corrupt content (e.g. `k' should become $k$,
+# not plain k'; quotes around plain words like 'C' are legitimate prose
+# and must be kept).
+
+_MATH_SPAN_RE = re.compile(
+    r"\$\$.*?\$\$|\\\[.*?\\\]|(?<!\\)\$(?:[^$\\]|\\.)*?\$", re.DOTALL)
+
+
+def _escape_text_underscores(tex: str) -> str:
+    """Escape bare _ outside math: ``is ___`` -> ``is \\_\\_\\_``.
+
+    A text-mode underscore is always a LaTeX error (Missing $ inserted),
+    so this fires unambiguously; math spans pass through untouched and an
+    already-escaped \\_ is left alone.
+    """
+    out, pos = [], 0
+    for m in _MATH_SPAN_RE.finditer(tex):
+        out.append(re.sub(r"(?<!\\)_", r"\\_", tex[pos:m.start()]))
+        out.append(m.group(0))
+        pos = m.end()
+    out.append(re.sub(r"(?<!\\)_", r"\\_", tex[pos:]))
+    return "".join(out)
+
+
+_BACKTICK_MATH_RE = re.compile(r"`\s*(\$[^$]+\$)\s*['`']?")
+
+
+def _strip_backtick_quoting(tex: str) -> str:
+    """Unwrap backtick-wrapped math: `` `$m$' `` -> ``$m$``.
+
+    Only fires when the math is already $-delimited, so the fix is
+    unambiguous. A residual backtick (`` `k' `` without delimiters) is
+    left for the validator to reject -- the agent must decide it is math.
+    """
+    return _BACKTICK_MATH_RE.sub(r"\1", tex)
+
+
+# ---------------------------------------------------------------- normalize
+# One logical step per line -> paragraphs. Idempotent; skips math, lists,
+# comments. Solutions only: hard-wrapped question text would split wrongly.
+
+_MATH_ENVS = {"align", "gather", "equation", "eqnarray", "multline"}
+_NORM_DELIM_RE = re.compile(
+    r"\\\[|\\\]|\\(?:begin|end)\{(?:align|gather|equation|eqnarray|multline)\*?\}|\$\$"
+)
+_NORM_ENV_RE = re.compile(r"\\(begin|end)\{([^}]*)\}")
+
+
+def _norm_math_after(line: str, in_math: bool) -> bool:
+    for m in _NORM_DELIM_RE.finditer(line):
+        t = m.group(0)
+        if t == "$$":
+            in_math = not in_math
+        else:
+            in_math = t == "\\[" or t.startswith("\\begin")
+    return in_math
+
+
+def normalize_steps(tex: str) -> str:
+    """Insert a blank line between consecutive prose lines.
+
+    Each source line is one logical step; LaTeX and markdown both treat a
+    single newline as a space, so without this the steps merge. A blank line
+    means the same thing (paragraph break) in both renderers, so neither
+    renderer needs a workaround. Idempotent; math blocks, list items,
+    comments and structural commands are left alone.
+    """
+    lines = [ln.rstrip() for ln in tex.split("\n")]
+    out: list[str] = []
+    in_math, depth = False, 0
+    for i, s in enumerate(lines):
+        was_math = in_math
+        in_math = _norm_math_after(s, in_math)
+        for m in _NORM_ENV_RE.finditer(s):
+            if m.group(2).rstrip("*") in _MATH_ENVS:
+                continue
+            depth = max(0, depth + (1 if m.group(1) == "begin" else -1))
+        out.append(s)
+        nxt = lines[i + 1] if i + 1 < len(lines) else ""
+        if (
+            s.strip()
+            and nxt.strip()
+            and not was_math
+            and not in_math
+            and depth == 0
+            and not s.lstrip().startswith(("%", "\\item"))
+            and not s.endswith("\\\\")
+            and not nxt.lstrip().startswith(("\\end", "\\item", "%"))
+        ):
+            out.append("")
+    return "\n".join(out)
 
 
 @tool
@@ -1240,6 +1408,8 @@ def submit_solution(paper_id: int, question_number: str, latex_content: str) -> 
                 qdir = directory_manager.ensure_question_dir(paper_id, question_number)
                 (qdir / directory_manager.SOLUTION_TEX).write_text(content, encoding="utf-8")
                 return "saved"
+        content = _strip_backtick_quoting(content)
+        content = _escape_text_underscores(content)
         errs: list[str] = []
         if "`" in content:
             errs.append("stray backtick quoting (e.g. `k' or `$m$'): put math in "
@@ -1257,6 +1427,7 @@ def submit_solution(paper_id: int, question_number: str, latex_content: str) -> 
                 / f
             ).exists():
                 errs.append(f"missing figure file: {f}")
+        content = normalize_steps(content)
         verdict = verify_latex_syntax.invoke({"latex_string": content})
         if verdict != "Valid":
             errs.append(verdict)

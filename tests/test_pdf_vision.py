@@ -91,6 +91,8 @@ def test_img_block_byte_stable(tmp_path):
 
 def test_polygon_crop_scaling_and_save(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    _prime_assist(pid, "fig1.png")
+    _prime_assist(pid, "figQ.png")
     out_dir = tmp_outputs / str(pid) / "1"
     # Full-page polygon on the 0-1000 grid must map to full pixel dims.
     cmd = polygon_crop.invoke(_tc(
@@ -152,6 +154,7 @@ def test_polygon_crop_rejects_bad_points(dummy_pdf, scanned_pdf, tmp_db, tmp_out
 def test_polygon_crop_same_filename_overwrites(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
     """Correcting a bad crop reuses the SAME filename and replaces the file."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    _prime_assist(pid, "fig.png")
     out_dir = tmp_outputs / str(pid) / "1"
     first = polygon_crop.invoke(_tc(
         "polygon_crop", {
@@ -188,6 +191,7 @@ def test_polygon_crop_same_filename_overwrites(dummy_pdf, scanned_pdf, tmp_db, t
 def test_polygon_crop_lands_in_question_dir(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
     """Figures are always saved under Outputs/{paper_id}/{question_number}/."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    _prime_assist(pid, "fig1.png", q="15-17_paragraph")
     cmd = polygon_crop.invoke(_tc(
         "polygon_crop", {
             "pdf_path": dummy_pdf,
@@ -408,6 +412,74 @@ def test_polygon_crop_rejects_traversal_filename(dummy_pdf, scanned_pdf, tmp_db,
     assert not (tmp_path / "evil.png").exists()
 
 
+# ---------- polygon_crop: snap-first ----------
+
+def _polygon(pdf, pid, pts, name, cid="t9", q="1"):
+    return polygon_crop.invoke(_tc(
+        "polygon_crop",
+        {
+            "pdf_path": pdf,
+            "page_number": 1,
+            "points": pts,
+            "output_filename": name,
+            "paper_id": pid,
+            "question_number": q,
+        },
+        call_id=cid,
+    ))
+
+
+def _prime_assist(pid, name, q="1", n=3):
+    import tools_extractor as te
+
+    for _ in range(n):
+        te._assist_attempt(pid, q, name)
+
+
+def test_polygon_crop_refused_before_assisted_tries(
+        dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Gate: polygon with 0 assisted attempts saves nothing."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf, _, _ = _pdf_with_images(tmp_path)
+    cmd = _polygon(pdf, pid, [(0, 0), (500, 0), (500, 500), (0, 500)], "e.png")
+    updates = cmd.update["messages"]
+    assert len(updates) == 1 and "refused" in updates[0].content
+    assert "0 of 3" in updates[0].content
+    assert not list(tmp_outputs.rglob("e.png"))
+
+
+def test_polygon_crop_snaps_to_embedded_image(
+        dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """A loose box around one embedded image returns its original bytes."""
+    import tools_extractor as te
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf, red_raw, _ = _pdf_with_images(tmp_path)
+    te._SNAP_CACHE.clear()
+    te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
+    _prime_assist(pid, "e.png")
+    # Red diagram is at (10,10)-(90,90) on a 200x200 page: box it loosely.
+    cmd = _polygon(pdf, pid, [(0, 0), (500, 0), (500, 500), (0, 500)], "e.png")
+    text, _, _ = _image_messages(cmd)
+    assert "mode: snap" in text
+    saved = list(tmp_outputs.rglob("e.png"))
+    assert saved
+    got, want = Image.open(saved[0]), Image.open(io.BytesIO(red_raw))
+    assert got.size == want.size == (80, 80)  # original pixels, not a render
+    assert te.SNAP_LOG[-1][3].startswith("snap:")
+
+
+def test_polygon_crop_stays_exact_without_image(
+        dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """No embedded image under the box: exact render, no snap claim."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)  # strokes only, no embedded images
+    _prime_assist(pid, "x.png")
+    cmd = _polygon(pdf, pid, [(300, 300), (500, 300), (500, 650), (300, 650)], "x.png")
+    text, _, _ = _image_messages(cmd)
+    assert "no image matched" in text and "mode: snap" not in text
+
+
 # ---------- assisted_crop: vector assist ----------
 
 def _vector_pdf(tmp_path):
@@ -575,23 +647,25 @@ def test_assist_counts_persist_in_sidecar(dummy_pdf, scanned_pdf, tmp_db, tmp_ou
     assert not sidecar.exists()
 
 
-def test_polygon_crop_is_exact_no_snap(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
-    """polygon_crop never snaps: even over an embedded image it mask-crops."""
+def test_polygon_crop_is_exact_on_chrome_logo(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Box around the shared logo matches nothing (chrome excluded): exact."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf, red_raw, _ = _pdf_with_images(tmp_path)
     import tools_extractor as te
 
     te._SNAP_CACHE.clear()
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
+    # 200x200 page: blue logo at (150,10)-(170,30), repeated on all pages.
+    _prime_assist(pid, "x.png")
     cmd = polygon_crop.invoke(_tc(
         "polygon_crop", {
             "pdf_path": pdf, "page_number": 1,
-            "points": [(50, 50), (450, 50), (450, 450), (50, 450)],
+            "points": [(700, 0), (900, 0), (900, 200), (700, 200)],
             "output_filename": "x.png", "paper_id": pid, "question_number": "1",
         },
     ))
     text, _, _ = _image_messages(cmd)
-    assert "exactly your box" in text
+    assert "no image matched" in text
     saved = tmp_outputs / str(pid) / "1" / "figures" / "x.png"
     got = Image.open(saved)
     assert (got.size[0], got.size[1]) != (80, 80)  # not the snapped original

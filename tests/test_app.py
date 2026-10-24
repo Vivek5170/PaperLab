@@ -183,6 +183,21 @@ def test_split_candidates_uses_word_boundary_rule():
     assert s == ["GTA-01_Key & Sols.pdf"]
 
 
+def test_split_candidates_underscore_and_answerkey_names():
+    """Underscores defeat \\b, and 'Answerkey' is one word: both must still
+    classify as solutions (0705 Allen-style filenames)."""
+    from app.pairing import auto_pair, is_solution_name, split_candidates
+
+    q = "0705_Enthusiast_All_Star_Batch_Score_Advanced__Paper-1__E__JA.pdf"
+    s = "0705_Enthusiast_All_Star_Batch_Score_Advanced__Answerkey___Solution_P.pdf"
+    assert not is_solution_name(q)
+    assert is_solution_name(s)
+    assert not is_solution_name("0705_Enthusiast__Paper.pdf")
+    qq, ss = split_candidates([q, s])
+    assert qq == [q] and ss == [s]
+    assert auto_pair(qq, ss) == [(q, s)]
+
+
 def _managed_pair(tmp_path, monkeypatch, tag="T"):
     """Register a pair under a fake DATA_ROOT; return (pid, q, s, root)."""
     import database
@@ -702,3 +717,243 @@ def test_display_row_breaks_survive_markdown():
         return
     html = MarkdownIt().render(out)
     assert html.count(chr(92) * 2) == 1  # the one row break survived
+
+
+def test_unit_with_superscript_stays_math():
+    from app.render import tex_to_markdown
+
+    out = tex_to_markdown(r"speed $334 ms^{-1}$ here")
+    assert "$334 ms^{-1}$" in out
+
+
+def test_price_pair_stays_literal():
+    from app.render import tex_to_markdown
+
+    out = tex_to_markdown("costs $5 and $6 total")
+    assert "\\$" in out and "$5 and $6" not in out.replace("\\$", "")
+
+
+def test_stray_dollar_does_not_swallow_math():
+    from app.render import tex_to_markdown
+
+    out = tex_to_markdown("stray $ here and $x=1$ later")
+    assert "$x=1$" in out and out.count("$x=1$") == 1
+
+
+def test_normalize_steps_paragraphs_idempotent_math_safe():
+    from tools_extractor import normalize_steps
+
+    tex = "Step one $x=1$.\nStep two $y=2$.\nStep three done."
+    norm = normalize_steps(tex)
+    assert norm == "Step one $x=1$.\n\nStep two $y=2$.\n\nStep three done."
+    assert normalize_steps(norm) == norm  # idempotent
+    # Multi-line display block: no blank line inserted inside math.
+    mtex = "Step one\n\\[\na + b\nc + d\n\\]\nStep two"
+    mnorm = normalize_steps(mtex)
+    assert "a + b\nc + d" in mnorm and "\\[" in mnorm
+    assert "\n\n\\[" in mnorm  # paragraph before display is fine
+    # Lists untouched.
+    ltex = "\\begin{enumerate}\n\\item first\n\\item second\n\\end{enumerate}"
+    assert normalize_steps(ltex) == ltex
+
+
+def test_enumerate_strips_redundant_item_labels():
+    from app.render import tex_to_markdown
+
+    tex = ("Pick one:\n\\begin{enumerate}\n\\item A) 4\n"
+           "\\item B) 3\n\\item C) 2\n\\item D) 1\n\\end{enumerate}")
+    out = tex_to_markdown(tex)
+    assert "A) A)" not in out and "B) B)" not in out
+    for label, val in (("A)", "4"), ("B)", "3"), ("C)", "2"), ("D)", "1")):
+        assert label in out and val in out
+    # Bare items (the prompted style) render identically.
+    bare = ("Pick one:\n\\begin{enumerate}\n\\item 4\n"
+            "\\item 3\n\\item 2\n\\item 1\n\\end{enumerate}")
+    assert tex_to_markdown(bare) == out
+
+
+def test_tabular_becomes_markdown_table():
+    from app.render import tex_to_markdown
+
+    tex = ("Match:\n\\begin{tabular}{|c|l|}\n\\hline\n"
+           "(P) & $x^{-2}$ \\\\\n\\hline\n"
+           "(Q) & \\begin{tabular}{@{}l@{}}first \\\\ second\\end{tabular} \\\\\n"
+           "\\hline\n\\end{tabular}")
+    out = tex_to_markdown(tex)
+    assert "{|c|l|}" not in out and "hline" not in out and "@{}" not in out
+    assert sum(1 for ln in out.splitlines()
+               if ln.strip() and set(ln.strip()) <= set("|- ")) == 1
+    assert "(P)" in out and "$x^{-2}$" in out
+    assert "first second" in out  # nested tabular flattened, not sub-tabled
+
+
+def test_tabular_multicolumn_unwrapped():
+    from app.render import tex_to_markdown
+
+    tex = ("\\begin{tabular}{|c|c|}\n"
+           " & \\multicolumn{1}{c|}{\\textbf{List--II}} \\\\\n"
+           "(1) & Time \\\\\n\\end{tabular}")
+    out = tex_to_markdown(tex)
+    assert "multicolumn" not in out and "{c|}" not in out
+    assert "**List--II**" in out
+
+
+def test_tabular_figure_cells_become_table_segment():
+    from app.render import split_tex
+
+    tex = ("Q\n\\begin{tabular}{|c|l|}\n"
+           " & Head \\\\\n"
+           "(P) & \\begin{center}\\includegraphics[width=0.4\\linewidth]{figures/qfig1.png}\\\\ Cap.\\end{center} \\\\\n"
+           "(Q) & plain \\\\\n\\end{tabular}")
+    segs = split_tex(tex, "/nonexistent")
+    tables = [p for k, p in segs if k == "table"]
+    assert len(tables) == 1
+    assert tables[0]["header"][1] == [("text", "Head")]
+    rows = tables[0]["rows"]
+    assert rows[0][0] == [("text", "(P)")]
+    kinds = [k for k, _ in rows[0][1]]
+    assert "fig" not in kinds  # missing file -> text note, never dead image
+    assert any(v == "Cap." for k, v in rows[0][1] if k == "text")
+    assert rows[0][1][0] == ("text", "(figure missing: figures/qfig1.png)")
+    assert rows[1][1] == [("text", "plain")]
+    assert not any("includegraphics" in p for k, p in segs if k == "text")
+
+
+def test_build_paper_pdf_two_questions_ruled():
+    import tempfile
+    from pathlib import Path
+
+    from app.render import build_paper_pdf, tex_engine_available
+
+    if not tex_engine_available():
+        import pytest as _p
+        _p.skip("tectonic not installed")
+        return
+    from PIL import Image as _I
+
+    with tempfile.TemporaryDirectory() as tmp:
+        fd = Path(tmp) / "figures"
+        fd.mkdir()
+        _I.new("RGB", (60, 40), (255, 255, 255)).save(fd / "qfig1.png")
+        items = [
+            ("1", "1. Stem $x=1$.",
+             "\\textbf{Answer: 1) A}\n\nBody one.", fd),
+            ("2", "2. No figure here.",
+             "\\textbf{Answer: 2) 18}\n\nBody two.", None),
+        ]
+        pdf = build_paper_pdf(items, "Demo")
+        assert pdf and pdf[:4] == b"%PDF"
+
+
+def test_build_paper_pdf_keeps_figures_not_paths():
+    from pathlib import Path
+
+    from app.render import build_paper_pdf, tex_engine_available
+
+    if not tex_engine_available():
+        import pytest as _p
+        _p.skip("tectonic not installed")
+        return
+    import tempfile
+
+    from PIL import Image as _I
+
+    with tempfile.TemporaryDirectory() as tmp:
+        fd = Path(tmp) / "figures"
+        fd.mkdir()
+        _I.new("RGB", (80, 60), (0, 0, 0)).save(fd / "qfig1.png")
+        qtex = ("Q.\n\\begin{center}\n"
+                "\\includegraphics[width=0.5\\linewidth]{figures/qfig1.png}\n"
+                "\\end{center}")
+        pdf = build_paper_pdf([("1", qtex, "S.", fd)], "T")
+        assert pdf and pdf[:4] == b"%PDF"
+        import fitz
+
+        page = fitz.open(stream=pdf)[0]
+        assert "qfig" not in page.get_text()  # no leaked path text
+        assert len(page.get_images(full=True)) == 1  # figure embedded
+
+
+def test_qn_sort_key_sections_and_bare():
+    from app.app import _qn_sort_key
+
+    ids = ["B-01", "A-10", "A-02", "A-01", "15a", "2", "31-32_paragraph", "B-31-32_paragraph"]
+    assert sorted(ids, key=_qn_sort_key) == [
+        "2", "15a", "31-32_paragraph",
+        "A-01", "A-02", "A-10",
+        "B-01", "B-31-32_paragraph",
+    ]
+
+
+def test_inline_options_each_on_own_line():
+    from app.render import tex_to_markdown
+
+    tex = (r"then :-" "\n"
+           r"\textbf{A)} $a=1$ \hspace{1cm} \textbf{B)} $a=2$"
+           r" \textbf{C)} $a=3$ \textbf{D)} $a=4$")
+    out = tex_to_markdown(tex)
+    for label in ("**A)**", "**B)**", "**C)**", "**D)**"):
+        assert label in out
+    # Each of B/C/D starts a new paragraph; single stray labels untouched.
+    assert out.count("\n\n") >= 3
+    assert "\n\n" not in tex_to_markdown(r"See \textbf{B)}-cell here.")
+
+
+def test_oversized_figure_is_capped_not_enlarged():
+    """Wrapper caps figures wider than 0.65\\linewidth; small ones pass through."""
+    import pathlib
+    import tempfile
+
+    import pytest
+
+    pytest.importorskip("PIL")
+    from app.render import render_tex_to_png, tex_engine_available
+
+    if not tex_engine_available():
+        pytest.skip("tectonic not installed")
+    from PIL import Image
+
+    with tempfile.TemporaryDirectory() as tmp:
+        work = pathlib.Path(tmp)
+        (work / "figures").mkdir()
+        Image.new("RGB", (200, 200), (0, 0, 0)).save(work / "figures" / "t.png")
+        big = render_tex_to_png(
+            r"Hi \includegraphics[width=0.9\linewidth]{figures/t.png} bye",
+            work, "_big.png")
+        assert big is not None and pathlib.Path(big).is_file()
+        import numpy as np
+
+        dark = np.asarray(Image.open(big).convert("L")) < 128
+        # Uncapped, 0.9 of the 975px text width would span ~877px dark.
+        assert dark.any(axis=0).sum() < 800
+
+
+def test_bracket_line_after_math_compiles():
+    """Regression for 9/32: a [$...$] line after math must compile.
+
+    The old _add_tex_line_breaks appended \\\\ to the math line, so
+    ``\\\\`` + ``[`` parsed as an optional-spacing argument (Missing
+    number error). normalize_steps uses a blank line, which compiles.
+    """
+    import pathlib
+    import tempfile
+
+    import pytest
+
+    tectonic = pytest.importorskip("shutil")
+    _ = tectonic  # silence unused; real skip below if no tectonic binary
+    import shutil as _shutil
+
+    if _shutil.which("tectonic") is None:
+        pytest.skip("tectonic not installed")
+    from app.render import render_tex_to_png
+    from tools_extractor import normalize_steps
+
+    tex = (
+        "$P_1-P_2=4.62\\times 10^4$ N m$^{-2}$\n"
+        "[$\\because$ Flow rate $Q=A_1V_1=A_2V_2$]\n"
+        "$Q^2=146.67$\n"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        out = render_tex_to_png(normalize_steps(tex), tmp, "_reg.png")
+        assert out is not None and pathlib.Path(out).is_file()

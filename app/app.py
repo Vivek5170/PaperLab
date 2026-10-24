@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import sys
 import time
 
@@ -122,16 +123,31 @@ def _all_papers():
         conn.close()
 
 
+def _qn_sort_key(qn: str):
+    """Order questions: optional SEC- prefix, then numeric, then the rest.
+
+    Bare ids ("15a"->("",15,"a"), "31-32_paragraph"->("",31,...)) keep their
+    old order; namespaced ids ("A-01"->("A",1,""), "B-31-32_paragraph") sort
+    by section first. Zero-padded numbers (see extractor prompt) required.
+    """
+    m = re.match(r"^(?:([A-Za-z]+)-)?(\d+)(.*)$", qn or "")
+    if not m:
+        return (1, qn or "", 0, "")
+    sec, num, rest = m.groups()
+    return (0, sec or "", int(num), rest or "")
+
+
 def _paper_questions(pid: int):
     conn = database.get_connection()
     try:
         # Numeric question order (insertion id breaks after targeted reruns:
-        # re-extracted questions would sort last). SQLite CAST takes the
-        # leading-number prefix, so "15a"->15 and "31-32_paragraph"->31.
-        return conn.execute(
-            "SELECT question_number FROM questions WHERE paper_id = ? "
-            "ORDER BY CAST(question_number AS INTEGER), question_number",
+        # re-extracted questions would sort last). Sorted in Python so
+        # section-prefixed ids ("A-01", "B-01") order correctly; SQLite CAST
+        # would map every prefixed id to 0 and scramble sections.
+        rows = conn.execute(
+            "SELECT question_number FROM questions WHERE paper_id = ?",
             (pid,)).fetchall()
+        return sorted(rows, key=lambda r: _qn_sort_key(r["question_number"]))
     finally:
         conn.close()
 
@@ -193,20 +209,61 @@ def _show_figure(path: str) -> None:
 
     Snapped originals are tiny (their native pixels) while plain crops are
     full render-scale; without a cap the same diagram shows at 265px in one
-    question and 700px in the next. 480px matches the compiled view's
-    ~0.6\\linewidth feel and stays readable.
+    question and 700px in the next. 400px matches the compiled view's
+    0.65\\linewidth cap feel and stays readable.
     """
     from PIL import Image
 
     try:
         w = Image.open(path).size[0]
     except Exception:
-        w = 480
+        w = 400
     mode = _figure_mode(path)
     if mode in _MODE_STYLE:
         color, label = _MODE_STYLE[mode]
         st.markdown(f":{color}[● {label}]")
-    st.image(path, caption=Path(path).name, width=min(w, 480))
+    st.image(path, caption=Path(path).name, width=min(w, 400))
+
+
+def _show_match_table(table: dict, key: str) -> None:
+    """Render a List-I/List-II table with figures inline in their cells.
+
+    Markdown tables cannot hold images in this pipeline (figures are split
+    into st.image segments), so the table is laid out with columns: figure
+    columns get double weight, text columns single.
+    """
+    ncols = max([len(table["header"])] +
+                [len(r) for r in table["rows"]]) if table["rows"] else 0
+    if not ncols:
+        return
+
+    def _has_fig(col: int) -> bool:
+        if col < len(table["header"]) and any(
+                k == "fig" for k, _ in table["header"][col]):
+            return True
+        return any(col < len(r) and any(k == "fig" for k, _ in r[col])
+                   for r in table["rows"])
+
+    weights = [2 if _has_fig(c) else 1 for c in range(ncols)]
+
+    def _row(cells: list, tag: str, bold: bool = False) -> None:
+        cols = st.columns(weights)
+        for c, col in zip(cells, cols):
+            with col:
+                for kind, val in c:
+                    if kind == "fig":
+                        if val:
+                            _show_figure(val)
+                        else:
+                            st.warning("Figure missing.")
+                    elif val:
+                        st.markdown(f"**{val}**" if bold else val)
+
+    _row(table["header"] + [[("text", "")]] * (ncols - len(table["header"])),
+         f"{key}_h", bold=True)
+    st.divider()
+    for i, r in enumerate(table["rows"]):
+        _row(r + [[("text", "")]] * (ncols - len(r)), f"{key}_{i}")
 
 
 def _render_tex_block(tex: str, base_dir: Path, key: str, label: str,
@@ -217,6 +274,8 @@ def _render_tex_block(tex: str, base_dir: Path, key: str, label: str,
                 _show_figure(payload)
             else:
                 st.warning("Referenced figure file is missing on disk.")
+        elif kind == "table":
+            _show_match_table(payload, key)
         elif kind == "display":
             st.latex(payload)
         elif payload:
@@ -402,6 +461,63 @@ def stage_processing() -> None:
 # ----------------------------------------------------------- 03 Library ---
 
 
+def _paper_items(pid: int) -> list[tuple[str, str, str, str | None]]:
+    """[(qn, question_tex, solution_tex, figures_dir|None)] in display order."""
+
+    def _read(p):
+        try:
+            return p.read_text(encoding="utf-8") if p.is_file() else ""
+        except OSError:
+            return ""
+
+    items = []
+    for r in _paper_questions(pid):
+        qn = r["question_number"]
+        qdir = directory_manager.get_question_dir(pid, qn)
+        figdir = qdir / "figures"
+        items.append((
+            qn,
+            _read(qdir / "question.tex"),
+            _read(qdir / "solution.tex"),
+            str(figdir) if figdir.is_dir() else None,
+        ))
+    return items
+
+
+@st.cache_data(show_spinner=False)
+def _paper_pdf_cached(title: str, sig: str, items: tuple) -> bytes | None:
+    """Compile the full paper PDF; cached -- sig covers sources + builder."""
+    from pathlib import Path
+
+    from app.render import _FULLPDF_REV, build_paper_pdf
+
+    assert sig.startswith(_FULLPDF_REV + "|"), "caller must mix builder rev into sig"
+    return build_paper_pdf(
+        [(q, qt, st, Path(f) if f else None) for q, qt, st, f in items], title)
+
+
+def _paper_pdf_button(slot, pid: int, paper_name: str) -> None:
+    """Full paper PDF (question + key + solution per question, ruled off)."""
+    import hashlib
+
+    from app.render import _FULLPDF_REV
+
+    items = _paper_items(pid)
+    if not items:
+        return
+    sig = _FULLPDF_REV + "|" + hashlib.sha256("\n".join(
+        f"{q}\n{qt}\n{st}" for q, qt, st, _ in items).encode()).hexdigest()
+    with st.spinner("Building paper PDF..."):
+        pdf = _paper_pdf_cached(
+            paper_name or f"Paper {pid}", sig, tuple(items))
+    if pdf:
+        slot.download_button("📄 Full PDF", data=pdf,
+                             file_name=f"paper{pid}_full.pdf",
+                             mime="application/pdf", key=f"dl_full_{pid}")
+    else:
+        slot.caption("PDF failed")
+
+
 def _pdf_download_button(slot, path: str, key: str) -> None:
     """Original-PDF download button; quiet note when the file is gone."""
     try:
@@ -462,6 +578,7 @@ def stage_library() -> None:
                 st.session_state["q"] = None
                 st.session_state["show_ans"] = False
                 st.rerun()  # stop here: the fresh run renders the sub-page
+            _paper_pdf_button(c2, r["id"], r["paper_name"])
     _reader()
 
 

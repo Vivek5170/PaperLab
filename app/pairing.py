@@ -21,18 +21,24 @@ UPLOAD_DIR = directory_manager.UPLOADS_DIR
 PAIR_THRESHOLD = 0.35
 
 
+def _norm(name: str) -> str:
+    """Lowercased stem with uniform separators (underscores kill \b)."""
+    return re.sub(r"[\s_\-]+", " ", Path(name).stem.lower())
+
+
+_SOL_WORD_RE = re.compile(
+    r"\b(solutions?|sols?|answer\s?keys?|answerkey|keys?|answers?)\b")
+
+
 def stem(name: str) -> str:
     """Normalize a filename for fuzzy matching: lower, no ext, uniform seps."""
-    s = Path(name).stem.lower()
-    s = re.sub(r"[\s_\-]+", " ", s)
-    s = re.sub(r"\b(solutions?|sols?|key|answers?)\b", " ", s)
+    s = _SOL_WORD_RE.sub(" ", _norm(name))
     return re.sub(r"\s+", " ", s).strip()
 
 
 def is_solution_name(name: str) -> bool:
-    """Same keyword rule as stem(): word-boundary match on the bare filename."""
-    return bool(re.search(r"\b(solutions?|sols?|key|answers?)\b",
-                          Path(name).stem.lower()))
+    """Same keyword rule as stem(): word-boundary match on normalized stem."""
+    return bool(_SOL_WORD_RE.search(_norm(name)))
 
 
 def split_candidates(names: list[str]) -> tuple[list[str], list[str]]:

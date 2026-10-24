@@ -42,18 +42,15 @@ def _check_range(name: str, value: int | None, minimum: int) -> None:
 def get_pdf_info(pdf_path: str) -> dict:
     """Inspect a PDF file and report its basic structure.
 
-    Use this tool FIRST before any other PDF tool to decide whether the
-    document is machine-readable.
+    Call this before any other PDF tool.
 
     Args:
-        pdf_path: Absolute or relative filesystem path to the PDF file.
+        pdf_path: Filesystem path to the PDF file.
 
     Returns:
-        A dict {"page_count": int, "has_text_layer": bool}.
-        ``has_text_layer`` is True if at least one page yields non-whitespace
-        extractable text, else False. If False, the agent must ABORT gracefully
-        and must NOT call search_pdf_text or get_page_text, because the PDF
-        is scanned/image-only.
+        A dict {"page_count": int, "has_text_layer": bool}. If
+        has_text_layer is False, ABORT: do not call search_pdf_text or
+        get_page_text (scanned/image-only PDF).
     """
     doc = fitz.open(pdf_path)
     try:
@@ -72,16 +69,13 @@ def get_pdf_info(pdf_path: str) -> dict:
 def search_pdf_text(pdf_path: str, query: str) -> list[int]:
     """Search a text-layer PDF for a query string (case-insensitive).
 
-    Call this AFTER get_pdf_info confirms has_text_layer is True. Use it to
-    locate candidate pages, e.g. query "Question 15" or "Solutions".
-
     Args:
         pdf_path: Filesystem path to the PDF file.
-        query: Target substring to search for (case-insensitive).
+        query: Target substring, e.g. "Question 15" or "Solutions".
 
     Returns:
-        A list of 1-based page numbers containing the query. Empty list if
-        no page matches. Pages are 1-based: the first page is 1, not 0.
+        1-based page numbers containing the query (first page is 1, not
+        0). Empty list if no page matches.
     """
     needle = query.lower()
     doc = fitz.open(pdf_path)
@@ -99,16 +93,12 @@ def search_pdf_text(pdf_path: str, query: str) -> list[int]:
 def get_page_text(pdf_path: str, page_number: int) -> str:
     """Return the raw extracted text of one PDF page.
 
-    Use this to confirm question/solution boundaries found via search_pdf_text.
-
     Args:
         pdf_path: Filesystem path to the PDF file.
-        page_number: 1-based page number (first page is 1). Must satisfy
-            1 <= page_number <= page_count from get_pdf_info.
+        page_number: 1-based page number, within get_pdf_info's page_count.
 
     Returns:
-        The raw text of the specified page. Raises ValueError if the page
-        number is out of range.
+        The raw page text. Raises ValueError if out of range.
     """
     doc = fitz.open(pdf_path)
     try:
@@ -133,35 +123,24 @@ def submit_metadata_and_boundaries(
     s_start: int | None = None,
     s_end: int | None = None,
 ) -> bool:
-    """UPDATE the pre-registered paper row with discovered metadata/boundaries.
-
-    Call this after boundaries are verified via get_page_text. This is an
-    UPDATE of the stub row created by Python pre-flight
-    (``database.register_paper``) -- it INSERTs nothing and takes no hash.
-    The ``paper_id`` comes from LangGraph graph state (injected by Python);
-    use it verbatim and NEVER invent a paper_id or compute a PDF hash.
-    Re-calling with the same ``paper_id`` overwrites the previous values,
-    so corrections simply resubmit.
+    """Save the paper's metadata and physics page boundaries.
 
     Args:
-        paper_id: Integer PK from LangGraph state (pre-flight registration).
-            Must already exist in the papers table.
-        paper_name: Human-readable paper title, e.g. "JEE Advanced 2024 Paper 1".
+        paper_id: From LangGraph state; use verbatim, never invent.
+        paper_name: Paper title, e.g. "JEE Advanced 2024 Paper 1".
         exam_type: Exam category, e.g. "JEE", "NEET", "Olympiad".
         paper_date: Date string, e.g. "2024-05-26".
         source_institute: Institute or publisher, e.g. "IIT Madras".
         q_start: 1-based first page of the questions section (>= 1).
         q_end: 1-based last page of the questions section (>= q_start).
-        s_start: 1-based first page of the solutions section, or null/None
-            (the indexer prompt uses 0, which is normalized to null here)
+        s_start: 1-based first page of the solutions section, or None/0
             when the paper has no solutions.
         s_end: 1-based last page of the solutions section (>= s_start),
-            or null/None (0 accepted, normalized to null) when the paper
-            has no solutions.
+            or None/0 when the paper has no solutions.
 
     Returns:
-        True on success. Fails with an error if ``paper_id`` does not exist
-        or any boundary is invalid (< 1 and not 0-for-null, or start > end).
+        True on success; resubmitting overwrites. Invalid paper_id or
+        boundaries fail.
     """
     # Prompt convention: the agent passes 0 for missing solution boundaries.
     if s_start == 0:
