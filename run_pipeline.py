@@ -23,6 +23,7 @@ from app.pairing import relocate_managed_files
 from graph import extractor_app, initial_state, phase1_app
 from preflight import preflight_register
 from run_extractor import get_coverage
+from tools_extractor import reset_assist_attempts
 
 
 def _wipe_paper(paper_id: int) -> None:
@@ -92,6 +93,10 @@ def run_pipeline(paper_id: int, force: bool = False) -> dict:
         raise ValueError(f"paper_id {paper_id} already done (use force=True to rerun)")
     if force:
         _wipe_paper(paper_id)
+    # Fresh attempt budget: the web UI runs pipelines in a background thread
+    # of one long-lived server process, so without this a rerun/resume would
+    # hit "attempt limit reached" on its first assisted_crop call.
+    reset_assist_attempts(paper_id)
 
     t0 = time.time()
     try:

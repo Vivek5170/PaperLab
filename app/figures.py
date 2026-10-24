@@ -115,6 +115,21 @@ def crop_image_file(path: str | Path, box: tuple[float, float, float, float]) ->
                         max(int(r * w), int(l * w) + 1),
                         max(int(b * h), int(t * h) + 1)))
     cropped.save(p, format=img.format or "PNG")
+    _record_mode(p.parent, p.name, "manual")
+
+
+def _record_mode(figures_dir, filename: str, mode: str) -> None:
+    """Persist figure provenance sidecar (see tools_extractor). Best-effort."""
+    import json
+    from pathlib import Path as _P
+
+    try:
+        sidecar = _P(figures_dir) / "_modes.json"
+        modes = json.loads(sidecar.read_text(encoding="utf-8")) if sidecar.is_file() else {}
+        modes[str(filename)] = mode
+        sidecar.write_text(json.dumps(modes, indent=1), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def save_uploaded_figure(qdir: str | Path, filename: str, data: bytes) -> Path:
@@ -130,4 +145,5 @@ def save_uploaded_figure(qdir: str | Path, filename: str, data: bytes) -> Path:
         raise ValueError("upload is not a readable image")
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
+    _record_mode(dest.parent, filename, "manual")
     return dest

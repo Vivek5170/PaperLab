@@ -162,6 +162,28 @@ page = st.session_state.get("page", "📖 Library")
 # ------------------------------------------------- figures & tex ---
 
 
+def _figure_mode(path: str) -> str | None:
+    """Provenance tag from figures/_modes.json (None when never recorded)."""
+    import json
+
+    try:
+        sidecar = Path(path).parent / "_modes.json"
+        if sidecar.is_file():
+            return json.loads(sidecar.read_text(encoding="utf-8")).get(Path(path).name)
+    except Exception:
+        pass
+    return None
+
+
+_MODE_STYLE = {
+    "snap": ("green", "snap — original PNG bytes"),
+    "vector": ("blue", "vector — assisted crop"),
+    "plain": ("orange", "plain — page crop"),
+    "exact": ("violet", "exact — hand-drawn box"),
+    "manual": ("gray", "manual — uploaded/edited"),
+}
+
+
 def _show_figure(path: str) -> None:
     """Show a figure capped so plain (200dpi) crops don't dominate.
 
@@ -176,6 +198,10 @@ def _show_figure(path: str) -> None:
         w = Image.open(path).size[0]
     except Exception:
         w = 480
+    mode = _figure_mode(path)
+    if mode in _MODE_STYLE:
+        color, label = _MODE_STYLE[mode]
+        st.markdown(f":{color}[● {label}]")
     st.image(path, caption=Path(path).name, width=min(w, 480))
 
 

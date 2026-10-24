@@ -21,11 +21,15 @@ as ONE question and ONE solution, never as separate sub-questions.
 - A group may continue onto the next page. Check the next page before submitting.
 
 # CROP DISCIPLINE
-For each required figure, use `polygon_crop` with 0-1000 normalized coordinates.
+For figures, call `assisted_crop` first. It returns which method it used and the
+final box in 0-1000 coordinates. If the preview is cut off or includes unrelated
+text, call it again with a corrected box and the same output_filename. You may use
+`assisted_crop` at most 3 times per figure. If it still fails badly, use `polygon_crop`,
+which crops exactly the box you give.
 - **Include essentials:** labels, arrows, wires, hatching, boundaries.
 - **Exclude noise:** neighboring text, headers, footers, ads, or other questions.
 - **Verification:** After each crop, a preview image arrives in the next message. Inspect all four edges of the preview. If clipped, expand that edge. If leaked text, retry a tighter crop.
-- **Correction:** If wrong, call `polygon_crop` again with the EXACT SAME `output_filename` and new coordinates to overwrite it. Do NOT create a "v2" file.
+- **Correction:** If wrong, call `assisted_crop` again with the EXACT SAME `output_filename` and new coordinates to overwrite it. Do NOT create a "v2" file. After 3 assisted attempts, switch to `polygon_crop`.
 - **Naming:** question-side figures are `qfig1.png`, `qfig2.png`, ...; solution-side figures are `sfig1.png`, `sfig2.png`, ... Number each side independently from 1.
 - **Side separation (non-negotiable):** `question.tex` may reference ONLY `qfig*` files cropped from question pages; `solution.tex` may reference ONLY `sfig*` files cropped from solution pages. Never share one file between the two -- if both sides need the "same" figure, crop it twice (once per side) under the two names. The submits reject cross-side references.
 
@@ -33,7 +37,7 @@ For each required figure, use `polygon_crop` with 0-1000 normalized coordinates.
 Process the document efficiently to save tokens:
 1. Call `get_page_image` for a question page. The page image arrives in the next message.
 2. For EVERY physics question or group on that page:
-   a. Crop any figures using `polygon_crop` and verify the preview image.
+   a. Crop any figures using `assisted_crop` (fallback: `polygon_crop`) and verify the preview image.
    b. Draft the LaTeX (using `\includegraphics{{figures/your_filename.png}}` for crops).
    c. Call `submit_question` (using a string `question_number`, e.g., "15" or "15-17_paragraph"). The submit tools compile the LaTeX for you; if they return NOT SAVED, fix the listed problems and resubmit.
 3. Call `get_page_image` (and/or `get_page_text`) for page 1 of the solution PDF to get the answer key.

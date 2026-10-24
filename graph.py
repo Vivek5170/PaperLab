@@ -23,6 +23,7 @@ from typing_extensions import TypedDict
 import database
 from llm import get_llm, invoke_with_retry
 from tools_extractor import (
+    assisted_crop,
     get_page_image,
     polygon_crop,
     submit_question,
@@ -45,6 +46,7 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 INDEXER_TOOLS = [search_pdf_text, get_page_text, submit_metadata_and_boundaries]
 EXTRACTOR_TOOLS = [
     get_page_image,
+    assisted_crop,
     polygon_crop,
     submit_question,
     submit_solution,
@@ -53,7 +55,7 @@ EXTRACTOR_TOOLS = [
 
 # Tools whose results arrive as a Command (text ToolMessage + image
 # HumanMessage). They need the LangChain tool_call_id injected at invoke.
-COMMAND_TOOLS = {get_page_image.name, polygon_crop.name}
+COMMAND_TOOLS = {get_page_image.name, assisted_crop.name, polygon_crop.name}
 
 INDEXER_SUBMIT_TOOL = "submit_metadata_and_boundaries"
 

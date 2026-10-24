@@ -19,6 +19,7 @@ import config  # noqa: F401 -- must be first: pins env from config.yaml + .env
 import database
 import directory_manager
 from graph import extractor_app
+from tools_extractor import reset_assist_attempts
 
 
 def _per_turn_log(messages: list) -> None:
@@ -92,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
         return final
 
     t0 = time.time()
+    reset_assist_attempts(paper_id)
     final = run_once([])
     submitted, missing = get_coverage(paper_id)
 
@@ -114,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     _per_turn_log(final["messages"])
     from tools_extractor import SNAP_LOG
 
-    print("Crops (question/file: snapped xref | plain):")
+    print("Crops (question/file: snap:<xref> | vector | plain | exact):")
     seen = [e for e in SNAP_LOG if e[0] == paper_id]
     if not seen:
         print("  none")

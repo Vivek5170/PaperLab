@@ -68,11 +68,204 @@ SNAP_MAX_BOX_RATIO = 5.0
 
 # Per-PDF memo caches (keyed by resolved abspath; PDFs are treated as stable).
 _CHROME_CACHE: dict[str, set[int]] = {}  # pdf -> xrefs repeating on most pages
-_SNAP_CACHE: dict[tuple[str, int], tuple[str, bytes]] = {}  # (pdf, xref) -> (ext, bytes)
+_SNAP_CACHE: dict[tuple[str, int], tuple[str, bytes, int]] = {}  # (pdf, xref) -> (ext, bytes, xref)
 
 # Per-figure snap record for run reports: (paper_id, question_number,
-# filename, "snap:<xref>" | "plain"). In-process only.
+# filename, "snap:<xref>" | "vector" | "plain" | "exact"). In-process only.
 SNAP_LOG: list[tuple] = []
+
+# ---- assisted_crop tuning (all PDF points unless noted) ----
+CHROME_MIN_PAGES = 3  # a stroke/text fingerprint on >= this many pages is chrome
+_VEC_TOUCH = 2.0  # stroke rects within this count as touching (clustering)
+_VEC_SEARCH_MARGIN = 40.0  # clusters are only considered this far outside the box
+_VEC_TRIM_WORDS = 3  # text blocks longer than this are trim candidates
+_VEC_PAD = 0.0  # no padding: the reported box is rendered exactly
+_VEC_LABEL_NEAR = 10.0  # short text within this of a stroke is a label (kept)
+_VEC_GROW_CAP = 3.0  # max final/agent area ratio; beyond this growth is refused
+_MIN_REPORT_DELTA = 3  # 0-1000 units below this are rounding noise, unreported
+_CROP_DPI = 250  # clip-render resolution for assisted/polygon crops
+_ASSIST_MAX_ATTEMPTS = 3
+
+# Per-PDF chrome fingerprints (keyed by resolved abspath; PDFs treated as stable).
+_CHROME_STROKES: dict[str, set[tuple]] = {}  # pdf -> {(x0,y0,x1,y1) rounded}
+_CHROME_TEXT: dict[str, set[tuple]] = {}  # pdf -> {(rect, normalized text)}
+# Per-page vector cache: (pdf, pageno) -> (stroke rects, text blocks, clusters).
+_PAGE_VEC_CACHE: dict[tuple[str, int], tuple[list, list, list]] = {}
+# assisted_crop attempt counter: (paper_id, question, filename) -> calls made.
+_ASSIST_ATTEMPTS: dict[tuple[int, str, str], int] = {}
+
+
+def reset_assist_attempts(paper_id: int | None = None) -> int:
+    """Drop cached attempt counters; call at run start so reruns start fresh.
+
+    With paper_id, resets only that paper's figures; without, resets all.
+    Returns the number of counters dropped.
+    """
+    if paper_id is None:
+        n = len(_ASSIST_ATTEMPTS)
+        _ASSIST_ATTEMPTS.clear()
+        return n
+    doomed = [k for k in _ASSIST_ATTEMPTS if k[0] == paper_id]
+    for k in doomed:
+        del _ASSIST_ATTEMPTS[k]
+    return len(doomed)
+
+
+def _pdf_key(pdf_path: str) -> str:
+    return str(Path(pdf_path).resolve())
+
+
+def _stroke_fp(rect) -> tuple:
+    """Fingerprint a stroke by rounded position and size."""
+    return (
+        round(rect.x0, 1),
+        round(rect.y0, 1),
+        round(rect.x1, 1),
+        round(rect.y1, 1),
+    )
+
+
+def _block_fp(block) -> tuple:
+    """Fingerprint a text block by rounded rect + digit-normalized text.
+
+    Digits are masked so running heads with varying numbers ("Page 3 of 21",
+    "Set 2") still match across pages; real content differs anyway.
+    """
+    text = " ".join(str(block[4]).split())
+    text = re.sub(r"\d+", "#", text)
+    return (
+        round(block[0], 1),
+        round(block[1], 1),
+        round(block[2], 1),
+        round(block[3], 1),
+        text,
+    )
+
+
+def _chrome_for(pdf_path: str) -> tuple[set[tuple], set[tuple]]:
+    """Chrome fingerprints for a PDF: strokes/text repeating on >=3 pages.
+
+    Headers, footers, column rules, borders and watermark outlines sit at the
+    same position on many pages, so they match; real figure strokes sit at
+    different positions per page, so they don't. Computed once per PDF.
+    """
+    key = _pdf_key(pdf_path)
+    if key not in _CHROME_STROKES:
+        stroke_counts: dict[tuple, int] = {}
+        text_counts: dict[tuple, int] = {}
+        doc = fitz.open(pdf_path)
+        try:
+            for i in range(len(doc)):
+                page = doc[i]
+                seen_s, seen_t = set(), set()
+                for d in page.get_drawings():
+                    seen_s.add(_stroke_fp(d["rect"]))
+                for b in page.get_text("blocks"):
+                    if str(b[4]).strip():
+                        seen_t.add(_block_fp(b))
+                for fp in seen_s:
+                    stroke_counts[fp] = stroke_counts.get(fp, 0) + 1
+                for fp in seen_t:
+                    text_counts[fp] = text_counts.get(fp, 0) + 1
+        finally:
+            doc.close()
+        _CHROME_STROKES[key] = {
+            fp for fp, c in stroke_counts.items() if c >= CHROME_MIN_PAGES
+        }
+        _CHROME_TEXT[key] = {
+            fp for fp, c in text_counts.items() if c >= CHROME_MIN_PAGES
+        }
+    return _CHROME_STROKES[key], _CHROME_TEXT[key]
+
+
+def _page_vectors(pdf_path: str, page_number: int) -> tuple[list, list, list]:
+    """Non-chrome (stroke rects, text blocks, stroke clusters); cached per page.
+
+    Clustering runs once over ALL page strokes; callers select the clusters
+    touching their window, so a figure stroke just outside one box is still
+    available to the next.
+    """
+    key = (_pdf_key(pdf_path), page_number)
+    if key not in _PAGE_VEC_CACHE:
+        chrome_s, chrome_t = _chrome_for(pdf_path)
+        doc = fitz.open(pdf_path)
+        try:
+            page = doc[page_number - 1]
+            strokes = [
+                d["rect"]
+                for d in page.get_drawings()
+                if _stroke_fp(d["rect"]) not in chrome_s
+            ]
+            blocks = [
+                b
+                for b in page.get_text("blocks")
+                if str(b[4]).strip() and _block_fp(b) not in chrome_t
+            ]
+        finally:
+            doc.close()
+        _PAGE_VEC_CACHE[key] = (strokes, blocks, _cluster_rects(strokes))
+    return _PAGE_VEC_CACHE[key]
+
+
+def _touches(a, b, tol: float = _VEC_TOUCH) -> bool:
+    """True when rects a and b touch or overlap (within tol)."""
+    return (
+        a.x0 <= b.x1 + tol
+        and b.x0 <= a.x1 + tol
+        and a.y0 <= b.y1 + tol
+        and b.y0 <= a.y1 + tol
+    )
+
+
+def _inflate(rect, d: float):
+    """Return rect grown by d points on every side (PyMuPDF has no expand)."""
+    return fitz.Rect(rect.x0 - d, rect.y0 - d, rect.x1 + d, rect.y1 + d)
+
+
+def _union(a, b):
+    """Manual bbox union: ``|=`` silently drops zero-area (line) rects."""
+    return fitz.Rect(
+        min(a.x0, b.x0), min(a.y0, b.y0), max(a.x1, b.x1), max(a.y1, b.y1)
+    )
+
+
+def _cluster_rects(rects: list) -> list:
+    """Group rects that touch in 2D; returns [(bbox, members)] per group."""
+    n = len(rects)
+    parent = list(range(n))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if _touches(rects[i], rects[j]):
+                ri, rj = find(i), find(j)
+                if ri != rj:
+                    parent[ri] = rj
+    groups: dict[int, list] = {}
+    for i, r in enumerate(rects):
+        groups.setdefault(find(i), []).append(r)
+    out = []
+    for members in groups.values():
+        box = fitz.Rect(members[0])
+        for r in members[1:]:
+            box = _union(box, r)
+        out.append((box, members))
+    return out
+
+
+def _to_1000(rect, page_rect) -> list[int]:
+    """PDF-points rect -> 0-1000 grid ints (top-left origin)."""
+    return [
+        int(round(rect.x0 / page_rect.width * 1000)),
+        int(round(rect.y0 / page_rect.height * 1000)),
+        int(round(rect.x1 / page_rect.width * 1000)),
+        int(round(rect.y1 / page_rect.height * 1000)),
+    ]
 
 
 def _chrome_xrefs(pdf_path: str) -> set[int]:
@@ -94,7 +287,7 @@ def _chrome_xrefs(pdf_path: str) -> set[int]:
 
 def _try_snap(
     pdf_path: str, page_number: int, norm_pts: list[tuple[int, int]]
-) -> tuple[str, bytes] | None:
+) -> tuple[str, bytes, int] | None:
     """Snap a 0-1000 polygon bbox to an embedded figure image, if any.
 
     Converts the polygon's bounding box to PDF points and returns the
@@ -186,10 +379,20 @@ def _render_page_to_pil(pdf_path: str, page_number: int, dpi: int = _RENDER_DPI)
         doc.close()
 
 
-def _pil_to_b64(img: Image.Image) -> str:
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode("ascii")
+def _clip_render_to_pil(
+    pdf_path: str, page_number: int, clip, dpi: int = _CROP_DPI
+) -> Image.Image:
+    """Render just a page region (PDF points) -- lighter than a full page."""
+    doc = fitz.open(pdf_path)
+    try:
+        if page_number < 1 or page_number > len(doc):
+            raise ValueError(
+                f"page_number {page_number} out of range 1..{len(doc)}"
+            )
+        pix = doc[page_number - 1].get_pixmap(dpi=dpi, clip=fitz.Rect(clip))
+        return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+    finally:
+        doc.close()
 
 
 def _render_page_to_file(pdf_path: str, page_number: int, dpi: int = _RENDER_DPI) -> Path:
@@ -201,6 +404,28 @@ def _render_page_to_file(pdf_path: str, page_number: int, dpi: int = _RENDER_DPI
         _render_page_to_pil(pdf_path, page_number, dpi).save(str(out), format="PNG")
         _prune_cache(_RENDER_CACHE)
     return out
+
+
+def _record_figure_mode(figures_dir, filename: str, mode: str) -> None:
+    """Persist figure provenance for the PaperLab reader's color tags.
+
+    Sidecar figures/_modes.json maps filename -> snap | vector | plain |
+    exact | manual. Underscore-prefixed, so figure listers skip it.
+    Best-effort: never breaks a save.
+    """
+    import json
+
+    try:
+        sidecar = Path(figures_dir) / "_modes.json"
+        modes = (
+            json.loads(sidecar.read_text(encoding="utf-8"))
+            if sidecar.is_file()
+            else {}
+        )
+        modes[str(filename)] = mode
+        sidecar.write_text(json.dumps(modes, indent=1), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def img_block(path: str | Path, max_side: int, q: int = _PREVIEW_JPEG_Q) -> dict:
@@ -279,34 +504,20 @@ def polygon_crop(
     question_number: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
-    """Crop a polygonal figure from a PDF page into the question's figures/.
+    """Crop EXACTLY the given polygon -- no snapping, no adjustment, no assist.
 
-    Points MUST be normalized to a 1000x1000 grid over the rendered page:
-    (0, 0) is TOP-LEFT, (1000, 1000) is BOTTOM-RIGHT. Example middle box:
-    [(250, 200), (750, 200), (750, 800), (250, 800)]. Values are integers in
-    [0, 1000]; the tool scales them to actual pixels internally. Emit 3+
-    points in clockwise order (see the page image first, it arrives in the
-    message after get_page_image).
-
-    If the box closely overlaps an embedded figure image -- IoU >= 0.5, or
-    the box contains >= 80% of exactly one embedded image while staying
-    under 5x that image's area -- the image's ORIGINAL bytes are saved: no
-    re-render blur, no cut edges, no leaked neighbors. Otherwise a plain
-    crop of the rendered page is used. Either way the image is saved to
-    Outputs/{paper_id}/{question_number}/figures/{output_filename} (folders
-    created as needed). A preview image arrives in the next message. To fix
-    a bad crop, call again with the SAME paper_id, question_number and
-    output_filename plus corrected points -- the file is overwritten.
+    The escape hatch when assisted_crop keeps getting it wrong: what you draw
+    is what gets saved (polygon mask at 250 DPI, white background outside).
+    Nothing about this call changes between retries, so it cannot loop.
+    Overwriting the SAME output_filename replaces the file.
 
     Args:
         pdf_path: Filesystem path to the PDF file.
         page_number: 1-based page number containing the figure.
         points: List of (x, y) vertices on the 0-1000 grid.
-        output_filename: e.g. "fig1.png" (single filename, no paths).
-            Reuse the SAME name to correct.
+        output_filename: e.g. "qfig1.png" (single filename, no paths).
         paper_id: Integer PK from LangGraph state; never invent one.
-        question_number: STRING matching the submit_question call
-            ("1", "15a", "15-17_paragraph"); never cast to int.
+        question_number: STRING matching the submit_question call.
     """
     if database.get_paper(paper_id) is None:
         raise ValueError(
@@ -322,57 +533,425 @@ def polygon_crop(
         if not (0 <= x <= 1000 and 0 <= y <= 1000):
             raise ValueError(f"point {(x, y)} outside 0-1000 grid")
 
-    img = _render_page_to_pil(pdf_path, page_number, _RENDER_DPI)
-    w, h = img.size
-    # Scale 0-1000 grid -> actual pixels.
-    px_pts = [(x / 1000.0 * w, y / 1000.0 * h) for x, y in norm_pts]
+    doc = fitz.open(pdf_path)
+    try:
+        if page_number < 1 or page_number > len(doc):
+            raise ValueError(
+                f"page_number {page_number} out of range 1..{len(doc)}"
+            )
+        r = doc[page_number - 1].rect
+        fxs = [x / 1000.0 * r.width for x, _ in norm_pts]
+        fys = [y / 1000.0 * r.height for _, y in norm_pts]
+        if max(fxs) <= min(fxs) or max(fys) <= min(fys):
+            raise ValueError("polygon has zero area after scaling to points")
+        clip = fitz.Rect(min(fxs), min(fys), max(fxs), max(fys)) & r
+        pix = doc[page_number - 1].get_pixmap(dpi=_CROP_DPI, clip=clip)
+        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+    finally:
+        doc.close()
 
-    xs = [p[0] for p in px_pts]
-    ys = [p[1] for p in px_pts]
-    left, upper = max(int(min(xs)), 0), max(int(min(ys)), 0)
-    right, lower = min(int(max(xs)), w), min(int(max(ys)), h)
-    if right <= left or lower <= upper:
-        raise ValueError("polygon has zero area after scaling to pixels")
+    # Polygon mask in clip-local pixels. White background outside polygon.
+    cw, ch = img.size
+    px_pts = [
+        (
+            (x / 1000.0 * r.width - clip.x0) / clip.width * cw,
+            (y / 1000.0 * r.height - clip.y0) / clip.height * ch,
+        )
+        for x, y in norm_pts
+    ]
+    mask = Image.new("L", (cw, ch), 0)
+    ImageDraw.Draw(mask).polygon(px_pts, fill=255)
+    background = Image.new("RGB", (cw, ch), (255, 255, 255))
+    background.paste(img, mask=mask)
 
+    qdir = directory_manager.ensure_question_dir(paper_id, question_number)
+    dest = qdir / directory_manager.FIGURES_DIR / filename
+    background.save(str(dest), format="PNG")
+
+    _record_figure_mode(dest.parent, filename, "exact")
+    SNAP_LOG.append((paper_id, str(question_number), filename, "exact"))
+    return image_reply(
+        tool_call_id,
+        f"Saved {filename} to {dest}. Pure crop of exactly your box "
+        "(no snapping, no adjustment). A preview is in the next message.",
+        f"[Crop preview: {filename}]",
+        dest,
+        CROP_PX,
+    )
+
+
+def _assist_box(
+    page, want, blocks: list, clusters: list
+) -> tuple | None:
+    """Vector-assist the agent's box; None when no stroke cluster is near it.
+
+    Clusters touching the window join the box to a fixed point (feeding the
+    result back changes nothing); long text blocks crossing a box edge or
+    sitting fully inside it are trimmed (short labels stay). Growth beyond
+    _VEC_GROW_CAP x the agent's area is refused. Returns
+    (final_rect_unpadded, [(edge, snippet)], capped_box_or_None).
+    """
+    window = _inflate(want, _VEC_SEARCH_MARGIN)
+    sel = [(c, m) for c, m in clusters if _touches(c, window, 0.0)]
+    if not sel:
+        return None
+    box = fitz.Rect(want)
+    # Fixed-point union: any selected cluster touching the box joins it.
+    for _ in range(25):
+        grown = fitz.Rect(box)
+        for c, _m in sel:
+            if _touches(c, box):
+                grown = _union(grown, c)
+        if (grown.x0, grown.y0, grown.x1, grown.y1) == (
+            box.x0,
+            box.y0,
+            box.x1,
+            box.y1,
+        ):
+            break
+        box = grown
+    else:
+        box = grown
+    if not any(_touches(c, box) for c, _m in sel):
+        return None
+
+    if box.width * box.height > _VEC_GROW_CAP * want.width * want.height:
+        return fitz.Rect(want), [], fitz.Rect(box), []
+
+    included = [r for c, m in sel if _touches(c, box) for r in m]
+    changes: list[tuple] = []
+
+    def trimmable(b) -> bool:
+        # Word count + distance only. Short text survives solely as a label
+        # hugging the figure; stray question fragments far from every stroke
+        # are trimmed like the rest.
+        rect = (b[0], b[1], b[2], b[3])
+        words = str(b[4]).split()
+        if len(words) > _VEC_TRIM_WORDS:
+            return True
+        if not included:
+            return False
+        bx0, by0, bx1, by1 = rect
+        gap = float("inf")
+        for s in included:
+            dx = max(s.x0 - bx1, bx0 - s.x1, 0.0)
+            dy = max(s.y0 - by1, by0 - s.y1, 0.0)
+            gap = min(gap, (dx * dx + dy * dy) ** 0.5)
+        return gap > _VEC_LABEL_NEAR
+
+    # Ink fully inside a trimmable text block is text decoration (underlines,
+    # rules, glyph fragments), not figure: it neither vetoes trims (strip
+    # check) nor anchors the shrink. A wire merely passing through keeps
+    # sticking out, so it stays protected.
+    zones = [(b[0], b[1], b[2], b[3]) for b in blocks if trimmable(b)]
+
+    def in_zone(r) -> bool:
+        return any(
+            zx0 - 2 <= r.x0
+            and zy0 - 2 <= r.y0
+            and r.x1 <= zx1 + 2
+            and r.y1 <= zy1 + 2
+            for zx0, zy0, zx1, zy1 in zones
+        )
+
+    ink = [s for s in included if not in_zone(s)]
+
+    def strip_empty(x0: float, y0: float, x1: float, y1: float) -> bool:
+        # The strip being cut away must hold no figure ink: that is exactly
+        # the condition under which trimming cannot slice the figure.
+        probe = fitz.Rect(x0, y0, x1, y1)
+        return not any(_touches(probe, s, 0.0) for s in ink)
+
+    # Text removal, unified: for every text block, each inward edge alignment
+    # is one operation, whether the block crosses the edge or sits inside.
+    # A trim applies iff the strip it removes holds no figure ink.
+    for _ in range(10):
+        moved = False
+        for b in blocks:
+            if not trimmable(b):
+                continue
+            bx0, by0, bx1, by1 = b[0], b[1], b[2], b[3]
+            snippet = " ".join(str(b[4]).split())[:40]
+            if box.y0 < by1 < box.y1 and strip_empty(
+                box.x0, box.y0, box.x1, by1
+            ):
+                box.y0 = by1
+                changes.append(("top", snippet))
+                moved = True
+                continue
+            if box.y0 < by0 < box.y1 and strip_empty(
+                box.x0, by0, box.x1, box.y1
+            ):
+                box.y1 = by0
+                changes.append(("bottom", snippet))
+                moved = True
+                continue
+            if box.x0 < bx1 < box.x1 and strip_empty(
+                box.x0, box.y0, bx1, box.y1
+            ):
+                box.x0 = bx1
+                changes.append(("left", snippet))
+                moved = True
+                continue
+            if box.x0 < bx0 < box.x1 and strip_empty(
+                bx0, box.y0, box.x1, box.y1
+            ):
+                box.x1 = bx0
+                changes.append(("right", snippet))
+                moved = True
+                continue
+        if not moved:
+            break
+
+    # Shrink empty margins: pull each edge in to the content (figure ink
+    # and kept text inside the box), so loose space with no vectors goes.
+    content = [r for r in ink if _touches(r, box, 0.0)]
+    for b in blocks:
+        if box.x0 <= b[0] and box.y0 <= b[1] and b[2] <= box.x1 and b[3] <= box.y1:
+            content.append(fitz.Rect(b[0], b[1], b[2], b[3]))
+    if content:
+        cx0 = min(r.x0 for r in content)
+        cy0 = min(r.y0 for r in content)
+        cx1 = max(r.x1 for r in content)
+        cy1 = max(r.y1 for r in content)
+        if box.x0 < cx0 < box.x1:
+            box.x0 = cx0
+            changes.append(("left", ""))
+        if box.y0 < cy0 < box.y1:
+            box.y0 = cy0
+            changes.append(("top", ""))
+        if box.x0 < cx1 < box.x1:
+            box.x1 = cx1
+            changes.append(("right", ""))
+        if box.y0 < cy1 < box.y1:
+            box.y1 = cy1
+            changes.append(("bottom", ""))
+
+    if box.is_empty or box.width <= 0 or box.height <= 0:
+        return None
+    box &= page.rect
+    if box.is_empty or box.width <= 0 or box.height <= 0:
+        return None
+
+    # Leftover verdicts for the Crop Lab: why each surviving text block is
+    # still there. (Applied trims are already in `changes`.)
+    verdicts: list[tuple] = []
+    for b in blocks:
+        bx0, by0, bx1, by1 = b[0], b[1], b[2], b[3]
+        if not _touches(fitz.Rect(bx0, by0, bx1, by1), box, 0.0):
+            continue
+        snippet = " ".join(str(b[4]).split())[:60]
+        words = len(str(b[4]).split())
+        if not trimmable(b):
+            verdicts.append((snippet, words, "kept: short label hugging ink"))
+            continue
+        reason = "kept: no inward edge applies"
+        if box.y0 < by1 < box.y1 and not strip_empty(box.x0, box.y0, box.x1, by1):
+            reason = "kept: strip above holds ink"
+        elif box.y0 < by0 < box.y1 and not strip_empty(box.x0, by0, box.x1, box.y1):
+            reason = "kept: strip below holds ink"
+        elif box.x0 < bx1 < box.x1 and not strip_empty(box.x0, box.y0, bx1, box.y1):
+            reason = "kept: strip left holds ink"
+        elif box.x0 < bx0 < box.x1 and not strip_empty(bx0, box.y0, box.x1, box.y1):
+            reason = "kept: strip right holds ink"
+        verdicts.append((snippet, words, reason))
+    return box, changes, None, verdicts
+
+
+@tool
+def assisted_crop(
+    pdf_path: str,
+    page_number: int,
+    points: list[tuple[int, int]],
+    output_filename: str,
+    paper_id: int,
+    question_number: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> Command:
+    """Crop a figure with small automatic corrections. Call this FIRST.
+
+    Your box is the intent; the tool only fixes what it can prove:
+    snap -- the box matches one embedded image, so the ORIGINAL bytes are
+      saved (no re-render blur, no cut edges).
+    vector -- non-chrome pen strokes touching the box complete clipped shapes
+      and long text lines at the edges are trimmed (short labels stay).
+    plain -- no image and no strokes found; your box is saved as-is.
+    The reply states the mode, your box, the final box (0-1000), a
+    plain-language change list, and the attempt count. Max 3 assisted calls
+    per figure; the 4th saves nothing and tells you to use polygon_crop.
+
+    Args:
+        pdf_path: Filesystem path to the PDF file.
+        page_number: 1-based page number containing the figure.
+        points: List of (x, y) vertices on the 0-1000 grid.
+        output_filename: e.g. "qfig1.png" (single filename, no paths).
+            Reuse the SAME name to correct.
+        paper_id: Integer PK from LangGraph state; never invent one.
+        question_number: STRING matching the submit_question call.
+    """
+    if database.get_paper(paper_id) is None:
+        raise ValueError(
+            f"paper_id {paper_id} does not exist; "
+            "it must come from pre-flight registration via LangGraph state"
+        )
+    filename = directory_manager.safe_component(output_filename, "output_filename")
+    # Normalize points: LangChain may deliver lists instead of tuples.
+    norm_pts = [(int(x), int(y)) for x, y in points]
+    if len(norm_pts) < 3:
+        raise ValueError("assisted_crop requires at least 3 points")
+    for x, y in norm_pts:
+        if not (0 <= x <= 1000 and 0 <= y <= 1000):
+            raise ValueError(f"point {(x, y)} outside 0-1000 grid")
+
+    akey = (paper_id, str(question_number), filename)
+
+    doc = fitz.open(pdf_path)
+    try:
+        if page_number < 1 or page_number > len(doc):
+            raise ValueError(
+                f"page_number {page_number} out of range 1..{len(doc)}"
+            )
+        page = doc[page_number - 1]
+        r = page.rect
+        xs = [x / 1000.0 * r.width for x, _ in norm_pts]
+        ys = [y / 1000.0 * r.height for _, y in norm_pts]
+        want = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
+        if want.is_empty or want.width <= 0 or want.height <= 0:
+            raise ValueError("polygon has zero area after scaling to points")
+        page_rect = fitz.Rect(page.rect)
+    finally:
+        doc.close()
+
+    # Count the attempt only after all input validation passed, so a bad
+    # page number or degenerate box doesn't burn one of the three.
+    attempt = _ASSIST_ATTEMPTS.get(akey, 0) + 1
+    if attempt > _ASSIST_MAX_ATTEMPTS:
+        return Command(
+            update={
+                "messages": [
+                    ToolMessage(
+                        "attempt limit reached (3 assisted calls for this "
+                        "figure). Nothing was saved. Use polygon_crop with "
+                        "your own coordinates.",
+                        tool_call_id=tool_call_id,
+                    )
+                ]
+            }
+        )
+    _ASSIST_ATTEMPTS[akey] = attempt
+
+    want1000 = [
+        int(round(want.x0 / r.width * 1000)),
+        int(round(want.y0 / r.height * 1000)),
+        int(round(want.x1 / r.width * 1000)),
+        int(round(want.y1 / r.height * 1000)),
+    ]
+    tag = f"attempt {attempt} of {_ASSIST_MAX_ATTEMPTS}"
     qdir = directory_manager.ensure_question_dir(paper_id, question_number)
     dest = qdir / directory_manager.FIGURES_DIR / filename
 
     snapped = _try_snap(pdf_path, page_number, norm_pts)
-    snap_xref: int | None = None
     if snapped is not None:
         ext, data, snap_xref = snapped
-        if _ext_matches(filename, ext):
-            dest.write_bytes(data)
-        else:
-            try:
-                Image.open(io.BytesIO(data)).convert("RGB").save(str(dest), format="PNG")
-            except Exception:
-                snapped = None  # fall through to plain crop
-                snap_xref = None
-    if snapped is None:
-        # Plain crop fallback: polygon mask at full-page size, then crop
-        # both image and mask to the bbox. White background outside polygon.
-        mask = Image.new("L", (w, h), 0)
-        ImageDraw.Draw(mask).polygon(px_pts, fill=255)
-        cropped = img.crop((left, upper, right, lower))
-        mask_cropped = mask.crop((left, upper, right, lower))
-        background = Image.new("RGB", cropped.size, (255, 255, 255))
-        background.paste(cropped, mask=mask_cropped)
-        background.save(str(dest), format="PNG")
+        try:
+            if _ext_matches(filename, ext):
+                dest.write_bytes(data)
+            else:
+                Image.open(io.BytesIO(data)).convert("RGB").save(
+                    str(dest), format="PNG"
+                )
+        except Exception:
+            snapped = None
+    if snapped is not None:
+        _record_figure_mode(dest.parent, filename, "snap")
+        SNAP_LOG.append(
+            (paper_id, str(question_number), filename, f"snap:{snap_xref}")
+        )
+        return image_reply(
+            tool_call_id,
+            f"mode: snap, matched embedded image (xref {snap_xref}), "
+            f"original image returned. Your box was {want1000}. {tag}. "
+            "Preview attached.",
+            f"[Crop preview: {filename}]",
+            dest,
+            CROP_PX,
+        )
 
-    SNAP_LOG.append(
-        (paper_id, str(question_number), filename,
-         f"snap:{snap_xref}" if snapped is not None else "plain")
+    _strokes, blocks, clusters = _page_vectors(pdf_path, page_number)
+    doc = fitz.open(pdf_path)
+    try:
+        page = doc[page_number - 1]
+        assisted = _assist_box(page, want, blocks, clusters)
+    finally:
+        doc.close()
+
+    if assisted is not None:
+        final, trim_notes, capped, _verdicts = assisted
+        final1000 = _to_1000(final, page_rect)
+        if capped is not None:
+            far1000 = _to_1000(capped, page_rect)
+            change_txt = (
+                "strokes continue far beyond your box (to %s); not applied. "
+                "Re-crop if you want that." % (far1000,)
+            )
+        else:
+            changes: list[str] = []
+            edges = (("left", 0), ("top", 1), ("right", 2), ("bottom", 3))
+            for edge, i in edges:
+                delta = final1000[i] - want1000[i]
+                if edge in ("left", "top"):
+                    delta = -delta  # positive = box grew outward
+                if delta >= _MIN_REPORT_DELTA:
+                    changes.append(
+                        "extended %s by %d (strokes continued past your edge)"
+                        % (edge, delta)
+                    )
+                elif delta <= -_MIN_REPORT_DELTA:
+                    changes.append("trimmed %s by %d" % (edge, -delta))
+            for edge, snippet in trim_notes:
+                for k, c in enumerate(changes):
+                    if c.startswith("trimmed %s by" % edge) and "(text line" not in c and "(empty margin)" not in c:
+                        changes[k] = c + (
+                            ' (text line "%s")' % snippet
+                            if snippet
+                            else " (empty margin)"
+                        )
+                        break
+            change_txt = "; ".join(changes) if changes else "no change needed"
+        # Render from the REPORTED box (not the float internals), so the
+        # saved pixels match the coordinates exactly and feeding them back
+        # reproduces this result byte-for-byte (idempotent).
+        rep = fitz.Rect(
+            final1000[0] / 1000 * page_rect.width,
+            final1000[1] / 1000 * page_rect.height,
+            final1000[2] / 1000 * page_rect.width,
+            final1000[3] / 1000 * page_rect.height,
+        )
+        render_box = _inflate(rep, _VEC_PAD) & page_rect
+        _clip_render_to_pil(pdf_path, page_number, render_box).save(
+            str(dest), format="PNG"
+        )
+        _record_figure_mode(dest.parent, filename, "vector")
+        SNAP_LOG.append((paper_id, str(question_number), filename, "vector"))
+        return image_reply(
+            tool_call_id,
+            "mode: vector. your box: %s. final box: %s. changes: %s. %s. "
+            "Preview attached." % (want1000, final1000, change_txt, tag),
+            f"[Crop preview: {filename}]",
+            dest,
+            CROP_PX,
+        )
+
+    # Nothing found: plain crop of the box, said plainly.
+    _clip_render_to_pil(pdf_path, page_number, want & page_rect).save(
+        str(dest), format="PNG"
     )
-    how = (
-        f"Snapped to embedded image xref {snap_xref} (original bytes). "
-        if snapped is not None
-        else "Plain crop of the rendered page. "
-    )
+    _record_figure_mode(dest.parent, filename, "plain")
+    SNAP_LOG.append((paper_id, str(question_number), filename, "plain"))
     return image_reply(
         tool_call_id,
-        f"Saved {filename} to {dest}. {how}"
-        "A preview is in the next message; inspect it before moving on.",
+        "mode: plain, no image or strokes found, saved your box as-is. "
+        "your box: %s. %s. Preview attached." % (want1000, tag),
         f"[Crop preview: {filename}]",
         dest,
         CROP_PX,
