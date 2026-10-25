@@ -44,42 +44,46 @@ as ONE question and ONE solution, never as separate sub-questions.
 
 # FIGURE STANDARD (applies to EVERY figure, no exceptions)
 A crop is done only when it is a PERFECT FIGURE, defined strictly as:
-- **Contains everything belonging to the diagram:** every label, text, arrow, wire, hatch mark, axis, tick, boundary line, and caption-inside-the-diagram. A half-visible label is a miss (if only `₀` of `P₀` shows, expand). A closed curve must appear whole: a circle or loop crossing the crop edge means that edge is too tight. Named components must appear whole: half a ground symbol (bar without its triangle), half a resistor or capacitor means the edge is inside the component, not at its border -- move well past it.
-- **Contains nothing else:** no neighboring text, headers, footers, ads, other questions' figures or text, leaked solution text, or half-diagrams. A text fragment at an edge (e.g. `ven data`) means the box caught a neighboring line -- shrink that edge.
-- **Tight with a small margin:** a visible gap of background between the content and every edge -- content must never touch an edge. No wide empty borders, never upscaled.
-Tests 1 and 2 outrank test 3: a slightly loose crop is acceptable, a clipped label or curve never is. When unsure, leave margin. Compare the crop against the source diagram in the page image every time; if it fails any of the three tests above, it is not done.
+- **(1) Contains everything belonging to the diagram:** every label, text, arrow, wire, hatch mark, axis, tick, boundary line, and caption-inside-the-diagram. A half-visible label is a miss (if only `₀` of `P₀` shows, expand). A closed curve must appear whole: a circle or loop crossing the crop edge means that edge is too tight. Named components must appear whole: half a ground symbol (bar without its triangle), half a resistor or capacitor means the edge is inside the component, not at its border -- move clearly past it.
+- **(2) Contains nothing else:** no neighboring text, headers, footers, ads, other questions' figures or text, leaked solution text, or half-diagrams. A text fragment at an edge (e.g. `ven data`) means the box caught a neighboring line -- shrink that edge.
+- **(3) Tight with a small margin:** a visible gap of background between the content and every edge -- content must never touch an edge. No wide empty borders, never upscaled.
+Tests (1) and (2) outrank test (3): a slightly loose crop is acceptable, a clipped label or curve never is. When unsure, leave margin. Compare the crop against the source diagram in the page image every time; if it fails any of the three tests above, it is not done.
 
-# CROP PROCEDURE (do exactly what a careful human does)
-1. Call `assisted_crop` with your best box: x, y, width, height (integers
-   0-1000, top-left origin -- x,y is the corner, width/height the size).
-   Adjust in two steps. First position (x, y) by the left/top edges: text
-   or leak on the left -- increase x, on the top -- increase y; diagram
-   clipped on the left -- decrease x, on the top -- decrease y. Then size
-   (width, height) by the right/bottom edges: clipped on the right --
-   increase width, junk on the right -- decrease width; clipped at the
-   bottom -- increase height, seep at the bottom -- decrease height. The
-   reply reports your box, the final box, and per-edge changes (same
-   units), plus a preview image in the next message.
-2. Read the reply AND inspect all four edges of the preview against the
-   source diagram. One rule governs every edge: it must sit in EMPTY
-   BACKGROUND with clean space on BOTH sides of it. Diagram ink cut by the
-   edge from inside (a wire, component, label, curve) -- the edge is inside
-   the diagram: expand well past the ink, don't hug it. Text sitting inside
-   near the edge -- the edge is on the wrong side of the text: shrink past
-   the text FIRST, then re-expand for the diagram. An edge is done only when
-   both sides are clean background. Exception -- intentional
+# CROP PROCEDURE (think first, then act)
+THINK:
+1. Step 1 -- rough box. Call `assisted_crop` with your best guess: x, y,
+   width, height (integers 0-1000, top-left origin -- x,y is the corner,
+   width/height the size).
+2. Step 2 -- correct from the previous box. Read the reply (it reports your
+   box and the final box, plus per-edge changes except on a snap match, which
+   returns the original) AND inspect
+   all four edges of the preview against the source diagram, then adjust:
+   a. LEFT edge: diagram clipped there -- decrease x; junk or foreign text
+      there -- increase x.
+   b. TOP edge: diagram clipped there -- decrease y; junk or foreign text
+      there -- increase y.
+   c. RIGHT edge: diagram clipped there -- increase width; junk or foreign
+      text there -- decrease width.
+   d. BOTTOM edge: diagram clipped there -- increase height; junk or
+      foreign text there -- decrease height.
+   Go back to Step 1 with the corrected numbers. Repeat until PERFECT --
+   but escalate at 3 attempts: the tool caps you at 5 assisted
+   calls per figure, so never burn the last two retrying instead of
+   switching. Stop at the first crop that passes verification -- never
+   re-crop a perfect figure; the escalation applies only while the crop
+   remains imperfect.
+DO (while correcting): every edge must sit in EMPTY BACKGROUND, clean space
+on both sides, never touching content. Ink cut from inside (a wire,
+component, label, curve) means the edge is inside the diagram: move clearly
+past the ink, don't hug it. Foreign text caught inside means the edge is on
+the wrong side of it: move the edge into the gap between that text and the
+diagram. Exception -- intentional
    continuations only: a wire or dotted line may end at a crop edge ONLY
    when the source shows it intentionally exiting the diagram's boundary
    or drawing region; preserve any endpoint/continuation marking exactly.
    A line that merely reaches your crop edge is not evidence of
    termination -- that means your box is too small, expand it. If
    uncertain, expand.
-3. Retry `assisted_crop` with the adjusted coordinates. Repeat until
-   PERFECT -- but escalate at 3 attempts: the tool caps you at 5 assisted
-   calls per figure, so never burn the last two retrying instead of
-   switching. Stop at the first crop that passes verification -- never
-   re-crop a perfect figure; the escalation applies only while the crop
-   remains imperfect.
 - **Reply meanings:** `mode: snap` = your box matched an embedded image and
   the original was returned -- accept unless the preview is clearly wrong.
   `mode: vector` = strokes completed/trimmed your box -- use its reported
@@ -91,9 +95,8 @@ Tests 1 and 2 outrank test 3: a slightly loose crop is acceptable, a clipped lab
   side independently from 1) and use that SAME name in every `assisted_crop`
   AND every `exact_crop` call for that figure -- overwrites, never a "v2"
   name. Names live inside the question's own folder and restart at 1 in
-  every question: Q6's first figure is `qfig1.png` and Q10's first figure is
-  also `qfig1.png` -- reuse across questions never collides, so never number
-  figures paper-wide (`qfig6`, `qfig10`). The 3-attempt rule is counted per
+  every question: each question's first figure is `qfig1.png` -- reuse
+  across questions never collides, so never number figures paper-wide. The 3-attempt rule is counted per
   name: `exact_crop` on a name unlocks only after 3 `assisted_crop`
   attempts on that SAME name. A new name starts at zero, so renaming to
   dodge the gate only wastes your budget -- don't. If the figure is still
