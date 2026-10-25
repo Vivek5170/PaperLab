@@ -136,11 +136,21 @@ Process the document efficiently to save tokens:
       (`\textbf{Answer: 33) 18}` / `\underline{\textbf{Solution for 33}}` / solution,
       then `\textbf{Answer: 34) 4}` / `\underline{\textbf{Solution for 34}}` / solution).
        Transcribe the COMPLETE solution text -- never write placeholders like
-       "see figure" instead of the actual solution content. Structure the
-       body for readability: one derivation step per line (text and
-       equations never share a line -- start each equation on its own
-       line), a blank line between steps -- never emit the whole
-       solution as a single line.
+       "see figure" instead of the actual solution content. Preserve the
+       solution's natural flow: inline math stays inline inside its sentence
+       (text and math share lines -- that is how the source book prints it).
+       A derivation step is one relation-equation (=, =>, approx) together
+       with its lead-in ("Also,", "Torque of ring", "In air gap,") and its
+       tail on the SAME line; separate steps with a blank line. NEVER isolate
+       a fragment on its own line: subscripts ($C_1$), superscripts ($^2$),
+       units (A/m), comparisons ($> \sigma$), definition arrows ("Let
+       $\sigma_f \rightarrow$ charge density of free charge at X"), equation
+       labels (...(i)), and clause starters ("Also,", "Let") always ride
+       with their clause. A line must never start with a comma or end with
+       a dangling and/or/Also,/Let. Keep source delimiters verbatim ($ stays
+       $, $$ stays $$; never invent display math the source does not show).
+       Never break inside a clause; when in doubt, keep the text flowing on
+       one line rather than splitting it.
    c. Call `submit_solution`. If it returns NOT SAVED, fix and resubmit.
 6. Move to the next question page and repeat until you finish the last physics question page.
 7. Once ALL physics questions and solutions in the boundary are submitted, you are finished. Stop.

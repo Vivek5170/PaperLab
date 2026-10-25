@@ -38,18 +38,73 @@ from pathlib import Path
 
 _DISPLAY_MIN = 50  # inline math longer than this becomes display
 _TEXT_SPLIT_MIN = 120  # text runs longer than this split at connectives
-# a math span is an EQUATION (break-worthy) iff it states a relation;
-# bare symbols ($C_1$, $^2$, $v_0$) always glue -- splitting "C_1 , C_1"
-# or "A/m ^2" across lines is never correct, splitting equation chains
-# ("v = ..", "integral ..", "= ..") always is.
-_EQUATION_RES = ("=", "\\Rightarrow", "\\rightarrow", "\\approx",
-                 "\\propto", "\\le", "\\geq", "\\neq", "\\sim", "<",
-                 ">", "->", "⇒", "→", "≈")
+# a math span is an EQUATION (break-worthy) iff it states a relation
+# (=, =>-family, approx/propto/le/ge/neq/sim). Comparison and definition
+# fragments ($> \sigma$, $\sigma_f \rightarrow$, $C_1$, $^2$) always glue
+# inline -- splitting "=> sigma / at point X > sigma" or "Let sigma_f -> /
+# charge density ..." across lines shreds the clause (the A-02 lesson).
+# bare >, <, ->, ->-family never break a line on their own.
+_EQUATION_RES = ("=", "\\Rightarrow", "\\Longrightarrow", "\\approx",
+                 "\\propto", "\\le", "\\geq", "\\neq", "\\sim",
+                 "\\simeq", "\\equiv", "⇒", "≈")
+# fragments comparing or defining (no relation marker): glue inline, but a
+# completed long-text tail closes the line for them (next definition starts
+# fresh) while subscript/superscript/unit symbols always ride along.
+_FRAGMENT_RES = (">", "<", "\\rightarrow", "\\to", "→")
+# words that always start a fresh clause: never appended to the current
+# line, always held as pending for what follows (head of the next
+# equation/fragment or start of a new line).
+_CLAUSE_STARTERS = ("Also", "Let", "Suppose", "Assume", "Put",
+                    "Consider", "Define", "Denote")
+# lone joiners never end a line: held as pending so they head the next
+# math ("and $rho_s = ...") instead of dangling ("... $^3$ and").
+# Only exact runs -- never split inside longer text (no churn).
+_JOINERS = ("and", "or", "And", "Or")
 
 
 def _is_equation(mtxt: str) -> bool:
     inner = mtxt[2:-2] if mtxt.startswith(("$$", "\\[")) else mtxt[1:-1]
     return any(op in inner for op in _EQUATION_RES)
+
+
+def _is_fragment(mtxt: str) -> bool:
+    """A math span with comparison/definition markers but no relation."""
+    inner = mtxt[2:-2] if mtxt.startswith(("$$", "\\[")) else mtxt[1:-1]
+    if _is_equation(mtxt):
+        return False
+    return any(op in inner for op in _FRAGMENT_RES)
+
+
+def _is_operator_text(txt: str) -> bool:
+    """Bare operators (lone =>, =, -, ∴) ride text logic, never append."""
+    t = txt.strip()
+    if re.fullmatch(r"[⇒∴∵→←↔=+\-*/<>×÷±∓⋅∘]+", t):
+        return True
+    m = re.fullmatch(r"\$(.*)\$", t, re.DOTALL)
+    if m and not re.search(r"[A-Za-z0-9]",
+                           re.sub(r"\\[a-zA-Z]+", "", m.group(1))):
+        return True
+    return False
+
+
+def _is_clause_starter(txt: str) -> bool:
+    """Also,/Let/... start a fresh clause -- never append to a line."""
+    return txt.strip().rstrip(",") in _CLAUSE_STARTERS
+
+
+def _is_joiner(txt: str) -> bool:
+    """A lone and/or heads what follows -- never dangles at line end."""
+    return txt.strip().rstrip(",") in _JOINERS
+
+
+def _split_clauses(part: str) -> list:
+    """Split a text part before clause starters (Also, Let, ...).
+
+    "...(i) Also, ..." must not glue backward as one run: the "...(i)"
+    label stays with its equation while "Also," heads the next one.
+    """
+    return [p for p in re.split(
+        r"\s+(?=(?:" + "|".join(_CLAUSE_STARTERS) + r")\b)", part) if p]
 _ABBREV = {"i.e", "e.g", "fig", "eq", "sec", "vs", "etc", "al", "no",
            "st", "ref", "approx", "resp", "viz"}
 # discourse markers that start a new visual block when a text run has no
@@ -122,12 +177,21 @@ def _split_sentences(seg: str) -> list:
     # find candidate ends: punctuation [.?!] optionally followed by )
     for m in re.finditer(r"[.!?]+\)?\s+(?=[A-Z\\])", seg):
         pre = seg[:m.start()].rstrip()
-        tok = pre.split()[-1] if pre.split() else ""
+        toks = pre.split()
+        tok = toks[-1] if toks else ""
         core = tok[:-1] if tok.endswith(")") else tok
         core = core.rstrip(".").lower()
         if core in _ABBREV or (len(core) == 1 and core.isalpha()
                                and not tok.endswith(")")):
-            continue
+            # ... but a lone letter after a math span is a unit glued to
+            # its quantity ("$\76^{\circ}$ C. During ..."), not an
+            # initial ("J. Smith"): the mask token before it proves the
+            # math attachment, so the boundary stands. (Without this,
+            # _glue's inserted space flips the tokenization between runs
+            # and breaks idempotency.)
+            if not (len(toks) >= 2
+                    and re.fullmatch("\x00\\d+\x00", toks[-2])):
+                continue
         parts.append(seg[start:m.end()].strip())
         start = m.end()
     tail = seg[start:].strip()
@@ -161,6 +225,30 @@ def _glue(a: str, b: str) -> str:
     return a + " " + b
 
 
+def _is_structural(block: str) -> bool:
+    """Lines that must always stand alone: figures, environments, answer
+    and section headers. A shred seam is never healed across these."""
+    s = block.strip()
+    if ("\\includegraphics" in s or "\\begin{" in s or "\\end{" in s):
+        return True
+    if re.match(r"\\(textbf|underline)", s):
+        return True
+    return False
+
+
+_ITEM_START_RE = re.compile(r"\([A-Za-z0-9]+\)|\d+\.")
+
+
+def _hard_boundary(prev: str, nxt: str) -> bool:
+    """True iff two adjacent blocks must stay separate: either side is
+    structural, or the next block starts a list/option item."""
+    if _is_structural(prev) or _is_structural(nxt):
+        return True
+    if _ITEM_START_RE.match(nxt.strip()):
+        return True
+    return False
+
+
 def reflow_solution_tex(text: str) -> tuple[str, dict]:
     """Reflow a solution.tex body. Returns (new_text, report)."""
     lines = text.split("\n")
@@ -176,6 +264,17 @@ def reflow_solution_tex(text: str) -> tuple[str, dict]:
             cur = []
     if cur:
         blocks.append(" ".join(cur))
+    # heal pass: rejoin shred seams so the handler is independent of the
+    # input shape -- walls, agent line-breaks, or already-shredded lines
+    # all canonicalize to the same layout. Structural blocks (figures,
+    # environments, headers) and list/option starts never merge.
+    healed = []
+    for blk in blocks:
+        if healed and not _hard_boundary(healed[-1], blk):
+            healed[-1] = healed[-1] + " " + blk
+        else:
+            healed.append(blk)
+    blocks = healed
     out_blocks, n_sent, n_disp = [], 0, 0
     for blk in blocks:
         # mask math spans as opaque tokens so sentence splitting never
@@ -190,6 +289,27 @@ def reflow_solution_tex(text: str) -> tuple[str, dict]:
                 parts = re.split(r"\s+(?=(?:" + _CONNECTIVES + r")\b)",
                                   sent)
                 subs = [p for p in (x.strip() for x in parts) if p]
+                if len(subs) > 1:
+                    # a short lead-in stranded without math ("In air
+                    # gap," split off the tail) would orphan: fold
+                    # short math-less pieces into the next piece so
+                    # they head what follows; a trailing one rides
+                    # the previous piece
+                    merged, carry = [], ""
+                    for sub in subs:
+                        if (len(sub) < 15
+                                and not re.search("\x00\\d+\x00", sub)):
+                            carry = (carry + " " + sub).strip()
+                            continue
+                        if carry:
+                            sub = (carry + " " + sub).strip()
+                            carry = ""
+                        merged.append(sub)
+                    if carry and merged:
+                        merged[-1] = (merged[-1] + " " + carry).strip()
+                    elif carry:
+                        merged.append(carry)
+                    subs = merged
                 sents = subs if len(subs) > 1 else [sent]
             else:
                 sents = [sent]
@@ -201,8 +321,9 @@ def reflow_solution_tex(text: str) -> tuple[str, dict]:
                 for part in re.split("(\x00\\d+\x00)", sent):
                     m = re.fullmatch("\x00(\\d+)\x00", part)
                     if not m:
-                        if part.strip():
-                            runs.append(("t", part))
+                        for clause in _split_clauses(part):
+                            if clause.strip():
+                                runs.append(("t", clause))
                         continue
                     mtxt = maths[int(m.group(1))]
                     inner = (mtxt[2:-2] if mtxt.startswith(("$$", "\\["))
@@ -216,21 +337,31 @@ def reflow_solution_tex(text: str) -> tuple[str, dict]:
                         runs.append(("t", mtxt))
                     else:
                         runs.append(("m", mtxt, _is_equation(mtxt)))
-                # native layout (matches agent-written files): text and
-                # equations never share a line (\quad labels excepted).
-                # - long text (>=15 chars): own line
-                # - short text: parenthetical "(...)" glues backward; any
-                #   other short text holds as pending for the next line
-                #   (lead-ins join their equation; trailing units/labels
-                #   fall back to the current line at sentence end)
-                # - symbol math ($C_1$, $^2$): always glues, never breaks
+                # native layout (matches the source solution books): a real
+                # equation (=, =>-family) breaks the line; comparison and
+                # definition fragments (>, ->, subscripts, units) glue
+                # inline so clauses are never shredded ("=> sigma / at
+                # point X > sigma" stays one line; "Let sigma_f ->
+                # charge ..." stays one line; "...(i)" labels stay with
+                # their equation while "Also," heads the next one).
+                # - long text (>=15 chars): joins a line still being
+                #   built, else flushes a completed (=) line and starts
+                #   a fresh one
+                # - short text: operators (=>, ∴) and clause starters
+                #   (Also, Let, ...) always hold as pending; other short
+                #   text appends to the open line, else holds as pending
                 # - equation math: own line (source delimiters kept: $
-                #   stays $, $$ stays $$); breaks the line iff the line
-                #   already holds an equation
+                #   stays $, $$ stays $$); a pending lead-in joins it
+                # - fragment math: appends to the open line (a completed
+                #   long-text tail closes the line for comparisons, but
+                #   never for subscript/unit symbols); a pending head
+                #   ("Let", "or") starts it as a fresh line
                 # - display math ($$): own line, flushed around
                 out = []
                 buf = ""
                 pending = ""
+                long_tail = False
+                frag_tail = False
                 for idx, run in enumerate(runs):
                     if run[0] == "t":
                         txt = re.sub(r"\s+", " ", run[1]).strip()
@@ -238,33 +369,65 @@ def reflow_solution_tex(text: str) -> tuple[str, dict]:
                             continue
                         # a clause joiner (leading , . ; : ! ? or ...)
                         # always rides backward -- a line must never
-                        # start with one
+                        # start with one. A dangling pending folds into
+                        # the line first, else the joiner would overtake
+                        # it and flip line order between runs. With
+                        # nothing behind it (leading "...(i)"), it waits
+                        # as pending for its line instead of orphaning.
                         if txt[:1] in ",.;:!?" or txt.startswith("..."):
-                            buf = _glue(buf, txt)
+                            if pending or buf.strip():
+                                if pending:
+                                    buf = _glue(buf, pending)
+                                    pending = ""
+                                buf = _glue(buf, txt)
+                            else:
+                                pending = txt
                             continue
                         if len(txt) >= 15 or txt.startswith("("):
                             if pending:
                                 txt = _glue(pending, txt).strip()
                                 pending = ""
-                            if buf.strip():
-                                out.append(buf.strip())
-                            buf = txt
+                            if "=" in buf:
+                                # completed equation line: flush, fresh line
+                                if buf.strip():
+                                    out.append(buf.strip())
+                                buf = txt
+                                frag_tail = False
+                            else:
+                                # line still being built (definition tail,
+                                # open derivation step): complete it here
+                                buf = _glue(buf, txt)
+                            long_tail = True
                         elif pending:
                             pending = _glue(pending, txt).strip()
-                        else:
-                            # short text always holds as pending for the
-                            # next line (unconditional forward): deciding
-                            # by "math follows" breaks idempotency because
-                            # re-blocked lines present different neighbor
-                            # context; the sentence-end fallback below
-                            # appends it back when nothing follows.
-                            # Exception: bare punctuation (, . ;) belongs
-                            # backward with the clause it ends -- a line
-                            # must never start with a comma.
-                            if re.fullmatch(r"[,.;:!?]+", txt):
+                        elif _is_operator_text(txt):
+                            # a bare operator continues the open step
+                            # ("at point X $>$ ...") but starts a new one
+                            # after a completed equation (Q7's "=>" after
+                            # "$V_2 = ...$") or on an empty line
+                            if buf.strip() and "=" not in buf:
                                 buf = _glue(buf, txt)
                             else:
                                 pending = txt
+                        elif (_is_clause_starter(txt)
+                                or _is_joiner(txt)):
+                            # starters open a fresh clause; joiners head
+                            # what follows -- never append to the line
+                            pending = txt
+                        elif re.fullmatch(r"[,.;:!?]+", txt):
+                            if pending or buf.strip():
+                                if pending:
+                                    buf = _glue(buf, pending)
+                                    pending = ""
+                                buf = _glue(buf, txt)
+                            else:
+                                pending = txt
+                        elif buf.strip():
+                            # continuation of the open clause ("at point
+                            # X", "A/m") rides the current line
+                            buf = _glue(buf, txt)
+                        else:
+                            pending = txt
                         continue
                     _, mtxt, is_eq = run
                     is_disp = (mtxt.startswith("$$")
@@ -277,12 +440,13 @@ def reflow_solution_tex(text: str) -> tuple[str, dict]:
                             out.append(buf.strip())
                             buf = ""
                         out.append(mtxt)
+                        long_tail = False
+                        frag_tail = False
                         n_disp += 1
                         continue
                     if is_eq:
                         # every equation starts a fresh line; a pending
-                        # lead-in ("Torque of ring", "For $v_x = 0$")
-                        # joins its equation
+                        # lead-in ("Torque of ring", "Also,") joins it
                         if pending:
                             head_txt = pending
                             pending = ""
@@ -291,11 +455,34 @@ def reflow_solution_tex(text: str) -> tuple[str, dict]:
                         if buf.strip():
                             out.append(buf.strip())
                         buf = _glue(head_txt, mtxt)
+                        long_tail = ("=" in mtxt)
+                        frag_tail = False
                         continue
                     if pending:
-                        buf = _glue(buf, pending)
+                        # definition head ("Let", "or"): fresh line
+                        if buf.strip():
+                            out.append(buf.strip())
+                        buf = _glue(pending, mtxt)
                         pending = ""
-                    buf = _glue(buf, mtxt)
+                        long_tail = False
+                        frag_tail = _is_fragment(mtxt)
+                        continue
+                    if (buf.strip() and long_tail and frag_tail
+                            and _is_fragment(mtxt)):
+                        # a completed definition tail closes the line
+                        # ("... charge ... at X" then "sigma_i ->"
+                        # starts fresh); a clause whose math hasn't
+                        # started yet ("Further, field for " then
+                        # "$r > a$") keeps building, and subscript or
+                        # unit symbols always ride along
+                        out.append(buf.strip())
+                        buf = mtxt
+                        long_tail = False
+                        frag_tail = True
+                    else:
+                        buf = _glue(buf, mtxt)
+                        if _is_fragment(mtxt):
+                            frag_tail = True
                 if pending:
                     buf = _glue(buf, pending)
                 if buf.strip():

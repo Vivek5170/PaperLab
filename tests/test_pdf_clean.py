@@ -686,3 +686,181 @@ def test_reflow_equation_text_equation_sequence():
     assert any(l.strip().startswith("$a + b") for l in lines)
     new2, _ = reflow_solution_tex(new)
     assert new2 == new
+
+
+def test_reflow_fragments_glue_inline_a02():
+    """A-02 lesson: comparison/definition fragments never stand alone.
+
+    "=> sigma / at point X > sigma" stays one line, "Let sigma_f ->
+    charge ..." stays one line, "...(i)" labels stay with their
+    equation while "Also," heads the next one."""
+    from reflow_solutions import reflow_solution_tex
+
+    text = ("\\textbf{Answer: A-02) A}\n\n\\underline{\\textbf{Solution for A-02}}\n\n"
+            "Free charge $\\Rightarrow \\sigma_{\\text{free}}$ at point X "
+            "$> \\sigma_{\\text{free}}$ at point Y Let $\\sigma_f \\rightarrow$ "
+            "charge density of free charge at X $\\sigma_i = 5$ ...(i) Also, "
+            "$k = 2$\n")
+    new, _ = reflow_solution_tex(text)
+    lines = [l for l in new.splitlines() if l.strip()][2:]
+    joined = "\n".join(lines)
+    assert ("$\\Rightarrow \\sigma_{\\text{free}}$ at point X "
+            "$> \\sigma_{\\text{free}}$ at point Y") in joined
+    assert ("Let $\\sigma_f \\rightarrow$ charge density of free "
+            "charge at X") in joined
+    assert any(l.strip() == "$\\sigma_i = 5$...(i)" for l in lines)
+    assert "Also, $k = 2$" in joined
+    # no stranded fragments / labels / starters
+    for l in lines:
+        s = l.strip()
+        assert s not in ("$\\Rightarrow \\sigma_{\\text{free}}$",
+                         "Let $\\sigma_f \\rightarrow$",
+                         "$\\sigma_i = 5$...(i) Also,")
+    new2, _ = reflow_solution_tex(new)
+    assert new2 == new
+
+
+def test_reflow_comparison_tail_keeps_clause():
+    """A clause whose math hasn't started keeps building: 'Further,
+    field for $r > a$ is' stays one line; a completed definition tail
+    still closes for the next definition."""
+    from reflow_solutions import reflow_solution_tex
+
+    text = ("\\textbf{Answer: 5) A}\n\n\\underline{\\textbf{Solution for 5}}\n\n"
+            "Further, field for $r > a$ is $B = 1$ Let $\\sigma_f \\rightarrow$ "
+            "charge at X $\\sigma_i \\rightarrow$ charge near X\n")
+    new, _ = reflow_solution_tex(text)
+    joined = "\n".join(l for l in new.splitlines() if l.strip())
+    assert "Further, field for $r > a$ is" in joined
+    assert "Let $\\sigma_f \\rightarrow$ charge at X" in joined
+    assert "$\\sigma_i \\rightarrow$ charge near X" in joined
+    new2, _ = reflow_solution_tex(new)
+    assert new2 == new
+
+
+def test_reflow_joiners_head_next_math():
+    """Lone and/or head what follows instead of dangling at line end."""
+    from reflow_solutions import reflow_solution_tex
+
+    text = ("\\textbf{Answer: 1) A}\n\n\\underline{\\textbf{Solution for 1}}\n\n"
+            "Value is $V = 1$ or $W = 2$ and $Z = 3$\n")
+    new, _ = reflow_solution_tex(text)
+    lines = [l for l in new.splitlines() if l.strip()][2:]
+    assert "or $W = 2$" in "\n".join(lines)
+    assert "and $Z = 3$" in "\n".join(lines)
+    assert not any(l.strip().endswith(" or") or l.strip().endswith(" and")
+                   for l in lines)
+    new2, _ = reflow_solution_tex(new)
+    assert new2 == new
+
+
+def test_reflow_heals_shredded_input():
+    """Universality: already-shredded lines (fragments isolated by blank
+    lines) heal to the same canonical layout as the wall."""
+    from reflow_solutions import reflow_solution_tex
+
+    head = ("\\textbf{Answer: A-02) A}\n\n\\underline{\\textbf{Solution for A-02}}\n\n")
+    wall = (head + "Free charge $\\Rightarrow \\sigma$ at point X "
+            "$> \\sigma$ at point Y Let $\\sigma_f \\rightarrow$ charge at X\n")
+    shredded = (head + "Free charge $\\Rightarrow \\sigma$\n\nat point X "
+                "$> \\sigma$\n\nat point Y\n\nLet $\\sigma_f \\rightarrow$\n\n"
+                "charge at X\n")
+    new_wall, _ = reflow_solution_tex(wall)
+    new_shred, _ = reflow_solution_tex(shredded)
+    assert new_shred == new_wall
+    joined = "\n".join(l for l in new_shred.splitlines() if l.strip())
+    assert "$\\Rightarrow \\sigma$ at point X $> \\sigma$ at point Y" in joined
+    assert "Let $\\sigma_f \\rightarrow$ charge at X" in joined
+
+
+def test_reflow_unit_sentence_boundary_idempotent():
+    """A lone unit letter after math ("$76^{\\circ}$ C. During ...") is a
+    sentence boundary, not an initial: glue spacing must not flip the
+    tokenization between runs (15/8 reflip regression)."""
+    from reflow_solutions import reflow_solution_tex
+
+    text = ("\\textbf{Answer: 8) C}\n\n\\underline{\\textbf{Solution for 8}}\n\n"
+            "Liquid is heated from $40^{\\circ}$C to $76^{\\circ}$C. "
+            "During heating, shell expands and more text here.\n")
+    new, _ = reflow_solution_tex(text)
+    lines = [l for l in new.splitlines() if l.strip()][2:]
+    # the unit boundary stands: a fresh line starts at "During heating"
+    assert any(l.strip().startswith("During heating") for l in lines)
+    assert not any("C. During heating" in l for l in lines)
+    new2, _ = reflow_solution_tex(new)
+    assert new2 == new
+
+
+def test_reflow_structural_blocks_never_merge():
+    """Figures, environments and answer headers always stand alone, even
+    when the heal pass rejoins everything around them."""
+    from reflow_solutions import reflow_solution_tex
+
+    text = ("\\textbf{Answer: 1) A}\n\n\\underline{\\textbf{Solution for 1}}\n\n"
+            "Force is $F = 1$\n\n"
+            "\\begin{center}\n\\includegraphics{fig}\n\\end{center}\n\n"
+            "Hence done here.\n\n\\textbf{Answer: 2) B}\n\ntail text here.\n")
+    new, _ = reflow_solution_tex(text)
+    lines = [l for l in new.splitlines() if l.strip()]
+    assert "\\begin{center} \\includegraphics{fig} \\end{center}" in lines
+    assert "\\textbf{Answer: 2) B}" in lines
+    new2, _ = reflow_solution_tex(new)
+    assert new2 == new
+
+
+def test_reflow_fuzz_adversarial_walls():
+    """Universal handling: random walls of relations, fragments,
+    operators, starters, joiners and labels must preserve content,
+    stay idempotent, and never strand orphans -- whatever shape a
+    future agent emits."""
+    import random
+    from reflow_solutions import reflow_solution_tex, _split_spans
+
+    maths = ["$x = 5$", "$\\Rightarrow y = 2x$", "$C_1$", "$^2$",
+             "$> \\sigma$", "$\\sigma_f \\rightarrow$", "$A/m$",
+             "$\\Rightarrow$", "$k = 2$", "$\\int_0^1 f = F$"]
+    texts = ["For the shell", "at point X", "charge density of free charge",
+             "Let", "Also,", "and", "or", "Hence the value follows",
+             "In air gap,", "...(i)", "Torque of ring", "is P when heated",
+             "During heating, shell expands and more text here follows"]
+    rng = random.Random(20261025)
+    for trial in range(200):
+        parts = []
+        for _ in range(rng.randint(3, 10)):
+            pool = maths if rng.random() < 0.45 else texts
+            parts.append(rng.choice(pool))
+        if not any(p in maths for p in parts):
+            parts.append(rng.choice(maths))  # reflow needs math
+        wall = ("\\textbf{Answer: 1) A}\n\n\\underline{\\textbf{Solution for 1}}\n\n"
+                + " ".join(parts) + "\n")
+        new, _ = reflow_solution_tex(wall)
+        new2, _ = reflow_solution_tex(new)
+        assert new2 == new, f"not idempotent trial {trial}: {wall!r}"
+
+        def inners(t):
+            out = []
+            for kind, *rest in _split_spans(t):
+                if kind == "m":
+                    m = rest[0]
+                    out.append(m[2:-2] if m.startswith("$$") else m[1:-1])
+            return sorted(out)
+
+        import re as _re
+        assert inners(wall) == inners(new), f"math lost trial {trial}"
+        w = lambda t: sorted(_re.findall(r"[A-Za-z]+", t))
+        assert w(wall) == w(new), f"words lost trial {trial}"
+        for l in new.splitlines():
+            s = l.strip()
+            if not s:
+                continue
+            # equation labels ("...(i)") deliberately ride backward and
+            # may open a line when random fuzz strands them; real walls
+            # always trail them after their equation
+            assert s.startswith("...") or not _re.match(
+                r"[,.;:!?]", s), f"punct-led: {s!r}"
+            if len(s) < 12 and "$" not in s and not s.startswith("\\"):
+                starters = ("Also", "Let", "Suppose", "Assume", "Put",
+                            "Consider", "Define", "Denote", "and", "or",
+                            "And", "Or")
+                assert s.rstrip(",") in starters or _re.fullmatch(
+                    r"[⇒∴∵→←↔=+\-*/<>×÷±∓⋅∘]+", s), f"orphan: {s!r}"
