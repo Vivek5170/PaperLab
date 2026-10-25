@@ -110,9 +110,9 @@ def test_exact_crop_scaling_and_save(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs
     saved = out_dir / "figures" / "fig1.png"
     assert saved.is_file()
 
-    # Scaling math: full-page crop keeps full dims; preview is downscaled.
-    from tools_extractor import _render_page_to_pil, _CROP_DPI
-    full = _render_page_to_pil(dummy_pdf, 1, _CROP_DPI)
+    # Scaling math: disk save is hi-DPI; preview is downscaled as before.
+    from tools_extractor import _render_page_to_pil, _SAVE_DPI
+    full = _render_page_to_pil(dummy_pdf, 1, _SAVE_DPI)
     cropped = Image.open(saved)
     assert cropped.size == full.size
     assert max(preview.size) <= 600

@@ -196,6 +196,10 @@ _VEC_LABEL_NEAR = 10.0  # short text within this of a stroke is a label (kept)
 _VEC_GROW_CAP = 3.0  # max final/agent area ratio; beyond this growth is refused
 _MIN_REPORT_DELTA = 3  # 0-1000 units below this are rounding noise, unreported
 _CROP_DPI = 250  # clip-render resolution for assisted/exact crops
+# Disk-save resolution for the same crops. The LLM preview path is
+# untouched (img_block thumbnails to CROP_PX either way), so the model
+# sees exactly what it saw before -- only the file on disk gets denser.
+_SAVE_DPI = 600
 _ASSIST_MAX_ATTEMPTS = 5
 
 # Attempt counts live on disk (figures/_assist_counts.json per question), not
@@ -1095,7 +1099,7 @@ def exact_crop(
         fxs = [x / 1000.0 * r.width for x, _ in fpts]
         fys = [y / 1000.0 * r.height for _, y in fpts]
         clip = fitz.Rect(min(fxs), min(fys), max(fxs), max(fys)) & r
-        pix = page.get_pixmap(dpi=_CROP_DPI, clip=clip)
+        pix = page.get_pixmap(dpi=_SAVE_DPI, clip=clip)
         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
     finally:
         doc.close()
@@ -1541,7 +1545,8 @@ def assisted_crop(
             vgrown[3] / 1000 * page_rect.height,
         )
         render_box = _inflate(rep, _VEC_PAD) & page_rect
-        _clip_render_to_pil(pdf_path, page_number, render_box).save(
+        _clip_render_to_pil(pdf_path, page_number, render_box,
+                            dpi=_SAVE_DPI).save(
             str(dest), format="PNG"
         )
         _record_figure_mode(dest.parent, filename, "vector")
@@ -1575,7 +1580,8 @@ def assisted_crop(
         grown[0] / 1000 * r.width, grown[1] / 1000 * r.height,
         grown[2] / 1000 * r.width, grown[3] / 1000 * r.height,
     )
-    _clip_render_to_pil(pdf_path, page_number, grown_pts & page_rect).save(
+    _clip_render_to_pil(pdf_path, page_number, grown_pts & page_rect,
+                        dpi=_SAVE_DPI).save(
         str(dest), format="PNG"
     )
     _record_figure_mode(dest.parent, filename, "plain")
