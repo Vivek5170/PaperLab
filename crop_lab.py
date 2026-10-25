@@ -83,7 +83,14 @@ if st.session_state.get("lab_page") != page_number:
     st.session_state.pop("result", None)
     st.session_state["ckey"] = st.session_state.get("ckey", 0) + 1
 
-mode = st.sidebar.radio("Mode", ["assist (vector)", "snap"])
+mode = st.sidebar.radio("Mode", ["assist (vector)", "snap",
+                                "exact (polygon + anti-clip)"])
+anti = st.sidebar.checkbox("Anti-clip expansion", value=True)
+max_pad = st.sidebar.slider("Max expansion per edge (units)", 1.0, 15.0, 15.0)
+st.sidebar.caption(
+    "0.1-unit steps, only where dark ink touches the border. "
+    "Off = old verbatim box (for before/after review)."
+)
 
 
 def _reset_box():
@@ -279,12 +286,25 @@ def _run_assist():
     want = fitz.Rect(x0 / 1000 * r.width, y0 / 1000 * r.height,
                      x1 / 1000 * r.width, y1 / 1000 * r.height)
     out = te._assist_box(pg, want, blocks, clusters)
-    doc2.close()
     if out is None:
-        return {"mode": "assist", "hit": False, "final1000": None,
-                "preview": None, "rows": [], "verdicts": [],
+        # Plain fallback: same anti-clip backstop as production, rendered
+        # here so you can review it instead of imagining it.
+        box = [float(x0), float(y0), float(x1), float(y1)]
+        grown, pads, capped, blocked = (te._expand_box_for_ink(pg, box, max_pad)
+                                           if anti else (box, [0.0] * 4, [], []))
+        doc2.close()
+        grown_pts = fitz.Rect(
+            grown[0] / 1000 * r.width, grown[1] / 1000 * r.height,
+            grown[2] / 1000 * r.width, grown[3] / 1000 * r.height)
+        crop = te._clip_render_to_pil(pdf_path, page_number, grown_pts)
+        return {"mode": "assist", "hit": False,
+                "final1000": [int(round(v)) for v in grown],
+                "preview": crop, "rows": [], "verdicts": [],
                 "your1000": [x0, y0, x1, y1], "page": page_number,
-                "text": "no strokes touch your box — would save plain crop of your box"}
+                "pads": pads, "capped": capped, "blocked": blocked,
+                "text": "no strokes touch your box — plain crop"
+                        + te._pad_note(pads, capped, blocked)}
+    doc2.close()
     final, trims, capped, verdicts = out
     page_rect = fitz.Rect(0, 0, r.width, r.height)
     final1000 = te._to_1000(final, page_rect)
@@ -319,6 +339,46 @@ def _run_assist():
             "verdicts": verdicts, "page": page_number, "text": text}
 
 
+def _run_exact():
+    """Mirror production polygon_crop: rect corners as polygon, anti-clip
+    expansion, masked render. Review the backstop, not the mask."""
+    box = [float(x0), float(y0), float(x1), float(y1)]
+    doc2 = fitz.open(pdf_path)
+    try:
+        pg = doc2[page_number - 1]
+        r = pg.rect
+        grown, pads, capped, blocked = (te._expand_box_for_ink(pg, box, max_pad)
+                                            if anti else (box, [0.0] * 4, [], []))
+        w0 = grown[2] - grown[0] or 1.0
+        h0 = grown[3] - grown[1] or 1.0
+        fpts = [
+            (grown[0] + (x - box[0]) * w0 / (box[2] - box[0] or 1.0),
+             grown[1] + (y - box[1]) * h0 / (box[3] - box[1] or 1.0))
+            for x, y in norm_pts
+        ]
+        fxs = [x / 1000 * r.width for x, _ in fpts]
+        fys = [y / 1000 * r.height for _, y in fpts]
+        clip = fitz.Rect(min(fxs), min(fys), max(fxs), max(fys)) & r
+        pix = pg.get_pixmap(dpi=te._CROP_DPI, clip=clip)
+        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        cw, ch = img.size
+        px = [((x / 1000 * r.width - clip.x0) / clip.width * cw,
+               (y / 1000 * r.height - clip.y0) / clip.height * ch)
+              for x, y in fpts]
+        mask = Image.new("L", (cw, ch), 0)
+        ImageDraw.Draw(mask).polygon(px, fill=255)
+        bg = Image.new("RGB", (cw, ch), (255, 255, 255))
+        bg.paste(img, mask=mask)
+    finally:
+        doc2.close()
+    return {"mode": "exact", "hit": True,
+            "final1000": [int(round(v)) for v in grown],
+            "your1000": [x0, y0, x1, y1], "preview": bg,
+            "rows": [], "verdicts": [], "page": page_number,
+            "pads": pads, "capped": capped, "blocked": blocked,
+            "text": "exact polygon crop" + te._pad_note(pads, capped, blocked)}
+
+
 def _show_result(result):
     boxkey = "your1000" if "your1000" in result else "box1000"
     if result.get("page") != page_number or result.get(boxkey) != [x0, y0, x1, y1]:
@@ -334,7 +394,17 @@ def _show_result(result):
     else:
         if result["final1000"]:
             st.code(f"your box:  {result['your1000']}\nfinal box: {result['final1000']}")
-            st.image(result["preview"], caption="final crop (no pad, 250 DPI)")
+            if result.get("pads") and any(p > 0 for p in result["pads"]):
+                names = ["left", "top", "right", "bottom"]
+                st.caption("anti-clip growth — " + ", ".join(
+                    f"{n}+{p:.1f}" for n, p in zip(names, result["pads"])
+                    if p > 0)
+                    + (" — STILL CUT at: " + "/".join(result["capped"])
+                       if result.get("capped")
+                       else (" — BLOCKED by text at: "
+                           + "/".join(result["blocked"])
+                           if result.get("blocked") else " — edges now clear")))
+            st.image(result["preview"], caption="final crop (250 DPI)")
             if result.get("verdicts"):
                 st.subheader("leftover text — why each block survived")
                 st.table([{"text": v[0], "words": v[1], "verdict": v[2]}
@@ -419,7 +489,9 @@ norm_pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
 with col_out:
     if st.sidebar.button("▶ Run", type="primary"):
         with st.spinner("Working (chrome scan on first call can take a bit)…"):
-            out = _run_snap() if mode == "snap" else _run_assist()
+            out = (_run_snap() if mode == "snap"
+                   else _run_assist() if mode.startswith("assist")
+                   else _run_exact())
         st.session_state["result"] = out
         st.rerun()
     elif (res := st.session_state.get("result")):

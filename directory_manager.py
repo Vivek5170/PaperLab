@@ -32,6 +32,8 @@ DATA_ROOT = Path(os.environ.get("DATA_ROOT", Path(__file__).parent / "data"))
 UPLOADS_DIR = DATA_ROOT / "uploads"
 PROCESSING_DIR = DATA_ROOT / "processing"
 ARCHIVE_DIR = DATA_ROOT / "archive"
+# Extractor-vision copies: hash-named cleaned PDFs (originals stay in DB).
+CLEANED_DIR = DATA_ROOT / "cleaned"
 
 QUESTION_TEX = "question.tex"
 SOLUTION_TEX = "solution.tex"

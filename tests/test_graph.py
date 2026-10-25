@@ -57,6 +57,19 @@ def test_extractor_init_populates_from_db(tmp_db, tmp_path):
     assert out["question_pdf_path"] == q and out["solution_pdf_path"] == s
 
 
+def test_extractor_init_respects_clean_paths(tmp_db, tmp_path):
+    pid, q, s = _paper_with_bounds(tmp_db, tmp_path)
+    out = extractor_init_node({
+        "paper_id": pid,
+        "question_pdf_path": "/clean/q.pdf",
+        "solution_pdf_path": "/clean/s.pdf",
+    })
+    # Clean paths are left untouched (absent from the update); only
+    # boundaries are filled in.
+    assert "question_pdf_path" not in out and "solution_pdf_path" not in out
+    assert out["q_start"] == 7 and out["s_end"] == 12
+
+
 def test_extractor_init_aborted_paper(tmp_db, tmp_path):
     q = tmp_path / "q.pdf"
     q.write_bytes(b"Q")
@@ -68,6 +81,36 @@ def test_extractor_init_aborted_paper(tmp_db, tmp_path):
 def test_extractor_init_unknown_paper_fails(tmp_db):
     with pytest.raises(ValueError):
         extractor_init_node({"paper_id": 99999})
+
+
+def _seed_questions(pid, names):
+    import database
+
+    conn = database.get_connection()
+    try:
+        conn.executemany(
+            "INSERT INTO questions (paper_id, question_number) VALUES (?, ?)",
+            [(pid, n) for n in names],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_existing_id_scheme(tmp_db, tmp_path):
+    from graph import _existing_id_scheme
+
+    q = tmp_path / "q.pdf"
+    q.write_bytes(b"Q")
+    pid = database.register_paper(str(q))
+    assert _existing_id_scheme(pid) is None  # fresh paper: model decides once
+    _seed_questions(pid, ["1", "2", "15-17_paragraph"])
+    assert _existing_id_scheme(pid) == "bare"
+    q2 = tmp_path / "q2.pdf"
+    q2.write_bytes(b"Q2")
+    pid2 = database.register_paper(str(q2))
+    _seed_questions(pid2, ["A-01", "B-31-32_paragraph"])
+    assert _existing_id_scheme(pid2) == "namespaced"
 
 
 def test_route_extractor_init(tmp_db):

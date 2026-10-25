@@ -117,22 +117,25 @@ def test_polygon_crop_scaling_and_save(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     assert cropped.size == full.size
     assert max(preview.size) <= 600
 
-    # Quarter-page polygon -> roughly quarter dims (bbox crop).
+    # box in a genuinely empty area -> exact dims, no anti-clip growth.
+    # (The old (0,0)-(500,500) quarter box sliced the red rect's strokes;
+    # the backstop correctly refused to ship that cut.)
     cmd_q = polygon_crop.invoke(_tc(
         "polygon_crop", {
             "pdf_path": dummy_pdf,
             "page_number": 1,
-            "points": [(0, 0), (500, 0), (500, 500), (0, 500)],
+            "points": [(0, 500), (300, 500), (300, 900), (0, 900)],
             "output_filename": "figQ.png",
             "paper_id": pid,
             "question_number": "1",
         }, call_id="t2",
     ))
-    _, preview_q, _ = _image_messages(cmd_q)
+    text_q, preview_q, _ = _image_messages(cmd_q)
+    assert "Auto-expanded" not in text_q
     assert max(preview_q.size) <= 600
     q = Image.open(out_dir / "figures" / "figQ.png")
-    assert abs(q.size[0] - full.size[0] // 2) <= 2
-    assert abs(q.size[1] - full.size[1] // 2) <= 2
+    assert abs(q.size[0] - full.size[0] * 0.3) <= 2
+    assert abs(q.size[1] - full.size[1] * 0.4) <= 2
 
 
 def test_polygon_crop_rejects_bad_points(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
@@ -448,9 +451,10 @@ def test_polygon_crop_refused_before_assisted_tries(
     assert not list(tmp_outputs.rglob("e.png"))
 
 
-def test_polygon_crop_snaps_to_embedded_image(
+def test_polygon_crop_ignores_embedded_image(
         dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
-    """A loose box around one embedded image returns its original bytes."""
+    """Polygon is exact-only: even a box around one embedded image renders
+    the polygon region, never the original bytes (snap lives in assisted)."""
     import tools_extractor as te
 
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
@@ -461,12 +465,12 @@ def test_polygon_crop_snaps_to_embedded_image(
     # Red diagram is at (10,10)-(90,90) on a 200x200 page: box it loosely.
     cmd = _polygon(pdf, pid, [(0, 0), (500, 0), (500, 500), (0, 500)], "e.png")
     text, _, _ = _image_messages(cmd)
-    assert "mode: snap" in text
+    assert "mode: snap" not in text
     saved = list(tmp_outputs.rglob("e.png"))
     assert saved
     got, want = Image.open(saved[0]), Image.open(io.BytesIO(red_raw))
-    assert got.size == want.size == (80, 80)  # original pixels, not a render
-    assert te.SNAP_LOG[-1][3].startswith("snap:")
+    assert got.size != (80, 80)  # render of the loose region, not original
+    assert te.SNAP_LOG[-1][3] == "exact"
 
 
 def test_polygon_crop_stays_exact_without_image(
@@ -477,7 +481,7 @@ def test_polygon_crop_stays_exact_without_image(
     _prime_assist(pid, "x.png")
     cmd = _polygon(pdf, pid, [(300, 300), (500, 300), (500, 650), (300, 650)], "x.png")
     text, _, _ = _image_messages(cmd)
-    assert "no image matched" in text and "mode: snap" not in text
+    assert "Exact crop of your polygon" in text and "mode: snap" not in text
 
 
 # ---------- assisted_crop: vector assist ----------
@@ -665,7 +669,7 @@ def test_polygon_crop_is_exact_on_chrome_logo(dummy_pdf, scanned_pdf, tmp_db, tm
         },
     ))
     text, _, _ = _image_messages(cmd)
-    assert "no image matched" in text
+    assert "Exact crop of your polygon" in text
     saved = tmp_outputs / str(pid) / "1" / "figures" / "x.png"
     got = Image.open(saved)
     assert (got.size[0], got.size[1]) != (80, 80)  # not the snapped original
@@ -804,8 +808,8 @@ def test_numbered_headers_are_chrome(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs
     assert "mode: plain" in text
 
 
-def test_assist_pad_is_zero(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
-    """Render is exactly the reported box: no padding."""
+def test_vector_render_has_ink_margin(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Exact-bounds box: reported box unchanged, render gains margin."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _line_figure_pdf(tmp_path)
     cmd = _assist(
@@ -815,10 +819,12 @@ def test_assist_pad_is_zero(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_pat
     )
     text, _, _ = _image_messages(cmd)
     assert _final_box(text) == [333, 375, 667, 625]
-    saved = tmp_outputs / str(pid) / "1" / "figures" / "p.png"
-    w, h = Image.open(saved).size
-    # 200.4pt x 200pt at 250 DPI ~= 696x694px; any pad would exceed this.
-    assert 690 <= w <= 700 and 688 <= h <= 698
+    assert "Auto-expanded" in text  # grazed edges grew the render
+    saved = Image.open(tmp_outputs / str(pid) / "1" / "figures" / "p.png")
+    w, h = saved.size
+    px = saved.convert("L").load()
+    assert min(px[x, y] for x in range(w) for y in (0, 1, h - 2, h - 1)) > 200
+    assert min(px[x, y] for y in range(h) for x in (0, 1, w - 2, w - 1)) > 200
 
 
 def _grazed_text_pdf(tmp_path):

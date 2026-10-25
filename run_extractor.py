@@ -3,8 +3,8 @@
 Usage:
     python run_extractor.py <paper_id>
 
-Starts the graph directly at extractor_init (Phase 1 bypassed): boundaries
-and PDF paths are reloaded from the database for the given paper_id.
+Starts the graph at clean (Phase 1 bypassed): PDFs are cleaned first,
+then boundaries and paths resolve for the given paper_id.
 Prints a per-turn token log (input / cache_read / reasoning), a coverage
 report, and the completion gate outcome.
 """

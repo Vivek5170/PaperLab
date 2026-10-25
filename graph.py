@@ -1,13 +1,13 @@
 """LangGraph orchestration for the physics database pipeline.
 
 Phase 1 (Indexer): START -> pre_check -> gate -> abort | indexer loop.
-Phase 2 (Extractor): extractor_init (boundaries from DB) -> extractor loop.
+Phase 2 (Extractor): clean (PDFs) -> extractor_init (boundaries) -> loop.
 
 Three compiled entry points share the same nodes:
 - ``phase1_app``: Phase 1 only (used by run_indexer.py).
-- ``extractor_app``: Phase 2 only, from ``extractor_init`` (used by
+- ``extractor_app``: Phase 2 only, from ``clean`` (used by
   run_extractor.py with ``{"paper_id": ..., "messages": []}``).
-- ``app``: full pipeline, indexer completion routes into extractor_init.
+- ``app``: full pipeline, indexer completion routes into clean.
 """
 
 from __future__ import annotations
@@ -266,25 +266,73 @@ def route_indexer(state: PipelineState) -> str:
     return "continue"
 
 
+def clean_node(state: PipelineState) -> dict:
+    """Deterministic cleaning step: the extractor sees ONLY cleaned PDFs.
+
+    Runs between Phase 1 and Phase 2 in every graph. Fail-open inside --
+    on any error the original paths are kept, so extraction still runs.
+    """
+    from pdf_clean import clean_paper_pdfs
+
+    cleaned = clean_paper_pdfs(state["paper_id"])
+    return {
+        "question_pdf_path": cleaned["question_pdf"],
+        "solution_pdf_path": cleaned["solution_pdf"],
+    }
+
+
+def _existing_id_scheme(paper_id: int) -> str | None:
+    """Naming convention already stored for this paper, if any.
+
+    Returns "namespaced" (A-01...), "bare" (1, 2...), "mixed", or None
+    when no questions exist yet. Reruns/resumes lock onto whatever the
+    first run chose, so one paper never mixes styles across runs.
+    """
+    import re
+
+    conn = database.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT question_number FROM questions WHERE paper_id = ?",
+            (paper_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    names = [r[0] for r in rows]
+    if not names:
+        return None
+    ns = [n for n in names if re.match(r"^[A-Za-z]+-\d+", n or "")]
+    if len(ns) == len(names):
+        return "namespaced"
+    if not ns:
+        return "bare"
+    return "mixed"
+
+
 def extractor_init_node(state: PipelineState) -> dict:
     """Deterministic Phase 2 entry: load boundaries + paths from the DB.
 
     Aborted/never-indexed papers have NULL boundaries: route them out with
     "aborted_no_text" instead of waking the vision agent for nothing.
+    PDF paths set by clean_node (cleaned copies) are respected; the DB
+    originals are only a fallback for states that skipped cleaning.
     """
     row = database.get_paper(state["paper_id"])
     if row is None:
         raise ValueError(f"paper_id {state['paper_id']} does not exist")
     if row["q_start"] is None or row["q_end"] is None:
         return {"status": "aborted_no_text"}
-    return {
-        "question_pdf_path": row["question_pdf_path"],
-        "solution_pdf_path": row["solution_pdf_path"],
+    update = {
         "q_start": row["q_start"],
         "q_end": row["q_end"],
         "s_start": row["s_start"],
         "s_end": row["s_end"],
     }
+    if not state.get("question_pdf_path"):
+        update["question_pdf_path"] = row["question_pdf_path"]
+    if not state.get("solution_pdf_path"):
+        update["solution_pdf_path"] = row["solution_pdf_path"]
+    return update
 
 
 def route_extractor_init(state: PipelineState) -> str:
@@ -303,6 +351,12 @@ def extractor_node(state: PipelineState) -> dict:
         sol_line = f"Solution PDF: {state['solution_pdf_path']} (solutions {s_range})"
     else:
         sol_line = "Solution PDF: none provided"
+    scheme = _existing_id_scheme(state["paper_id"])
+    scheme_line = (
+        f"\nID scheme for this paper: {scheme} (existing questions "
+        "already use it -- continue identically, never mix styles)."
+        if scheme in ("bare", "namespaced") else ""
+    )
     opener = lambda: [  # noqa: E731
         SystemMessage(content=_load_extractor_prompt()),
         HumanMessage(
@@ -310,7 +364,10 @@ def extractor_node(state: PipelineState) -> dict:
                 f"paper_id: {state['paper_id']}\n"
                 f"Question PDF: {state['question_pdf_path']} "
                 f"(physics questions {q_range})\n"
-                f"{sol_line}"
+                f"{sol_line}\n"
+                "These are cleaned copies (watermarks removed); pagination "
+                "and geometry are identical to the originals."
+                f"{scheme_line}"
             )
         ),
     ]
@@ -340,7 +397,7 @@ def route_extractor(state: PipelineState) -> str:
 # --------------------------------------------------------------- graphs ---
 
 
-def _add_phase1(graph: StateGraph, indexer_done_target: str) -> None:
+def _add_phase1(graph: StateGraph, indexer_done_target: str = "clean") -> None:
     graph.add_node("pre_check", pre_check_node)
     graph.add_node("abort", abort_node)
     graph.add_node("indexer", indexer_node)
@@ -354,13 +411,19 @@ def _add_phase1(graph: StateGraph, indexer_done_target: str) -> None:
     )
 
 
-def _add_extractor(graph: StateGraph) -> None:
+def _add_extractor(graph: StateGraph, entry: Optional[str]) -> None:
+    graph.add_node("clean", clean_node)
     graph.add_node("extractor_init", extractor_init_node)
     graph.add_node("extractor", extractor_node)
+    if entry is not None:
+        # Standalone extractor graph: START enters here. In the full
+        # graph Phase 1 routes into "clean" directly (indexer_done_target).
+        graph.add_edge(entry, "clean")
+    graph.add_edge("clean", "extractor_init")
     graph.add_conditional_edges(
         "extractor_init",
         route_extractor_init,
-        {"end": END, "extractor": "extractor"},
+        {"end": END, "extractor": "extractor"}
     )
     graph.add_conditional_edges(
         "extractor", route_extractor, {"continue": "extractor", "done": END}
@@ -375,18 +438,17 @@ def build_phase1_graph():
 
 
 def build_extractor_graph():
-    """Phase 2 only: starts at extractor_init (Phase 1 bypassed)."""
+    """Phase 2 only: START -> clean -> extractor_init (Phase 1 bypassed)."""
     graph = StateGraph(PipelineState)
-    graph.add_edge(START, "extractor_init")
-    _add_extractor(graph)
+    _add_extractor(graph, START)
     return graph.compile()
 
 
 def build_graph():
-    """Full pipeline: indexer completion routes into extractor_init."""
+    """Full pipeline: indexer completion routes into clean, then Phase 2."""
     graph = StateGraph(PipelineState)
-    _add_phase1(graph, "extractor_init")
-    _add_extractor(graph)
+    _add_phase1(graph)
+    _add_extractor(graph, None)
     return graph.compile()
 
 
