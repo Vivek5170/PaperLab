@@ -136,21 +136,30 @@ Process the document efficiently to save tokens:
       (`\textbf{Answer: 33) 18}` / `\underline{\textbf{Solution for 33}}` / solution,
       then `\textbf{Answer: 34) 4}` / `\underline{\textbf{Solution for 34}}` / solution).
        Transcribe the COMPLETE solution text -- never write placeholders like
-       "see figure" instead of the actual solution content. Preserve the
-       solution's natural flow: inline math stays inline inside its sentence
-       (text and math share lines -- that is how the source book prints it).
-       A derivation step is one relation-equation (=, =>, approx) together
-       with its lead-in ("Also,", "Torque of ring", "In air gap,") and its
-       tail on the SAME line; separate steps with a blank line. NEVER isolate
-       a fragment on its own line: subscripts ($C_1$), superscripts ($^2$),
-       units (A/m), comparisons ($> \sigma$), definition arrows ("Let
-       $\sigma_f \rightarrow$ charge density of free charge at X"), equation
-       labels (...(i)), and clause starters ("Also,", "Let") always ride
-       with their clause. A line must never start with a comma or end with
-       a dangling and/or/Also,/Let. Keep source delimiters verbatim ($ stays
-       $, $$ stays $$; never invent display math the source does not show).
-       Never break inside a clause; when in doubt, keep the text flowing on
-       one line rather than splitting it.
+       "see figure" instead of the actual solution content, never drop a
+       sentence, equation, label (...(i)), or unit, and never drop or add
+       periods. Preserve the solution's natural flow: inline math stays
+       inline inside its sentence (text and math share lines -- that is how
+       the source book prints it). A derivation step is one
+       relation-equation (=, =>, approx) together with its lead-in ("Also,",
+       "Torque of ring", "In air gap,") and its tail on the SAME line;
+       separate steps with a blank line -- follow the source's own line
+       breaks: one source line stays one line, never merge two source lines
+       into one and never split one source line into two. NEVER isolate a
+       fragment on its own line: subscripts ($C_1$), superscripts ($^2$),
+       units (A/m, sec, cal, $\Omega$, N-m), comparisons ($> \sigma$),
+       definition arrows ("Let $\sigma_f \rightarrow$ charge density of
+       free charge at X"), equation labels (...(i)), and clause starters
+       ("Also,", "Let") always ride with their clause. Typeset every
+       relation and symbol the source typesets: wrap it in $...$ (never
+       leave bare math like "V = 6 sin(100t)" or "Ri = V/15" as plain
+       text). A line must never start with a comma or end with a dangling
+       and/or/Also,/Let. Keep source delimiters verbatim ($ stays $, $$
+       stays $$; never invent display math the source does not show).
+       Before calling submit_solution, list every sfig file you cropped and
+       confirm each one appears in an \includegraphics line -- an
+       unreferenced crop renders nothing. Where the source layout is
+       ambiguous, prefer fewer breaks over more.
    c. Call `submit_solution`. If it returns NOT SAVED, fix and resubmit.
 6. Move to the next question page and repeat until you finish the last physics question page.
 7. Once ALL physics questions and solutions in the boundary are submitted, you are finished. Stop.
