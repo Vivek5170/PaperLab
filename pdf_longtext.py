@@ -74,6 +74,70 @@ def _strip_targets(page, strokes: list, aggressive: bool = False) -> list:
     return out
 
 
+def remove_chrome(input_pdf_path: str | Path, output_pdf_path: str | Path) -> dict:
+    """Delete repeating chrome: page borders/rules (chrome strokes) and
+    headers/footers (chrome text). Same fingerprints Crop Lab / assist use
+    (``te._chrome_for``), so the canvas matches what cropping sees.
+    Unique figure/table strokes are never touched (graphics pass removes
+    only art touching the thin chrome rects; text pass removes only chrome
+    block rects). Returns {"pages", "strokes", "texts"}.
+    """
+    import fitz  # local import to keep module import light
+    src = str(input_pdf_path)
+    chrome_s, chrome_t = te._chrome_for(src)
+    doc = fitz.open(src)
+    n_strokes = n_texts = 0
+    try:
+        for page in doc:
+            g_annots = [d["rect"] for d in page.get_drawings()
+                        if te._stroke_fp(d["rect"]) in chrome_s]
+            for r in g_annots:
+                # Edge strips only: a full-page border bbox would otherwise
+                # cover (and delete) every figure on the page.
+                if r.width > 50 and r.height > 50:
+                    strips = [
+                        fitz.Rect(r.x0 - 1, r.y0 - 2, r.x1 + 1, r.y0 + 2),
+                        fitz.Rect(r.x0 - 1, r.y1 - 2, r.x1 + 1, r.y1 + 2),
+                        fitz.Rect(r.x0 - 2, r.y0 - 1, r.x0 + 2, r.y1 + 1),
+                        fitz.Rect(r.x1 - 2, r.y0 - 1, r.x1 + 2, r.y1 + 1),
+                    ]
+                else:
+                    strips = [fitz.Rect(r.x0 - 1, r.y0 - 1,
+                                        r.x1 + 1, r.y1 + 1)]
+                for s in strips:
+                    page.add_redact_annot(s, fill=None)
+            if g_annots:
+                page.apply_redactions(
+                    images=fitz.PDF_REDACT_IMAGE_NONE,
+                    graphics=fitz.PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED,
+                    text=fitz.PDF_REDACT_TEXT_NONE)
+                n_strokes += len(g_annots)
+            t_annots = []
+            for b in page.get_text("blocks"):
+                txt = str(b[4])
+                if not txt.strip():
+                    continue
+                norm = re.sub(r"\d+", "#", " ".join(txt.split()))
+                fp = (round(b[0], 1), round(b[1], 1), round(b[2], 1),
+                      round(b[3], 1), norm)
+                if fp in chrome_t:
+                    t_annots.append(fitz.Rect(b[0], b[1], b[2], b[3]))
+            for r in t_annots:
+                page.add_redact_annot(r, fill=None)
+            if t_annots:
+                page.apply_redactions(
+                    images=fitz.PDF_REDACT_IMAGE_NONE,
+                    graphics=fitz.PDF_REDACT_LINE_ART_NONE,
+                    text=fitz.PDF_REDACT_TEXT_REMOVE)
+                n_texts += len(t_annots)
+    finally:
+        pass
+    doc.save(str(output_pdf_path), garbage=4, deflate=True)
+    doc.close()
+    return {"pages": len(fitz.open(str(output_pdf_path))),
+            "strokes": n_strokes, "texts": n_texts}
+
+
 def strip_long_text(input_pdf_path: str | Path, output_pdf_path: str | Path,
                     fill=None, aggressive: bool = False) -> dict:
     """Strip Crop-Lab long text. Returns {"pages", "words_removed"}."""
@@ -101,14 +165,21 @@ def strip_long_text(input_pdf_path: str | Path, output_pdf_path: str | Path,
 
 
 def best_for_cropping(input_pdf_path: str | Path, output_pdf_path: str | Path,
-                      aggressive: bool = False) -> dict:
-    """pdf_clean.py + long-text strip = best canvas for figure cropping."""
+                      aggressive: bool = False,
+                      remove_chrome_art: bool = False) -> dict:
+    """pdf_clean.py + (opt chrome) + long-text strip = best crop canvas."""
     import tempfile
     import pdf_clean as pc
 
     with tempfile.TemporaryDirectory() as tmp:
         cleaned = str(Path(tmp) / "cleaned.pdf")
         clean_rep = pc.clean_pdf_canvas(str(input_pdf_path), cleaned)
-        strip_rep = strip_long_text(cleaned, output_pdf_path,
+        chrome_rep = None
+        work = cleaned
+        if remove_chrome_art:
+            nochrome = str(Path(tmp) / "nochrome.pdf")
+            chrome_rep = remove_chrome(cleaned, nochrome)
+            work = nochrome
+        strip_rep = strip_long_text(work, output_pdf_path,
                                     aggressive=aggressive)
-    return {"clean": clean_rep, "strip": strip_rep}
+    return {"clean": clean_rep, "chrome": chrome_rep, "strip": strip_rep}

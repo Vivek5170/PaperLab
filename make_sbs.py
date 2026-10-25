@@ -16,7 +16,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 
 import pdf_clean as pc
-from pdf_longtext import strip_long_text
+from pdf_longtext import remove_chrome, strip_long_text
 
 
 def side_by_side(orig: Path, modified: Path, out: Path) -> int:
@@ -45,6 +45,8 @@ def main() -> int:
     ap.add_argument("--out", default="/tmp/longtext_sbs")
     ap.add_argument("--aggressive", action="store_true",
                     help="also strip short-line debris far from strokes")
+    ap.add_argument("--chrome", action="store_true",
+                    help="also delete chrome borders/rules + headers/footers")
     args = ap.parse_args()
     src, outdir = Path(args.src), Path(args.out)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -54,7 +56,8 @@ def main() -> int:
         return 1
     for pdf in pdfs:
         tag = pdf.stem
-        suffix = "_AGGR" if args.aggressive else ""
+        suffix = ("_AGGR" if args.aggressive else "") + \
+                 ("_CHR" if args.chrome else "")
         dest = outdir / f"SBS_{tag}{suffix}.pdf"
         if dest.is_file():  # resume: skip finished papers
             print(f"SKIP {pdf.name} (exists)")
@@ -64,7 +67,12 @@ def main() -> int:
                 cleaned = str(Path(tmp) / "cleaned.pdf")
                 stripped = str(Path(tmp) / "stripped.pdf")
                 pc.clean_pdf_canvas(str(pdf), cleaned)   # production clean
-                strip_long_text(cleaned, stripped,
+                work = cleaned
+                if args.chrome:  # page borders/rules + headers/footers
+                    nochrome = str(Path(tmp) / "nochrome.pdf")
+                    remove_chrome(cleaned, nochrome)
+                    work = nochrome
+                strip_long_text(work, stripped,
                                 aggressive=args.aggressive)  # + strip
                 npages = side_by_side(pdf, Path(stripped), dest)
             print(f"OK {pdf.name} ({npages}p) -> {dest}")
