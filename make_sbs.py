@@ -43,6 +43,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default="data/archive")
     ap.add_argument("--out", default="/tmp/longtext_sbs")
+    ap.add_argument("--aggressive", action="store_true",
+                    help="also strip short-line debris far from strokes")
     args = ap.parse_args()
     src, outdir = Path(args.src), Path(args.out)
     outdir.mkdir(parents=True, exist_ok=True)
@@ -52,7 +54,8 @@ def main() -> int:
         return 1
     for pdf in pdfs:
         tag = pdf.stem
-        dest = outdir / f"SBS_{tag}.pdf"
+        suffix = "_AGGR" if args.aggressive else ""
+        dest = outdir / f"SBS_{tag}{suffix}.pdf"
         if dest.is_file():  # resume: skip finished papers
             print(f"SKIP {pdf.name} (exists)")
             continue
@@ -61,7 +64,8 @@ def main() -> int:
                 cleaned = str(Path(tmp) / "cleaned.pdf")
                 stripped = str(Path(tmp) / "stripped.pdf")
                 pc.clean_pdf_canvas(str(pdf), cleaned)   # production clean
-                strip_long_text(cleaned, stripped)        # + long-text strip
+                strip_long_text(cleaned, stripped,
+                                aggressive=args.aggressive)  # + strip
                 npages = side_by_side(pdf, Path(stripped), dest)
             print(f"OK {pdf.name} ({npages}p) -> {dest}")
         except Exception as exc:  # fail-open per paper, keep going

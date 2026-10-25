@@ -45,28 +45,37 @@ def _long_block_numbers(page, chrome_t: set) -> set[int]:
     return long_nos
 
 
-def _strip_targets(page, strokes: list) -> list:
-    """Tight word rects to delete: long-line words NOT near figure strokes."""
+def _strip_targets(page, strokes: list, aggressive: bool = False) -> list:
+    """Tight word rects to delete: long-line words NOT near figure strokes.
+
+    aggressive=True also deletes SHORT-line (<=3 words) debris far from any
+    stroke (stem shards like "the plates", "then", equation bits on solution
+    pages). Short text near strokes (labels) is always kept. Boundaries and
+    table grids are strokes themselves and are never touched.
+    """
     lines: dict = defaultdict(list)
     for w in page.get_text("words"):
         if str(w[4]).strip():
             lines[(w[5], w[6])].append(w)
     out = []
     for ws in lines.values():
-        if len(ws) <= te._VEC_TRIM_WORDS:
-            continue  # short line: label or tail, keep
+        long_line = len(ws) > te._VEC_TRIM_WORDS
         for w in ws:
             r = fitz.Rect(w[0], w[1], w[2], w[3])
             if r.width <= 0 or r.height <= 0:
                 continue
-            if any(te._touches(r, st, tol=te._VEC_LABEL_NEAR) for st in strokes):
+            near = any(te._touches(r, st, tol=te._VEC_LABEL_NEAR)
+                       for st in strokes)
+            if long_line and near:
                 continue  # diagram label sitting on ink, keep
+            if not long_line and (near or not aggressive):
+                continue  # short label kept; debris only in aggressive mode
             out.append(fitz.Rect(r.x0 - 0.3, r.y0 - 0.3, r.x1 + 0.3, r.y1 + 0.3))
     return out
 
 
 def strip_long_text(input_pdf_path: str | Path, output_pdf_path: str | Path,
-                    fill=None) -> dict:
+                    fill=None, aggressive: bool = False) -> dict:
     """Strip Crop-Lab long text. Returns {"pages", "words_removed"}."""
     import fitz  # local import to keep module import light
     src = str(input_pdf_path)
@@ -75,7 +84,7 @@ def strip_long_text(input_pdf_path: str | Path, output_pdf_path: str | Path,
     try:
         for pno, page in enumerate(doc, start=1):
             strokes, _, _ = te._page_vectors(src, pno)
-            targets = _strip_targets(page, strokes)
+            targets = _strip_targets(page, strokes, aggressive=aggressive)
             for rr in targets:
                 page.add_redact_annot(rr, fill=fill)
             if targets:
@@ -91,7 +100,8 @@ def strip_long_text(input_pdf_path: str | Path, output_pdf_path: str | Path,
     return {"pages": len(fitz.open(str(output_pdf_path))), "words_removed": words_removed}
 
 
-def best_for_cropping(input_pdf_path: str | Path, output_pdf_path: str | Path) -> dict:
+def best_for_cropping(input_pdf_path: str | Path, output_pdf_path: str | Path,
+                      aggressive: bool = False) -> dict:
     """pdf_clean.py + long-text strip = best canvas for figure cropping."""
     import tempfile
     import pdf_clean as pc
@@ -99,5 +109,6 @@ def best_for_cropping(input_pdf_path: str | Path, output_pdf_path: str | Path) -
     with tempfile.TemporaryDirectory() as tmp:
         cleaned = str(Path(tmp) / "cleaned.pdf")
         clean_rep = pc.clean_pdf_canvas(str(input_pdf_path), cleaned)
-        strip_rep = strip_long_text(cleaned, output_pdf_path)
+        strip_rep = strip_long_text(cleaned, output_pdf_path,
+                                    aggressive=aggressive)
     return {"clean": clean_rep, "strip": strip_rep}
