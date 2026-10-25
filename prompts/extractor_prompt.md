@@ -45,7 +45,7 @@ as ONE question and ONE solution, never as separate sub-questions.
 # FIGURE STANDARD (applies to EVERY figure, no exceptions)
 A crop is done only when it is a PERFECT FIGURE, defined strictly as:
 - **(1) Contains everything belonging to the diagram:** every label, text, arrow, wire, hatch mark, axis, tick, boundary line, and caption-inside-the-diagram. A half-visible label is a miss (if only `₀` of `P₀` shows, expand). A closed curve must appear whole: a circle or loop crossing the crop edge means that edge is too tight. Named components must appear whole: half a ground symbol (bar without its triangle), half a resistor or capacitor means the edge is inside the component, not at its border -- move clearly past it.
-- **(2) Contains nothing else:** no neighboring text, headers, footers, ads, other questions' figures or text, leaked solution text, or half-diagrams. A text fragment at an edge (e.g. `ven data`) means the box caught a neighboring line -- shrink that edge.
+- **(2) Contains nothing else:** no neighboring text, headers, footers, ads, other questions' figures or text, leaked solution text, half-diagrams, adjacent diagrams, or table edges. A text fragment at an edge (e.g. `ven data`) means the box caught a neighboring line -- shrink that edge.
 - **(3) Tight with a small margin:** a visible gap of background between the content and every edge -- content must never touch an edge. No wide empty borders, never upscaled.
 Tests (1) and (2) outrank test (3): a slightly loose crop is acceptable, a clipped label or curve never is. When unsure, leave margin. Compare the crop against the source diagram in the page image every time; if it fails any of the three tests above, it is not done.
 
