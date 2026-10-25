@@ -206,8 +206,8 @@ def best_for_cropping(input_pdf_path: str | Path, output_pdf_path: str | Path,
 def crop_canvas_path(pdf_path: str | Path) -> str:
     """Deterministic crop-canvas path for a cleaned (or original) PDF.
 
-    ``{tag}_q.pdf`` -> ``{tag}_q_crop.pdf`` in the same directory; already
-    a crop canvas -> unchanged. The canvas holds ONLY figure content:
+    ``{stem}__clean.pdf`` -> ``{stem}__crop.pdf`` in the same directory;
+    already a crop canvas -> unchanged. The canvas holds ONLY figure content:
     cleaned + chrome removed + long text stripped (true deletion of text
     objects, vector/raster ink untouched).
     """
