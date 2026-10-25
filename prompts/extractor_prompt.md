@@ -150,7 +150,10 @@ Process the document efficiently to save tokens:
        units (A/m, sec, cal, $\Omega$, N-m), comparisons ($> \sigma$),
        definition arrows ("Let $\sigma_f \rightarrow$ charge density of
        free charge at X"), equation labels (...(i)), and clause starters
-       ("Also,", "Let") always ride with their clause. Typeset every
+       ("Also,", "Let") always ride with their clause. An equation label
+       closes its line: a new sentence after it ("Solving equation (iii)
+       and (iv), we get") always starts on its own line -- never glue it
+       onto the label line. Typeset every
        relation and symbol the source typesets: wrap it in $...$ (never
        leave bare math like "V = 6 sin(100t)" or "Ri = V/15" as plain
        text). A line must never start with a comma or end with a dangling

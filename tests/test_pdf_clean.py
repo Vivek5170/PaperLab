@@ -738,6 +738,34 @@ def test_reflow_comparison_tail_keeps_clause():
     assert new2 == new
 
 
+def test_reflow_equation_label_splits_sentence():
+    """An equation label never shares its line with the next sentence:
+    '...(iv) Solving' splits, the label riding its equation; '(iv), we
+    get' (comma) does not split; a leading '(1)' list number is untouched.
+    """
+    from reflow_solutions import reflow_solution_tex
+
+    head = ("\\textbf{Answer: 12) 25}\n\n"
+            "\\underline{\\textbf{Solution for 12}}\n\n")
+    text = (head + "$K_{1}+K_{2} = 37$...(iv) Solving equation (iii) "
+            "and (iv), we get\n\n$5K_{2} = 125$\n")
+    new, _ = reflow_solution_tex(text)
+    lines = [l for l in new.splitlines() if l.strip()][2:]
+    assert lines[0] == "$K_{1}+K_{2} = 37$...(iv)"
+    assert lines[1] == "Solving equation (iii) and (iv), we get"
+    assert lines[2] == "$5K_{2} = 125$"
+    new2, _ = reflow_solution_tex(new)
+    assert new2 == new
+
+    text2 = (head + "From equation (i) and (ii), we get\n\n$x = 1$\n")
+    new3, _ = reflow_solution_tex(text2)
+    assert "From equation (i) and (ii), we get" in new3
+
+    text3 = head + "(1) Place the block\n\n$x = 1$\n"
+    new4, _ = reflow_solution_tex(text3)
+    assert "(1) Place the block" in new4
+
+
 def test_reflow_joiners_head_next_math():
     """Lone and/or head what follows instead of dangling at line end."""
     from reflow_solutions import reflow_solution_tex

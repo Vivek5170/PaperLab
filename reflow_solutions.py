@@ -9,8 +9,12 @@ AI, no wording changes, math spans byte-identical):
    `. `/`? `/`! ` (+ `) ` variants) before a capital/LaTeX-command,
    except after abbreviations (i.e., e.g., Fig., Eq., vs., etc., ...),
    single capitals handled by the same rule safely (they end sentences).
-   Decimals ("3.25"), ellipsis labels ("...(i)") and "10-A" style tokens
-   contain no `. `+capital, so they never split.
+   Decimals ("3.25") and "10-A" style tokens contain no `. `+capital,
+   so they never split. Ellipsis/equation labels ("...(i)", "(2)") DO
+   split when a new sentence follows them ("...(iv) Solving"): the mask
+   token or "..." before the label proves it tails an equation, while a
+   leading "(1)" list number has neither and is left alone. A comma
+   after ")" ("(iv), we get") means continuation, never a split.
 2. Native layout (matches agent-written files): text and equations never
    share a line (\\quad labels excepted). Long text runs get own lines;
    short text glues (parentheticals backward, lead-ins forward); symbol
@@ -166,16 +170,30 @@ def _split_spans(text: str) -> list:
     return spans
 
 
+# an equation label closing a derivation step never shares its line
+# with the next sentence ("...(iv) Solving", "(2) From"). A math mask
+# token directly before the label (optionally via "...", spacing
+# irrelevant -- pass one normalizes it, so the rule must fire on both
+# shapes or idempotency breaks) proves it tails an equation: a leading
+# "(1)" list number and a clause-leader like "Let ...(i)" have a word
+# (not math) before the dots and can never match. A comma after ")"
+# ("(iv), we get") means continuation, never a split.
+_LABEL_SPLIT_RE = re.compile(
+    r"\x00\d+\x00\s*(?:\.\.\.\s*)?"
+    r"\((?:[ivxlcdm]+|\d+)\)\s+(?=[A-Z])")
+
+
 def _split_sentences(seg: str) -> list:
     """Split a math-free segment on sentence boundaries (keeps delimiters).
 
     Split after `.`/`?`/`!` (or after a closing paren ending one) + space,
     when followed by a capital letter or backslash, unless the token
-    before the period is a known abbreviation.
+    before the period is a known abbreviation. Also split after an
+    equation label (`...(iv)`, `(2)`) when a new sentence follows it.
     """
-    parts, start = [], 0
-    # find candidate ends: punctuation [.?!] optionally followed by )
-    for m in re.finditer(r"[.!?]+\)?\s+(?=[A-Z\\])", seg):
+    cuts = []
+
+    def _period_end(m):
         pre = seg[:m.start()].rstrip()
         toks = pre.split()
         tok = toks[-1] if toks else ""
@@ -191,10 +209,34 @@ def _split_sentences(seg: str) -> list:
             # and breaks idempotency.)
             if not (len(toks) >= 2
                     and re.fullmatch("\x00\\d+\x00", toks[-2])):
-                continue
-        parts.append(seg[start:m.end()].strip())
-        start = m.end()
-    tail = seg[start:].strip()
+                return None
+        return m.end()
+
+    # find candidate ends: punctuation [.?!] optionally followed by )
+    for m in re.finditer(r"[.!?]+\)?\s+(?=[A-Z\\])", seg):
+        end = _period_end(m)
+        if end is not None:
+            cuts.append(end)
+    # ... plus equation-label ends. No position guard is needed: every
+    # match proves math directly before the label, which a leading list
+    # number never has. But the follower must be able to stand alone:
+    # a short math-less fragment ("In air gap,") would strand as an
+    # orphan line, so only split when the following sentence runs long
+    # or carries math (same 15-char line as the layout engine).
+    for m in _LABEL_SPLIT_RE.finditer(seg):
+        rest = seg[m.end():]
+        nxt = re.search(r"[.!?]", rest)
+        span = rest[:nxt.start()] if nxt else rest
+        if (re.search(r"\x00\d+\x00", span)
+                or len(re.sub(r"\x00\d+\x00", " ", span).strip()) >= 15):
+            cuts.append(m.end())
+    parts = []
+    prev = 0
+    for cut in sorted(set(cuts)):
+        if cut > prev:
+            parts.append(seg[prev:cut].strip())
+            prev = cut
+    tail = seg[prev:].strip()
     if tail:
         parts.append(tail)
     return [p for p in parts if p]
