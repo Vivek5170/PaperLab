@@ -207,13 +207,17 @@ def crop_canvas_path(pdf_path: str | Path) -> str:
     """Deterministic crop-canvas path for a cleaned (or original) PDF.
 
     ``{stem}__clean.pdf`` -> ``{stem}__crop.pdf`` in the same directory;
-    already a crop canvas -> unchanged. The canvas holds ONLY figure content:
+    already a crop canvas -> unchanged. The canvas holds ONLY figure content.
+    (Normalizes the ``__clean`` tag so every caller -- clean step, crop
+    tools, scripts -- converges on ONE canvas file per paper.)
     cleaned + chrome removed + long text stripped (true deletion of text
     objects, vector/raster ink untouched).
     """
     p = str(pdf_path)
     if p.endswith("_crop.pdf"):
         return p
+    if p.endswith("__clean.pdf"):
+        return p[: -len("__clean.pdf")] + "__crop.pdf"
     if p.lower().endswith(".pdf"):
         return p[:-4] + "_crop.pdf"
     return p + "_crop.pdf"

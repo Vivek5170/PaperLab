@@ -562,6 +562,52 @@ def tex_to_markdown(chunk: str) -> str:
 _SPLIT_RE = re.compile(
     r"(\\includegraphics(?:\[[^\]]*\])?\{[^}]+\})|(@@MTABLE:\d+@@)")
 
+# An \item whose option body is ONLY a figure loses its label on the
+# website: split_tex cuts at \includegraphics, the orphan "\item" is
+# discarded as an unknown command, and no "A)" ever reaches the page
+# (the PDF is fine -- LaTeX counts \items itself). Materialize the label
+# up front, but ONLY when the item directly introduces a figure; text
+# options keep flowing through _render_enumerate untouched.
+_FIG_ITEM_TOK_RE = re.compile(
+    r"\\begin\{enumerate\}(?:\[[^\]]*\])?"
+    r"|\\end\{enumerate\}"
+    r"|(?P<item>\\item(?:\[(?P<custom>[^\]]*)\])?)"
+    r"(?P<gap>(?:\s|\\begin\{center\}\s*)*)"
+    r"(?=\\includegraphics(?:\[[^\]]*\])?\{[^}]+\})")
+
+
+def _materialize_fig_item_labels(tex: str) -> str:
+    r"""Replace bare \item-before-figure with its A)/B)/... label.
+
+    Tracks enumerate depth so labels restart per environment and \items
+    outside enumerate are never touched. Custom \item[X] keeps X. The
+    whitespace/center gap between \item and the figure is preserved.
+    """
+    out: list[str] = []
+    pos = 0
+    counters: list[int] = []
+    for m in _FIG_ITEM_TOK_RE.finditer(tex):
+        if m.group("item") is None:  # \begin / \end: track depth
+            if m.group(0).startswith("\\begin"):
+                counters.append(0)
+            elif counters:
+                counters.pop()
+            out.append(tex[pos:m.end()])
+        elif counters:  # bare \item directly introducing a figure
+            n = counters[-1]
+            custom = m.group("custom")
+            label = (custom + " " if custom
+                     else ("%s) " % chr(ord("A") + n) if n < 26
+                           else "%d. " % (n + 1)))
+            counters[-1] = n + 1
+            out.append(tex[pos:m.start()] + label
+                       + tex[m.start("gap"):m.end()])
+        else:
+            out.append(tex[pos:m.end()])
+        pos = m.end()
+    out.append(tex[pos:])
+    return "".join(out)
+
 
 def _resolve_fig(base: Path, rel: str) -> str:
     fig = (base / rel).resolve()
@@ -595,6 +641,9 @@ def split_tex(tex: str, base_dir: str | Path):
     # figures first would shred tables into unparseable halves.
     tables: list = []
     tex = _render_tabulars(tex, tables=tables)
+    # Image-only options (\item followed by just a figure) would lose
+    # their A)/B)/... labels when split below; materialize them first.
+    tex = _materialize_fig_item_labels(tex)
     base = Path(base_dir)
     segments: list = []
     pos = 0
