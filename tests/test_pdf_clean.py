@@ -218,7 +218,7 @@ def test_expand_box_clears_slight_clip(tmp_path):
     doc = fitz.open(_filled_rect_pdf(tmp_path))
     try:
         page = doc[0]
-        grown, pads, capped, blocked = _expand_box_for_ink(
+        grown, pads, capped, blocked, cut = _expand_box_for_ink(
             page, [601.0, 300.0, 900.0, 700.0])
         assert pads[0] > 0  # 1 unit inside the filled edge
         assert capped == [] and blocked == []  # slight clip fully cleared
@@ -226,8 +226,9 @@ def test_expand_box_clears_slight_clip(tmp_path):
         r = page.rect
         clip = fitz.Rect(grown[0] / 1000 * r.width, grown[1] / 1000 * r.height,
                         grown[2] / 1000 * r.width, grown[3] / 1000 * r.height)
-        assert _touching_ink(
-            page.get_pixmap(dpi=_EDGE_CHECK_DPI, clip=clip)) == [False] * 4
+        touched, _counts = _touching_ink(
+            page.get_pixmap(dpi=_EDGE_CHECK_DPI, clip=clip))
+        assert touched == [False] * 4
     finally:
         doc.close()
 
@@ -242,33 +243,37 @@ def test_expand_box_caps_on_wire(tmp_path):
     pg.draw_line(fitz.Point(306, 0), fitz.Point(306, 792), color=(0, 0, 0),
                  width=2)
     try:
-        grown, pads, capped, blocked = _expand_box_for_ink(
+        grown, pads, capped, blocked, cut = _expand_box_for_ink(
             pg, [490.0, 200.0, 510.0, 800.0])
-        assert pads[1] == pads[3] == 15.0  # top/bottom capped
+        assert pads[1] == pads[3] == 25.0  # top/bottom capped
         assert pads[0] == pads[2] == 0.0  # sides never touched ink
         assert grown[1] < 200.0 and grown[3] > 800.0
-        assert sorted(capped) == ["bottom", "top"]  # still touching: retry me
+        # wire continues outside: cut-through, not plain capped
+        assert capped == [] and blocked == []
+        assert sorted(cut) == ["bottom", "top"]
     finally:
         doc.close()
 
 
-def test_polygon_autoexpands_and_reports(tmp_db, tmp_outputs, tmp_path,
+def test_exact_autoexpands_and_reports(tmp_db, tmp_outputs, tmp_path,
                                         dummy_pdf):
-    from tools_extractor import polygon_crop
+    from tools_extractor import exact_crop
 
     pid = database.register_paper(dummy_pdf)
     pdf = _filled_rect_pdf(tmp_path)
     _prime(pid, "1", "qfig1.png")
-    cmd = polygon_crop.invoke({
-        "name": "polygon_crop",
+    cmd = exact_crop.invoke({
+        "name": "exact_crop",
         "args": {"pdf_path": pdf, "page_number": 1,
-                 "points": [(601, 300), (900, 300), (900, 700), (601, 700)],
+                 "x": 601, "y": 300, "width": 299, "height": 400,
                  "output_filename": "qfig1.png", "paper_id": pid,
                  "question_number": "1"},
         "id": "t1", "type": "tool_call",
     })
     text = _tool_text(cmd)
     assert "Auto-expanded" in text and "left" in text
+    # edges ended clear: no correction anchor needed
+    assert "Correct from the final box" not in text
     import fitz
     saved = tmp_outputs / str(pid) / "1" / "figures" / "qfig1.png"
     img = fitz.Pixmap(str(saved))
@@ -300,7 +305,7 @@ def test_expansion_stops_at_question_text(tmp_path):
     try:
         # left edge (550u) sits on the stem text; right edge (899u)
         # sits exactly on the filled rect; top/bottom far from everything.
-        grown, pads, capped, blocked = _expand_box_for_ink(
+        grown, pads, capped, blocked, cut = _expand_box_for_ink(
             pg, [550.0, 200.0, 899.0, 700.0])
         assert blocked == ["left"]  # grew nowhere into the stem
         assert pads[0] == 0.0
@@ -310,37 +315,85 @@ def test_expansion_stops_at_question_text(tmp_path):
         doc.close()
 
 
-def test_polygon_reports_still_cut_at_cap(tmp_db, tmp_outputs, tmp_path,
-                                          dummy_pdf):
+def test_exact_reports_cut_through(tmp_db, tmp_outputs, tmp_path,
+                                    dummy_pdf):
     """Box deep inside content: pads max out and the reply says retry."""
-    from tools_extractor import polygon_crop
+    from tools_extractor import exact_crop
 
     pid = database.register_paper(dummy_pdf)
     pdf = _filled_rect_pdf(tmp_path)
     _prime(pid, "1", "qfig1.png")
-    cmd = polygon_crop.invoke({
-        "name": "polygon_crop",
+    cmd = exact_crop.invoke({
+        "name": "exact_crop",
         "args": {"pdf_path": pdf, "page_number": 1,
-                 "points": [(700, 400), (800, 400), (800, 600), (700, 600)],
+                 "x": 700, "y": 400, "width": 100, "height": 200,
                  "output_filename": "qfig1.png", "paper_id": pid,
                  "question_number": "1"},
         "id": "t1", "type": "tool_call",
     })
     text = _tool_text(cmd)
-    assert "Still cut" in text and "move that edge outward" in text
+    # filled rect deep inside: every edge cuts content continuing outside
+    # -> cut-through verdict with the choice message + correction anchor
+    assert "cuts through content continuing outside" in text
+    assert "if it is your diagram" in text
+    assert "neighboring figure" in text
+    assert "Correct from the final box" in text
+
+
+def test_cut_names_neighbor_side(tmp_path):
+    """Box edge slicing into a second figure reports cut on that edge."""
+    import fitz
+    from tools_extractor import _expand_box_for_ink
+
+    doc = fitz.open()
+    pg = doc.new_page(width=612, height=792)
+    pg.draw_rect(fitz.Rect(61, 238, 184, 396), fill=(0, 0, 0))  # own figure
+    pg.draw_rect(fitz.Rect(307, 238, 429, 396), fill=(0, 0, 0))  # neighbor
+    try:
+        # right edge (550u = 337pt) cuts into the neighbor figure
+        grown, pads, capped, blocked, cut = _expand_box_for_ink(
+            pg, [50.0, 300.0, 550.0, 500.0])
+        assert cut == ["right"]
+        assert pads[0] == 0.0  # left edge clean, untouched
+        assert blocked == []
+    finally:
+        doc.close()
+
+
+def test_speck_shaved_silently(tmp_path):
+    """A speck grazing the edge is shaved off with no model-facing note."""
+    import fitz
+    from tools_extractor import _expand_box_for_ink, _pad_note
+
+    import tools_extractor as _te
+    import hashlib as _hl
+    print("TEFILE", _te.__file__, _hl.md5(open(_te.__file__,'rb').read()).hexdigest()[:12])
+    doc = fitz.open()
+    pg = doc.new_page(width=612, height=792)
+    pg.draw_rect(fitz.Rect(306, 400, 307, 401), fill=(0, 0, 0))  # 1pt dot
+    try:
+        grown, pads, capped, blocked, cut = _expand_box_for_ink(
+            pg, [500.0, 200.0, 900.0, 900.0])
+        assert pads[0] < 0  # left edge shaved inward past the dot
+        assert all(p <= 0 for p in pads)  # never grew for a speck
+        assert capped == [] and blocked == [] and cut == []
+        assert _pad_note(pads, capped, blocked, cut) == ""  # silent
+        assert grown[0] > 501.6  # dot (ends at 501.6u) fully excluded
+    finally:
+        doc.close()
 
 
 def test_generous_box_gets_no_expansion_note(tmp_db, tmp_outputs, tmp_path,
                                             dummy_pdf):
-    from tools_extractor import polygon_crop
+    from tools_extractor import exact_crop
 
     pid = database.register_paper(dummy_pdf)
     pdf = _filled_rect_pdf(tmp_path)
     _prime(pid, "1", "qfig1.png")
-    cmd = polygon_crop.invoke({
-        "name": "polygon_crop",
+    cmd = exact_crop.invoke({
+        "name": "exact_crop",
         "args": {"pdf_path": pdf, "page_number": 1,
-                 "points": [(580, 280), (920, 280), (920, 720), (580, 720)],
+                 "x": 580, "y": 280, "width": 340, "height": 440,
                  "output_filename": "qfig1.png", "paper_id": pid,
                  "question_number": "1"},
         "id": "t1", "type": "tool_call",

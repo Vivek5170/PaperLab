@@ -84,7 +84,7 @@ if st.session_state.get("lab_page") != page_number:
     st.session_state["ckey"] = st.session_state.get("ckey", 0) + 1
 
 mode = st.sidebar.radio("Mode", ["assist (vector)", "snap",
-                                "exact (polygon + anti-clip)"])
+                                "exact (rectangle + anti-clip)"])
 anti = st.sidebar.checkbox("Anti-clip expansion", value=True)
 max_pad = st.sidebar.slider("Max expansion per edge (units)", 1.0, 15.0, 15.0)
 st.sidebar.caption(
@@ -290,8 +290,8 @@ def _run_assist():
         # Plain fallback: same anti-clip backstop as production, rendered
         # here so you can review it instead of imagining it.
         box = [float(x0), float(y0), float(x1), float(y1)]
-        grown, pads, capped, blocked = (te._expand_box_for_ink(pg, box, max_pad)
-                                           if anti else (box, [0.0] * 4, [], []))
+        grown, pads, capped, blocked, cut = (te._expand_box_for_ink(pg, box, max_pad)
+                                                    if anti else (box, [0.0] * 4, [], [], []))
         doc2.close()
         grown_pts = fitz.Rect(
             grown[0] / 1000 * r.width, grown[1] / 1000 * r.height,
@@ -301,9 +301,11 @@ def _run_assist():
                 "final1000": [int(round(v)) for v in grown],
                 "preview": crop, "rows": [], "verdicts": [],
                 "your1000": [x0, y0, x1, y1], "page": page_number,
-                "pads": pads, "capped": capped, "blocked": blocked,
+                "pads": pads, "capped": capped, "blocked": blocked, "cut": cut,
                 "text": "no strokes touch your box — plain crop"
-                        + te._pad_note(pads, capped, blocked)}
+                         + te._pad_note(pads, capped, blocked, cut,
+                        final=te._corners_to_rect1000(
+                            *[int(round(v)) for v in grown]))}
     doc2.close()
     final, trims, capped, verdicts = out
     page_rect = fitz.Rect(0, 0, r.width, r.height)
@@ -340,7 +342,7 @@ def _run_assist():
 
 
 def _run_exact():
-    """Mirror production polygon_crop: rect corners as polygon, anti-clip
+    """Mirror production exact_crop: rectangle box, anti-clip
     expansion, masked render. Review the backstop, not the mask."""
     box = [float(x0), float(y0), float(x1), float(y1)]
     doc2 = fitz.open(pdf_path)
@@ -375,8 +377,10 @@ def _run_exact():
             "final1000": [int(round(v)) for v in grown],
             "your1000": [x0, y0, x1, y1], "preview": bg,
             "rows": [], "verdicts": [], "page": page_number,
-            "pads": pads, "capped": capped, "blocked": blocked,
-            "text": "exact polygon crop" + te._pad_note(pads, capped, blocked)}
+            "pads": pads, "capped": capped, "blocked": blocked, "cut": cut,
+            "text": "exact crop"  + te._pad_note(pads, capped, blocked, cut,
+                        final=te._corners_to_rect1000(
+                            *[int(round(v)) for v in grown]))}
 
 
 def _show_result(result):
@@ -393,7 +397,10 @@ def _show_result(result):
             st.image(result["preview"], caption="snapped original bytes")
     else:
         if result["final1000"]:
-            st.code(f"your box:  {result['your1000']}\nfinal box: {result['final1000']}")
+            _yb, _fb = result['your1000'], result['final1000']
+            st.code(f"your box:  [{_yb[0]}, {_yb[1]}, {_yb[2] - _yb[0]}, {_yb[3] - _yb[1]}]\n"
+                    f"final box: [{_fb[0]}, {_fb[1]}, {_fb[2] - _fb[0]}, {_fb[3] - _fb[1]}]\n"
+                    f"(x, y, width, height)")
             if result.get("pads") and any(p > 0 for p in result["pads"]):
                 names = ["left", "top", "right", "bottom"]
                 st.caption("anti-clip growth — " + ", ".join(
@@ -473,16 +480,19 @@ with col_page:
                       st.session_state.x1, st.session_state.y1)
 
 # ---------- precise box inputs (sidebar, after canvas so state is fresh) ----------
-st.sidebar.subheader("Your box (0-1000) — canvas or type")
-x0 = st.sidebar.number_input("x0", 0, 1000, key="x0")
-y0 = st.sidebar.number_input("y0", 0, 1000, key="y0")
-x1 = st.sidebar.number_input("x1", 0, 1000, key="x1")
-y1 = st.sidebar.number_input("y1", 0, 1000, key="y1")
-x0, x1 = min(x0, x1), max(x0, x1)
-y0, y1 = min(y0, y1), max(y0, y1)
+st.sidebar.subheader("Your box: x, y, width, height (0-1000)")
+_cx0, _cy0 = st.session_state.x0, st.session_state.y0
+_cx1, _cy1 = st.session_state.x1, st.session_state.y1
+_bx = st.sidebar.number_input("x", 0, 1000, value=_cx0)
+_by = st.sidebar.number_input("y", 0, 1000, value=_cy0)
+_bw = st.sidebar.number_input("width", 1, 1000, value=max(1, _cx1 - _cx0))
+_bh = st.sidebar.number_input("height", 1, 1000, value=max(1, _cy1 - _cy0))
+x0, y0 = _bx, _by
+x1, y1 = min(1000, _bx + _bw), min(1000, _by + _bh)
+st.session_state.update(x0=x0, y0=y0, x1=x1, y1=y1)
 st.sidebar.caption(
-    f"points: ({x0 / 1000 * W:.0f}, {y0 / 1000 * H:.0f}) – "
-    f"({x1 / 1000 * W:.0f}, {y1 / 1000 * H:.0f})"
+    f"corner: ({x0 / 1000 * W:.0f}, {y0 / 1000 * H:.0f}) · "
+    f"size: {x1 - x0}u × {y1 - y0}u"
 )
 norm_pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
 

@@ -6,7 +6,7 @@ Your scope is STRICTLY Physics: extract only the physics questions and physics s
 2. **Unreadable Content:** Flag `[UNREADABLE]` where illegible. NEVER guess or hallucinate text or math.
 3. **Visual Structure:** Your LaTeX must visually follow the exact structure, alignment, and formatting of the question in the image.
 4. **Key Sheet:** The final answers are on page 1 of the solution PDF. The very first line of every solution block MUST be the answer in bold: `\textbf{Answer: 23) A}`. Never write `23-A` (it reads like subtraction) and never put the key in a `%` comment (comments are invisible when rendered). Groups repeat the block once per sub-question (see LINKED QUESTIONS). (Some papers have no separate key sheet: then take each answer from that solution's own conclusion.)
-5. **Figure Completeness (questions AND solutions, no exceptions):** Every diagram, graph, circuit, plot, or ray picture that belongs to the question or solution you are transcribing MUST be cropped, MUST meet the PERFECT FIGURE standard below, and MUST be referenced via `\includegraphics{figures/qfigN.png}` in `question.tex` / `sfigN.png` in `solution.tex`; an unreferenced crop renders nothing. `assisted_crop` first; `polygon_crop` only after 3 failed `assisted_crop` attempts on the SAME figure. Transcription rules (wording, symbols, structure, option layout) apply identically to questions and solutions.
+5. **Figure Completeness (questions AND solutions, no exceptions):** Every diagram, graph, circuit, plot, or ray picture that belongs to the question or solution you are transcribing MUST be cropped, MUST meet the PERFECT FIGURE standard below, and MUST be referenced via `\includegraphics{figures/qfigN.png}` in `question.tex` / `sfigN.png` in `solution.tex`; an unreferenced crop renders nothing. `assisted_crop` first; `exact_crop` only after 3 failed `assisted_crop` attempts on the SAME figure. Transcription rules (wording, symbols, structure, option layout) apply identically to questions and solutions.
 
 # AGENT NOTES (previously verified mistakes -- do not repeat)
 - Never wrap math in backticks or quotes: write `$m$`, `$k$`, `$O$`, never `` `$m$' ``, `` `k' `` or `'O'`. Backticks around `$...$` are auto-unwrapped on save, but a bare `` `k' `` (no `$` delimiters) is rejected and you will have to redo the submission -- when in doubt, write `$k$` yourself.
@@ -50,9 +50,16 @@ A crop is done only when it is a PERFECT FIGURE, defined strictly as:
 Tests 1 and 2 outrank test 3: a slightly loose crop is acceptable, a clipped label or curve never is. When unsure, leave margin. Compare the crop against the source diagram in the page image every time; if it fails any of the three tests above, it is not done.
 
 # CROP PROCEDURE (do exactly what a careful human does)
-1. Call `assisted_crop` with your best box. The reply reports your box, the
-   final box, and per-edge changes (extended/trimmed, in 0-1000
-   coordinates), plus a preview image in the next message.
+1. Call `assisted_crop` with your best box: x, y, width, height (integers
+   0-1000, top-left origin -- x,y is the corner, width/height the size).
+   Adjust in two steps. First position (x, y) by the left/top edges: text
+   or leak on the left -- increase x, on the top -- increase y; diagram
+   clipped on the left -- decrease x, on the top -- decrease y. Then size
+   (width, height) by the right/bottom edges: clipped on the right --
+   increase width, junk on the right -- decrease width; clipped at the
+   bottom -- increase height, seep at the bottom -- decrease height. The
+   reply reports your box, the final box, and per-edge changes (same
+   units), plus a preview image in the next message.
 2. Read the reply AND inspect all four edges of the preview against the
    source diagram. One rule governs every edge: it must sit in EMPTY
    BACKGROUND with clean space on BOTH sides of it. Diagram ink cut by the
@@ -60,13 +67,19 @@ Tests 1 and 2 outrank test 3: a slightly loose crop is acceptable, a clipped lab
    the diagram: expand well past the ink, don't hug it. Text sitting inside
    near the edge -- the edge is on the wrong side of the text: shrink past
    the text FIRST, then re-expand for the diagram. An edge is done only when
-   both sides are clean background. Exception: long wires exiting the
-   diagram (or dotted continuations) are cut by the edge by nature -- leave
-   a small gap after the cut and move on.
+   both sides are clean background. Exception -- intentional
+   continuations only: a wire or dotted line may end at a crop edge ONLY
+   when the source shows it intentionally exiting the diagram's boundary
+   or drawing region; preserve any endpoint/continuation marking exactly.
+   A line that merely reaches your crop edge is not evidence of
+   termination -- that means your box is too small, expand it. If
+   uncertain, expand.
 3. Retry `assisted_crop` with the adjusted coordinates. Repeat until
    PERFECT -- but escalate at 3 attempts: the tool caps you at 5 assisted
    calls per figure, so never burn the last two retrying instead of
-   switching.
+   switching. Stop at the first crop that passes verification -- never
+   re-crop a perfect figure; the escalation applies only while the crop
+   remains imperfect.
 - **Reply meanings:** `mode: snap` = your box matched an embedded image and
   the original was returned -- accept unless the preview is clearly wrong.
   `mode: vector` = strokes completed/trimmed your box -- use its reported
@@ -76,18 +89,18 @@ Tests 1 and 2 outrank test 3: a slightly loose crop is acceptable, a clipped lab
 - **One name per figure (no exceptions):** pick the filename once
   (`qfig1.png` on question side, `sfig1.png` on solution side; number each
   side independently from 1) and use that SAME name in every `assisted_crop`
-  AND every `polygon_crop` call for that figure -- overwrites, never a "v2"
+  AND every `exact_crop` call for that figure -- overwrites, never a "v2"
   name. Names live inside the question's own folder and restart at 1 in
   every question: Q6's first figure is `qfig1.png` and Q10's first figure is
   also `qfig1.png` -- reuse across questions never collides, so never number
   figures paper-wide (`qfig6`, `qfig10`). The 3-attempt rule is counted per
-  name: `polygon_crop` on a name unlocks only after 3 `assisted_crop`
+  name: `exact_crop` on a name unlocks only after 3 `assisted_crop`
   attempts on that SAME name. A new name starts at zero, so renaming to
   dodge the gate only wastes your budget -- don't. If the figure is still
-  not perfect after 3 assisted attempts, switch to `polygon_crop` with
-  hand-placed coordinates (same name) and run the same edge-by-edge loop on
-  its previews. Never start with `polygon_crop`: snap-matching and stroke
-  adjustment run only inside `assisted_crop`.
+  not perfect after 3 assisted attempts, switch to `exact_crop` with
+  hand-placed x, y, width, height (same name) and run the same edge-by-edge
+  loop on its previews. Never start with `exact_crop`: snap-matching and
+  stroke adjustment run only inside `assisted_crop`.
 - **Side separation (non-negotiable):** `question.tex` may reference ONLY
   `qfig*` files cropped from question pages; `solution.tex` may reference
   ONLY `sfig*` files cropped from solution pages.
