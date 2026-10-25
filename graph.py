@@ -285,6 +285,26 @@ def clean_node(state: PipelineState) -> dict:
     }
 
 
+def postprocess_node(state: PipelineState) -> dict:
+    """Once-per-paper figure cleanup after extraction completes.
+
+    Border peepings + loose whitespace on every saved figure, no AI.
+    Idempotent (re-runs are no-ops) and fail-open: never fails the
+    pipeline, never touches state.
+    """
+    try:
+        from postprocess_figures import postprocess_paper
+        rep = postprocess_paper(state["paper_id"])
+        peeps = sum(r.get("peeps_removed", 0) for r in rep.values())
+        trims = sum(1 for r in rep.values() if r.get("trimmed"))
+        print(f"postprocess: paper {state['paper_id']}: {len(rep)} "
+              f"figures, {peeps} peepings removed, {trims} trimmed")
+    except Exception as exc:
+        print(f"postprocess: paper {state['paper_id']} skipped "
+              f"({type(exc).__name__}: {exc})")
+    return {}
+
+
 def _existing_id_scheme(paper_id: int) -> str | None:
     """Naming convention already stored for this paper, if any.
 
@@ -422,6 +442,7 @@ def _add_extractor(graph: StateGraph, entry: Optional[str]) -> None:
     graph.add_node("clean", clean_node)
     graph.add_node("extractor_init", extractor_init_node)
     graph.add_node("extractor", extractor_node)
+    graph.add_node("postprocess", postprocess_node)
     if entry is not None:
         # Standalone extractor graph: START enters here. In the full
         # graph Phase 1 routes into "clean" directly (indexer_done_target).
@@ -433,8 +454,10 @@ def _add_extractor(graph: StateGraph, entry: Optional[str]) -> None:
         {"end": END, "extractor": "extractor"}
     )
     graph.add_conditional_edges(
-        "extractor", route_extractor, {"continue": "extractor", "done": END}
+        "extractor", route_extractor,
+        {"continue": "extractor", "done": "postprocess"}
     )
+    graph.add_edge("postprocess", END)
 
 
 def build_phase1_graph():

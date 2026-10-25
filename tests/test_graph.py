@@ -140,3 +140,30 @@ def test_graphs_compile(tmp_db):
     assert graph.phase1_app is not None
     assert graph.extractor_app is not None
     assert graph.app is not None
+
+
+def test_postprocess_node_cleans_figures(tmp_db, tmp_outputs, tmp_path):
+    """postprocess_node runs the figure cleanup for the paper, fail-open."""
+    import numpy as np
+    from PIL import Image
+    import graph as _g
+
+    qdir = tmp_outputs / "1" / "A-01" / "figures"
+    qdir.mkdir(parents=True)
+    a = np.full((200, 200, 3), 255, np.uint8)
+    a[80:120, 90:150] = 0
+    a[0:30, 0] = 0  # border sliver -> peep
+    Image.fromarray(a).save(qdir / "qfig1.png")
+    out = _g.postprocess_node({"paper_id": 1})
+    assert out == {}
+    b = np.array(Image.open(qdir / "qfig1.png").convert("L"))
+    assert (b[:, 0] == 255).all()  # sliver gone
+
+
+def test_postprocess_wired_after_extractor(tmp_db):
+    """Both graphs route extractor-done through postprocess to END."""
+    import graph as _g
+
+    for app in (_g.extractor_app, _g.app):
+        nodes = set(app.get_graph().nodes)
+        assert {"extractor", "postprocess"} <= nodes
