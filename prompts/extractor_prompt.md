@@ -55,18 +55,21 @@ THINK:
    width, height (integers 0-1000, top-left origin -- x,y is the corner,
    width/height the size).
 2. Step 2 -- correct from the previous box. Read the reply (it reports your
-   box and the final box, plus per-edge changes except on a snap match, which
-   returns the original) AND inspect
+   box and the final box, plus auto-measured per-edge numbers from fixed
+   rules -- not judgments, verify them against the preview; except on a
+   snap match, which returns the original) AND inspect
    all four edges of the preview against the source diagram, then adjust:
-   a. LEFT edge: diagram clipped there -- decrease x; junk or foreign text
-      there -- increase x.
-   b. TOP edge: diagram clipped there -- decrease y; junk or foreign text
-      there -- increase y.
-   c. RIGHT edge: diagram clipped there -- increase width; junk or foreign
-      text there -- decrease width.
-   d. BOTTOM edge: diagram clipped there -- increase height; junk or
-      foreign text there -- decrease height.
-   Go back to Step 1 with the corrected numbers. Repeat until PERFECT --
+   Step 2a -- LEFT edge: diagram clipped there -- decrease x; junk or
+      foreign text there -- increase x.
+   Step 2b -- TOP edge: diagram clipped there -- decrease y; junk or
+      foreign text there -- increase y.
+   Step 2c -- RIGHT edge: diagram clipped there -- increase width; junk
+      or foreign text there -- decrease width.
+   Step 2d -- BOTTOM edge: diagram clipped there -- increase height; junk
+      or foreign text there -- decrease height.
+   Go back to Step 1 with the corrected numbers (from the latest reply
+   only -- never stack corrections across rounds; always anchor on the
+   newest final box). Repeat until PERFECT --
    but escalate at 3 attempts: the tool caps you at 5 assisted
    calls per figure, so never burn the last two retrying instead of
    switching. Stop at the first crop that passes verification -- never
@@ -75,9 +78,11 @@ THINK:
 DO (while correcting): every edge must sit in EMPTY BACKGROUND, clean space
 on both sides, never touching content. Ink cut from inside (a wire,
 component, label, curve) means the edge is inside the diagram: move clearly
-past the ink, don't hug it. Foreign text caught inside means the edge is on
-the wrong side of it: move the edge into the gap between that text and the
-diagram. Exception -- intentional
+past the ink, don't hug it. Text peeping in at an edge needs a verdict
+first: if it belongs to the diagram (a label, tick value,
+caption-inside-the-diagram) it is content, not junk -- expand until it is
+whole with margin. Only foreign text gets shrunk past: move the edge into
+the gap between that text and the diagram. Exception -- intentional
    continuations only: a wire or dotted line may end at a crop edge ONLY
    when the source shows it intentionally exiting the diagram's boundary
    or drawing region; preserve any endpoint/continuation marking exactly.
@@ -87,9 +92,10 @@ diagram. Exception -- intentional
 - **Reply meanings:** `mode: snap` = your box matched an embedded image and
   the original was returned -- accept unless the preview is clearly wrong.
   `mode: vector` = strokes completed/trimmed your box -- use its reported
-  final box as the starting point of your next adjustment. `mode: plain` =
-  no art found, your box saved with only edge-margin fixes -- use its
-  reported final box, then adjust and retry until perfect.
+  final box as the starting point of your next adjustment.   `mode: plain` =
+  no art found, your box saved as-is plus auto-expansion where ink
+  touched -- use its reported final box, then adjust and retry until
+  perfect.
 - **One name per figure (no exceptions):** pick the filename once
   (`qfig1.png` on question side, `sfig1.png` on solution side; number each
   side independently from 1) and use that SAME name in every `assisted_crop`

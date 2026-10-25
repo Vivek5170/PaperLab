@@ -230,9 +230,15 @@ def _clean_one(src: str | None, dest: Path) -> tuple[str | None, dict | None]:
 
 def clean_paper_pdfs(paper_id: int) -> dict:
     """Clean a paper's PDFs for Phase 2 vision. Returns
-    {"question_pdf", "solution_pdf", "reports"} with cleaned paths, or the
-    original paths wherever cleaning was skipped/failed. Never raises for
-    a known paper (unknown paper_id still raises ValueError)."""
+    {"question_pdf", "solution_pdf", "question_crop_pdf",
+    "solution_crop_pdf", "reports"} with cleaned paths, or the original
+    paths wherever cleaning was skipped/failed. The crop canvases hold
+    ONLY figure content (chrome removed + long text stripped via true
+    text-object deletion; vector/raster ink untouched) and are what the
+    crop tools see. Never raises for a known paper (unknown paper_id
+    still raises ValueError)."""
+    from pdf_longtext import remove_chrome, strip_long_text
+
     row = database.get_paper(paper_id)
     if row is None:
         raise ValueError(f"paper_id {paper_id} does not exist")
@@ -240,6 +246,26 @@ def clean_paper_pdfs(paper_id: int) -> dict:
     cdir = directory_manager.CLEANED_DIR
     q_clean, q_rep = _clean_one(row["question_pdf_path"], cdir / f"{tag}_q.pdf")
     s_clean, s_rep = _clean_one(row["solution_pdf_path"], cdir / f"{tag}_s.pdf")
+
+    def _crop_canvas(cleaned: str | None, name: str) -> str | None:
+        if not cleaned:
+            return None
+        dest = cdir / name
+        if dest.is_file():
+            return str(dest)
+        try:
+            nochrome = str(dest) + ".nochrome.tmp.pdf"
+            remove_chrome(cleaned, nochrome)
+            strip_long_text(nochrome, str(dest), aggressive=True)
+            Path(nochrome).unlink(missing_ok=True)
+            return str(dest) if dest.is_file() else cleaned
+        except Exception as exc:
+            print(f"pdf_clean: crop canvas {name} failed "
+                  f"({type(exc).__name__}: {exc}); using cleaned")
+            return cleaned
+
+    q_crop = _crop_canvas(q_clean, f"{tag}_q_crop.pdf")
+    s_crop = _crop_canvas(s_clean, f"{tag}_s_crop.pdf")
     reports = {"question": q_rep, "solution": s_rep}
     flat = {k: v for r in reports.values() if r for k, v in r.items()
             if isinstance(v, int)}
@@ -250,4 +276,5 @@ def clean_paper_pdfs(paper_id: int) -> dict:
           f"chrome={flat.get('chrome_images', 0)} "
           f"bg={flat.get('backgrounds', 0)}")
     return {"question_pdf": q_clean, "solution_pdf": s_clean,
+            "question_crop_pdf": q_crop, "solution_crop_pdf": s_crop,
             "reports": reports}

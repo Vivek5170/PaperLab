@@ -1,8 +1,8 @@
 """Long-text stripping for figure-verification (Crop Lab definition, vector-safe).
 
 Removes what Crop Lab calls "long text" but never figure labels:
-  - decision: text LINE with > ``_VEC_TRIM_WORDS`` (3) words (same as
-    ``tools_extractor._long_text_rects``) -- line-level, so a 1-word label
+  - decision: text LINE with > ``_VEC_TRIM_WORDS`` (3) words (same rule
+    the crop backstop historically used) -- line-level, so a 1-word label
     merged by PyMuPDF into a stem BLOCK is still kept;
   - label guard: a long-line word within ``_VEC_LABEL_NEAR`` (10 pt) of a
     non-chrome stroke is a diagram label (``f = 10 cm``, ``D = 40 cm``,
@@ -201,3 +201,44 @@ def best_for_cropping(input_pdf_path: str | Path, output_pdf_path: str | Path,
         strip_rep = strip_long_text(work, output_pdf_path,
                                     aggressive=aggressive)
     return {"clean": clean_rep, "chrome": chrome_rep, "strip": strip_rep}
+
+
+def crop_canvas_path(pdf_path: str | Path) -> str:
+    """Deterministic crop-canvas path for a cleaned (or original) PDF.
+
+    ``{tag}_q.pdf`` -> ``{tag}_q_crop.pdf`` in the same directory; already
+    a crop canvas -> unchanged. The canvas holds ONLY figure content:
+    cleaned + chrome removed + long text stripped (true deletion of text
+    objects, vector/raster ink untouched).
+    """
+    p = str(pdf_path)
+    if p.endswith("_crop.pdf"):
+        return p
+    if p.lower().endswith(".pdf"):
+        return p[:-4] + "_crop.pdf"
+    return p + "_crop.pdf"
+
+
+def ensure_crop_canvas(pdf_path: str | Path,
+                       aggressive: bool = True) -> str:
+    """Crop canvas for pdf_path, building (chrome+strip) iff missing.
+
+    Fail-open: any error returns the input path unchanged, so cropping
+    still runs (on the un-stripped page, with the old in-tool behavior
+    as fallback). Never raises for a readable PDF.
+    """
+    src = str(pdf_path)
+    if src.endswith("_crop.pdf"):
+        return src
+    dest = crop_canvas_path(src)
+    if Path(dest).is_file():
+        return dest
+    try:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            nochrome = str(Path(tmp) / "nochrome.pdf")
+            remove_chrome(src, nochrome)
+            strip_long_text(nochrome, dest, aggressive=aggressive)
+        return dest if Path(dest).is_file() else src
+    except Exception:
+        return src

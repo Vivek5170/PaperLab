@@ -271,6 +271,10 @@ def clean_node(state: PipelineState) -> dict:
 
     Runs between Phase 1 and Phase 2 in every graph. Fail-open inside --
     on any error the original paths are kept, so extraction still runs.
+    clean_paper_pdfs also pre-builds the figure-only crop canvases
+    ({tag}_q/s_crop.pdf: chrome removed + long text truly deleted);
+    crop tools resolve to them automatically, transcription keeps the
+    full cleaned pages.
     """
     from pdf_clean import clean_paper_pdfs
 
@@ -366,7 +370,10 @@ def extractor_node(state: PipelineState) -> dict:
                 f"(physics questions {q_range})\n"
                 f"{sol_line}\n"
                 "These are cleaned copies (watermarks removed); pagination "
-                "and geometry are identical to the originals."
+                "and geometry are identical to the originals. "
+                "Crop tools (assisted_crop/exact_crop) automatically see "
+                "a figure-only canvas of these PDFs (long question text "
+                "deleted, diagram ink intact) -- pass the paths as given."
                 f"{scheme_line}"
             )
         ),

@@ -581,16 +581,43 @@ def test_assist_completes_clipped_shape(dummy_pdf, scanned_pdf, tmp_db, tmp_outp
 
 
 def test_assist_trims_long_text_keeps_label(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
-    """Long text line crossing the top edge is trimmed; short 'E' label stays."""
+    """Vector trim fallback: long text line crossing the top edge is
+    trimmed on a RAW page (direct _assist_box); short 'E' label stays.
+
+    In production the crop canvas is pre-stripped so this path rarely
+    fires -- it remains the safety net when stripping is skipped."""
+    import fitz
+    import tools_extractor as te
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    _strokes, blocks, clusters = te._page_vectors(pdf, 1)
+    doc = fitz.open(pdf)
+    try:
+        out = te._assist_box(doc[0], fitz.Rect(180, 240, 300, 520),
+                             blocks, clusters)
+    finally:
+        doc.close()
+    assert out is not None
+    final, trim_notes, _capped, _verdicts = out
+    assert any(e == "top" and "Find the value" in (snip or "")
+               for e, snip in trim_notes)
+    assert 260.0 <= final.y0 <= 266.0  # text gone, stops at arrow stub
+    assert (final.x0 <= 205 <= final.x1
+            and final.y0 <= 292 <= final.y1)  # 'E' label kept
+
+
+def test_assist_pre_strips_canvas_before_vector(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Integration: assisted_crop resolves the crop canvas first, so the
+    long stem line is already gone when vector matching runs."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _vector_pdf(tmp_path)
     cmd = _assist(pdf, pid, (300, 300, 200, 350), "b.png")
     text, _, _ = _image_messages(cmd)
-    assert "trimmed top by" in text and "Find the value" in text
+    assert "mode: vector" in text
+    assert "Find the value" not in text  # stripped before vector saw it
     box = _final_box(text)
-    assert 326 <= box[1] <= 330  # text gone, shrink stops at the arrow stub
-    # 'E' label at (205/600*1000=342, 292/800*1000=365) still inside
-    assert box[0] <= 342 <= box[2] and box[1] <= 365 <= box[3]
+    assert box[0] <= 342 <= box[2] and box[1] <= 365 <= box[3]  # 'E' kept
 
 
 def test_assist_ignores_chrome_stroke(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
@@ -785,8 +812,11 @@ def test_assist_suppresses_subpixel_noise(dummy_pdf, scanned_pdf, tmp_db, tmp_ou
 
 
 def test_assist_trims_short_stray_text_keeps_hugging_label(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
-    """1-word fragment far from strokes is trimmed; the close 'E' label stays."""
+    """1-word fragment far from strokes is trimmed by _assist_box on a RAW
+    page; the close 'E' label stays (canvas pre-strip would also remove
+    far debris in aggressive mode)."""
     import fitz
+    import tools_extractor as te
 
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _vector_pdf(tmp_path)
@@ -797,12 +827,199 @@ def test_assist_trims_short_stray_text_keeps_hugging_label(dummy_pdf, scanned_pd
     import os as _os
 
     _os.replace(str(pdf) + ".tmp", pdf)
-    cmd = _assist(pdf, pid, (250, 312, 500, 500), "s.png")
+    te._PAGE_VEC_CACHE.clear()
+    _strokes, blocks, clusters = te._page_vectors(pdf, 1)
+    doc = fitz.open(pdf)
+    try:
+        out = te._assist_box(doc[0], fitz.Rect(150, 249.6, 450, 649.6),
+                             blocks, clusters)
+    finally:
+        doc.close()
+    assert out is not None
+    final, trim_notes, _capped, _verdicts = out
+    assert any(e == "bottom" and "Q12" in (snip or "")
+               for e, snip in trim_notes)
+    assert final.y1 < 649.6  # stray fragment pulled the edge up
+    assert (final.x0 <= 205 <= final.x1
+            and final.y0 <= 292 <= final.y1)  # 'E' kept
+
+
+def test_assist_idempotent(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Feeding the final box back reproduces the same box and bytes."""
+    import tools_extractor as te
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    pts = (300, 300, 200, 350)
+    t1, _, _ = _image_messages(_assist(pdf, pid, pts, "d.png"))
+    box = _final_box(t1)
+    te.reset_assist_attempts()
+    t2, _, _ = _image_messages(_assist(
+        pdf, pid,
+        (box[0], box[1], box[2] - box[0], box[3] - box[1]),
+        "d2.png", cid="t2",
+    ))
+    assert _final_box(t2) == box
+    out = tmp_outputs / str(pid) / "1" / "figures"
+    assert (out / "d.png").read_bytes() == (out / "d2.png").read_bytes()
+
+
+def test_assist_sixth_call_refused(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Max 5 assisted calls per figure; the 6th saves nothing."""
+    import tools_extractor as te
+    from langchain_core.messages import ToolMessage
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    pts = (300, 300, 200, 350)
+    te.reset_assist_attempts()
+    for i in range(5):
+        cmd = assisted_crop.invoke(_tc(
+            "assisted_crop",
+            {"pdf_path": pdf, "page_number": 1, "x": pts[0], "y": pts[1], "width": pts[2], "height": pts[3],
+             "output_filename": "e.png", "paper_id": pid, "question_number": "1"},
+            call_id=f"t{i}",
+        ))
+        assert len(cmd.update["messages"]) == 2  # all 5 allowed through
+    dest = tmp_outputs / str(pid) / "1" / "figures" / "e.png"
+    before = dest.read_bytes()
+    cmd = assisted_crop.invoke(_tc(
+        "assisted_crop",
+        {"pdf_path": pdf, "page_number": 1, "x": pts[0], "y": pts[1], "width": pts[2], "height": pts[3],
+         "output_filename": "e.png", "paper_id": pid, "question_number": "1"},
+        call_id="t6",
+    ))
+    assert len(cmd.update["messages"]) == 1  # text only, no preview
+    assert "attempt limit" in cmd.update["messages"][0].content
+    assert isinstance(cmd.update["messages"][0], ToolMessage)
+    assert dest.read_bytes() == before  # nothing saved
+
+
+def test_assist_counts_persist_in_sidecar(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Attempts live in figures/_assist_counts.json; reset drops them."""
+    import json
+
+    import tools_extractor as te
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    pts = (300, 300, 200, 350)
+    te.reset_assist_attempts()
+    for i in range(2):
+        assisted_crop.invoke(_tc(
+            "assisted_crop",
+            {"pdf_path": pdf, "page_number": 1, "x": pts[0], "y": pts[1], "width": pts[2], "height": pts[3],
+             "output_filename": "f.png", "paper_id": pid, "question_number": "1"},
+            call_id=f"c{i}",
+        ))
+    sidecar = tmp_outputs / str(pid) / "1" / "figures" / "_assist_counts.json"
+    assert json.loads(sidecar.read_text()) == {"f.png": 2}
+    assert te.reset_assist_attempts(pid) == 1
+    assert not sidecar.exists()
+
+
+def test_exact_crop_is_exact_on_chrome_logo(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Box around the shared logo matches nothing (chrome excluded): exact."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf, red_raw, _ = _pdf_with_images(tmp_path)
+    import tools_extractor as te
+
+    te._SNAP_CACHE.clear()
+    te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
+    # 200x200 page: blue logo at (150,10)-(170,30), repeated on all pages.
+    _prime_assist(pid, "x.png")
+    cmd = exact_crop.invoke(_tc(
+        "exact_crop", {
+            "pdf_path": pdf, "page_number": 1,
+            "x": 700, "y": 0, "width": 200, "height": 200,
+            "output_filename": "x.png", "paper_id": pid, "question_number": "1",
+        },
+    ))
     text, _, _ = _image_messages(cmd)
-    assert "mode: vector" in text and "trimmed bottom by" in text and "Q12" in text
+    assert "Exact crop of your box" in text
+    saved = tmp_outputs / str(pid) / "1" / "figures" / "x.png"
+    got = Image.open(saved)
+    assert (got.size[0], got.size[1]) != (80, 80)  # not the snapped original
+    assert te.SNAP_LOG[-1][3] == "exact"
+
+
+def _line_figure_pdf(tmp_path):
+    """Figure drawn as 4 separate lines; bottom edge has a zero-height rect."""
+    import fitz
+
+    d = fitz.open()
+    p = d.new_page(width=600, height=800)
+    p.draw_line(fitz.Point(200, 300), fitz.Point(400, 300))
+    p.draw_line(fitz.Point(200, 300), fitz.Point(200, 500))
+    p.draw_line(fitz.Point(400, 300), fitz.Point(400, 500))
+    p.draw_line(fitz.Point(200, 500), fitz.Point(400, 500))  # ground line
+    pdf = tmp_path / "line.pdf"
+    d.save(str(pdf))
+    d.close()
+    return str(pdf)
+
+
+def test_assist_extends_to_zero_height_line(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """A pure horizontal line still extends the box (no silent |= drop)."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _line_figure_pdf(tmp_path)
+    cmd = _assist(pdf, pid, (333, 312, 334, 263), "z.png")
+    text, _, _ = _image_messages(cmd)
+    assert "mode: vector" in text and "extended bottom by" in text
+    assert _final_box(text)[3] == 625  # 500pt ground line
+
+
+def test_assist_trims_interior_option_line(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Long text fully inside the box, below all strokes, moves the edge up."""
+    import fitz
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    d = fitz.open(pdf)
+    d[0].insert_text((180, 600), "Option C is correct today", fontsize=12)
+    d.save(str(pdf) + ".tmp")
+    d.close()
+    import os as _os
+
+    _os.replace(str(pdf) + ".tmp", pdf)
+    cmd = _assist(pdf, pid, (250, 312, 500, 500), "w.png")
+    text, _, _ = _image_messages(cmd)
+    assert "mode: vector" in text and "trimmed bottom by" in text
     box = _final_box(text)
-    assert box[3] < 812  # stray fragment pulled the edge up
-    assert box[0] <= 342 <= box[2] and box[1] <= 365 <= box[3]  # 'E' kept
+    assert 580 <= box[3] < 812  # text top, not the agent's loose edge
+    assert 660 <= box[2] <= 670  # empty right margin shrunk to the ink
+
+
+def _long_rule_pdf(tmp_path):
+    import fitz
+
+    d = fitz.open()
+    p = d.new_page(width=600, height=800)
+    p.draw_line(fitz.Point(50, 300), fitz.Point(550, 300))  # one-off rule
+    pdf = tmp_path / "rule.pdf"
+    d.save(str(pdf))
+    d.close()
+    return str(pdf)
+
+
+def test_assist_refuses_runaway_growth(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """A stroke running far past the box (>3x area) is not applied."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _long_rule_pdf(tmp_path)
+    cmd = _assist(pdf, pid, (333, 312, 167, 125), "v.png")
+    text, _, _ = _image_messages(cmd)
+    assert "mode: vector" in text and "not applied" in text
+    assert _final_box(text) == [333, 312, 500, 437]  # agent's box stands
+
+
+def test_assist_suppresses_subpixel_noise(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Deltas under 3 units are rounding noise: not reported as corrections."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    # right edge 0.5pt inside the cluster -> 1-unit delta, everything else exact
+    cmd = _assist(pdf, pid, (333, 375, 333, 250), "u.png")
+    text, _, _ = _image_messages(cmd)
+    assert "mode: vector" in text and "no change needed" in text
 
 
 def _numbered_header_pdf(tmp_path):
