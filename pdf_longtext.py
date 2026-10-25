@@ -45,6 +45,11 @@ def _long_block_numbers(page, chrome_t: set) -> set[int]:
     return long_nos
 
 
+# Near-stroke keep radius: labels ("Rough surface" 10.7pt, "b)" 11.5pt)
+# sit just outside the assist 10pt trim radius, so stripping uses 15pt.
+_KEEP_TOL = 15.0
+
+
 def _strip_targets(page, strokes: list, aggressive: bool = False) -> list:
     """Tight word rects to delete: long-line words NOT near figure strokes.
 
@@ -64,7 +69,7 @@ def _strip_targets(page, strokes: list, aggressive: bool = False) -> list:
             r = fitz.Rect(w[0], w[1], w[2], w[3])
             if r.width <= 0 or r.height <= 0:
                 continue
-            near = any(te._touches(r, st, tol=te._VEC_LABEL_NEAR)
+            near = any(te._touches(r, st, tol=_KEEP_TOL)
                        for st in strokes)
             if long_line and near:
                 continue  # diagram label sitting on ink, keep
@@ -75,17 +80,29 @@ def _strip_targets(page, strokes: list, aggressive: bool = False) -> list:
 
 
 def remove_chrome(input_pdf_path: str | Path, output_pdf_path: str | Path) -> dict:
-    """Delete repeating chrome: page borders/rules (chrome strokes) and
-    headers/footers (chrome text). Same fingerprints Crop Lab / assist use
-    (``te._chrome_for``), so the canvas matches what cropping sees.
-    Unique figure/table strokes are never touched (graphics pass removes
-    only art touching the thin chrome rects; text pass removes only chrome
-    block rects). Returns {"pages", "strokes", "texts"}.
+    """Delete repeating chrome: page borders/rules (chrome strokes),
+    headers/footers (chrome text by position) and repeated boilerplate
+    (chrome text by CONTENT: identical normalized text on >=3 pages whatever
+    its position -- catches footers whose y shifts per page).
+
+    Same position fingerprints Crop Lab / assist use (``te._chrome_for``),
+    so the canvas matches what cropping sees. Unique figure/table strokes
+    are never touched. Returns {"pages", "strokes", "texts"}.
     """
     import fitz  # local import to keep module import light
     src = str(input_pdf_path)
     chrome_s, chrome_t = te._chrome_for(src)
     doc = fitz.open(src)
+    # content-chrome: normalized block text seen on >=3 pages (any position)
+    seen: dict[str, set[int]] = {}
+    for pno, page in enumerate(doc):
+        for b in page.get_text("blocks"):
+            txt = str(b[4])
+            if not txt.strip():
+                continue
+            norm = re.sub(r"\d+", "#", " ".join(txt.split()))
+            seen.setdefault(norm, set()).add(pno)
+    content_chrome = {t for t, ps in seen.items() if len(ps) >= 3}
     n_strokes = n_texts = 0
     try:
         for page in doc:
@@ -120,7 +137,8 @@ def remove_chrome(input_pdf_path: str | Path, output_pdf_path: str | Path) -> di
                 norm = re.sub(r"\d+", "#", " ".join(txt.split()))
                 fp = (round(b[0], 1), round(b[1], 1), round(b[2], 1),
                       round(b[3], 1), norm)
-                if fp in chrome_t:
+                if fp in chrome_t or (len(txt.split()) > te._VEC_TRIM_WORDS
+                                       and norm in content_chrome):
                     t_annots.append(fitz.Rect(b[0], b[1], b[2], b[3]))
             for r in t_annots:
                 page.add_redact_annot(r, fill=None)
