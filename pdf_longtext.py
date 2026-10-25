@@ -46,8 +46,8 @@ def _long_block_numbers(page, chrome_t: set) -> set[int]:
 
 
 # Near-stroke keep radius: labels ("Rough surface" 10.7pt, "b)" 11.5pt)
-# sit just outside the assist 10pt trim radius, so stripping uses 15pt.
-_KEEP_TOL = 15.0
+# sit just outside the assist 10pt trim radius, so stripping uses 13pt.
+_KEEP_TOL = 13.0
 
 
 def _strip_targets(page, strokes: list, aggressive: bool = False) -> list:
