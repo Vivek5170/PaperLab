@@ -9,12 +9,12 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from PIL import Image
 
 import database
-from tools_extractor import assisted_crop, get_page_image, img_block, polygon_crop
+from tools_extractor import assisted_crop, exact_crop, get_page_image, img_block
 from tools_indexer import get_page_text, get_pdf_info, search_pdf_text
 
 
 def _registered_pid(tmp_db, dummy_pdf, scanned_pdf):
-    """Simulate pre-flight so polygon_crop's paper_id check passes."""
+    """Simulate pre-flight so exact_crop's paper_id check passes."""
     return database.register_paper(dummy_pdf, scanned_pdf)
 
 
@@ -89,17 +89,17 @@ def test_img_block_byte_stable(tmp_path):
     assert a["image_url"]["url"].startswith("data:image/jpeg;base64,")
 
 
-def test_polygon_crop_scaling_and_save(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
+def test_exact_crop_scaling_and_save(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     _prime_assist(pid, "fig1.png")
     _prime_assist(pid, "figQ.png")
     out_dir = tmp_outputs / str(pid) / "1"
     # Full-page polygon on the 0-1000 grid must map to full pixel dims.
-    cmd = polygon_crop.invoke(_tc(
-        "polygon_crop", {
+    cmd = exact_crop.invoke(_tc(
+        "exact_crop", {
             "pdf_path": dummy_pdf,
             "page_number": 1,
-            "points": [(0, 0), (1000, 0), (1000, 1000), (0, 1000)],
+            "x": 0, "y": 0, "width": 1000, "height": 1000,
             "output_filename": "fig1.png",
             "paper_id": pid,
             "question_number": "1",
@@ -110,9 +110,9 @@ def test_polygon_crop_scaling_and_save(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     saved = out_dir / "figures" / "fig1.png"
     assert saved.is_file()
 
-    # Scaling math: full-page crop keeps full dims; preview is downscaled.
-    from tools_extractor import _render_page_to_pil, _CROP_DPI
-    full = _render_page_to_pil(dummy_pdf, 1, _CROP_DPI)
+    # Scaling math: disk save is hi-DPI; preview is downscaled as before.
+    from tools_extractor import _render_page_to_pil, _SAVE_DPI
+    full = _render_page_to_pil(dummy_pdf, 1, _SAVE_DPI)
     cropped = Image.open(saved)
     assert cropped.size == full.size
     assert max(preview.size) <= 600
@@ -120,11 +120,11 @@ def test_polygon_crop_scaling_and_save(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     # box in a genuinely empty area -> exact dims, no anti-clip growth.
     # (The old (0,0)-(500,500) quarter box sliced the red rect's strokes;
     # the backstop correctly refused to ship that cut.)
-    cmd_q = polygon_crop.invoke(_tc(
-        "polygon_crop", {
+    cmd_q = exact_crop.invoke(_tc(
+        "exact_crop", {
             "pdf_path": dummy_pdf,
             "page_number": 1,
-            "points": [(0, 500), (300, 500), (300, 900), (0, 900)],
+            "x": 0, "y": 500, "width": 300, "height": 400,
             "output_filename": "figQ.png",
             "paper_id": pid,
             "question_number": "1",
@@ -138,32 +138,39 @@ def test_polygon_crop_scaling_and_save(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     assert abs(q.size[1] - full.size[1] * 0.4) <= 2
 
 
-def test_polygon_crop_rejects_bad_points(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
+def test_exact_crop_rejects_bad_boxes(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
-    with pytest.raises(Exception):
-        polygon_crop.invoke(_tc(
-            "polygon_crop", {
-                "pdf_path": dummy_pdf,
-                "page_number": 1,
-                "points": [(0, 0), (10, 10)],  # fewer than 3 points
-                "output_filename": "bad.png",
-                "paper_id": pid,
-                "question_number": "1",
-            },
-        ))
+    bad = [
+        {"x": 0, "y": 0, "width": 0, "height": 10},  # zero width
+        {"x": 900, "y": 900, "width": 200, "height": 50},  # spills off-grid
+        {"x": -5, "y": 0, "width": 10, "height": 10},  # negative corner
+    ]
+    for i, box in enumerate(bad):
+        with pytest.raises(Exception):
+            exact_crop.invoke(_tc(
+                "exact_crop", {
+                    "pdf_path": dummy_pdf,
+                    "page_number": 1,
+                    **box,
+                    "output_filename": "bad.png",
+                    "paper_id": pid,
+                    "question_number": "1",
+                },
+                call_id=f"bad{i}",
+            ))
     assert not (tmp_outputs / str(pid) / "1" / "figures" / "bad.png").exists()
 
 
-def test_polygon_crop_same_filename_overwrites(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
+def test_exact_crop_same_filename_overwrites(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
     """Correcting a bad crop reuses the SAME filename and replaces the file."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     _prime_assist(pid, "fig.png")
     out_dir = tmp_outputs / str(pid) / "1"
-    first = polygon_crop.invoke(_tc(
-        "polygon_crop", {
+    first = exact_crop.invoke(_tc(
+        "exact_crop", {
             "pdf_path": dummy_pdf,
             "page_number": 1,
-            "points": [(0, 0), (500, 0), (500, 500), (0, 500)],
+            "x": 0, "y": 0, "width": 500, "height": 500,
             "output_filename": "fig.png",
             "paper_id": pid,
             "question_number": "1",
@@ -173,11 +180,11 @@ def test_polygon_crop_same_filename_overwrites(dummy_pdf, scanned_pdf, tmp_db, t
     saved = out_dir / "figures" / "fig.png"
     assert saved.is_file()
     mtime1 = saved.stat().st_mtime_ns
-    second = polygon_crop.invoke(_tc(
-        "polygon_crop", {
+    second = exact_crop.invoke(_tc(
+        "exact_crop", {
             "pdf_path": dummy_pdf,
             "page_number": 1,
-            "points": [(500, 500), (1000, 500), (1000, 1000), (500, 1000)],
+            "x": 500, "y": 500, "width": 500, "height": 500,
             "output_filename": "fig.png",  # SAME name -> overwrite, no fig_v2
             "paper_id": pid,
             "question_number": "1",
@@ -191,15 +198,15 @@ def test_polygon_crop_same_filename_overwrites(dummy_pdf, scanned_pdf, tmp_db, t
     assert saved.stat().st_mtime_ns >= mtime1
 
 
-def test_polygon_crop_lands_in_question_dir(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
+def test_exact_crop_lands_in_question_dir(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs):
     """Figures are always saved under Outputs/{paper_id}/{question_number}/."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     _prime_assist(pid, "fig1.png", q="15-17_paragraph")
-    cmd = polygon_crop.invoke(_tc(
-        "polygon_crop", {
+    cmd = exact_crop.invoke(_tc(
+        "exact_crop", {
             "pdf_path": dummy_pdf,
             "page_number": 1,
-            "points": [(0, 0), (1000, 0), (1000, 1000), (0, 1000)],
+            "x": 0, "y": 0, "width": 1000, "height": 1000,
             "output_filename": "fig1.png",
             "paper_id": pid,
             "question_number": "15-17_paragraph",
@@ -239,7 +246,7 @@ def test_snap_hit_saves_original_bytes(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
     cmd = assisted_crop.invoke(_tc("assisted_crop", {
         "pdf_path": pdf, "page_number": 1,
-        "points": [(50, 50), (450, 50), (450, 450), (50, 450)],
+        "x": 50, "y": 50, "width": 400, "height": 400,
         "output_filename": "fig1.png", "paper_id": pid, "question_number": "1",
     }))
     _image_messages(cmd)
@@ -263,7 +270,7 @@ def test_snap_containment_hit(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_p
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
     cmd = assisted_crop.invoke(_tc("assisted_crop", {
         "pdf_path": pdf, "page_number": 1,
-        "points": [(0, 0), (700, 0), (700, 700), (0, 700)],
+        "x": 0, "y": 0, "width": 700, "height": 700,
         "output_filename": "figC.png", "paper_id": pid, "question_number": "1",
     }))
     _image_messages(cmd)
@@ -293,7 +300,7 @@ def test_snap_ambiguous_box_falls_back(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     cmd = assisted_crop.invoke(_tc("assisted_crop", {
         "pdf_path": pdf, "page_number": 1,
         # whole page: holds the red diagram AND the green square fully
-        "points": [(0, 0), (1000, 0), (1000, 1000), (0, 1000)],
+        "x": 0, "y": 0, "width": 1000, "height": 1000,
         "output_filename": "figA.png", "paper_id": pid, "question_number": "1",
     }, call_id="t2"))
     _image_messages(cmd)
@@ -311,7 +318,7 @@ def test_snap_miss_falls_back_to_plain_crop(dummy_pdf, scanned_pdf, tmp_db, tmp_
     cmd = assisted_crop.invoke(_tc("assisted_crop", {
         "pdf_path": pdf, "page_number": 1,
         # empty corner: no embedded image here
-        "points": [(600, 600), (900, 600), (900, 900), (600, 900)],
+        "x": 600, "y": 600, "width": 300, "height": 300,
         "output_filename": "figQ.png", "paper_id": pid, "question_number": "1",
     }, call_id="t2"))
     _image_messages(cmd)
@@ -332,7 +339,7 @@ def test_chrome_images_are_not_snapped(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     assert len(_chrome_xrefs(pdf)) == 1  # the shared logo xref
     cmd = assisted_crop.invoke(_tc("assisted_crop", {
         "pdf_path": pdf, "page_number": 1,
-        "points": [(750, 50), (850, 50), (850, 150), (750, 150)],
+        "x": 750, "y": 50, "width": 100, "height": 100,
         "output_filename": "figL.png", "paper_id": pid, "question_number": "1",
     }))
     _image_messages(cmd)
@@ -349,10 +356,10 @@ def test_duplicate_xref_reuses_cached_bytes(dummy_pdf, scanned_pdf, tmp_db, tmp_
     pdf, red_raw, _ = _pdf_with_images(tmp_path)
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
     te._SNAP_CACHE.clear()
-    pts = [(50, 50), (450, 50), (450, 450), (50, 450)]
+    pts = (50, 50, 400, 400)
     for name, cid in (("fig1.png", "t1"), ("fig2.png", "t2")):
         assisted_crop.invoke(_tc("assisted_crop", {
-            "pdf_path": pdf, "page_number": 1, "points": pts,
+            "pdf_path": pdf, "page_number": 1, "x": pts[0], "y": pts[1], "width": pts[2], "height": pts[3],
             "output_filename": name, "paper_id": pid, "question_number": "1",
         }, call_id=cid))
     out = tmp_outputs / str(pid) / "1" / "figures"
@@ -375,7 +382,7 @@ def test_snap_huge_box_falls_back(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, t
     cmd = assisted_crop.invoke(_tc("assisted_crop", {
         "pdf_path": pdf, "page_number": 1,
         # ~whole page: holds 100% of the red diagram but is ~6x its area
-        "points": [(0, 0), (1000, 0), (1000, 950), (0, 950)],
+        "x": 0, "y": 0, "width": 1000, "height": 950,
         "output_filename": "figH.png", "paper_id": pid, "question_number": "1",
     }, call_id="t9"))
     _image_messages(cmd)
@@ -384,13 +391,13 @@ def test_snap_huge_box_falls_back(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, t
     assert got.size != want.size  # plain render, not the snapped original
 
 
-def test_polygon_crop_unknown_paper_id_fails(dummy_pdf, tmp_db, tmp_outputs):
+def test_exact_crop_unknown_paper_id_fails(dummy_pdf, tmp_db, tmp_outputs):
     with pytest.raises(Exception):
-        polygon_crop.invoke(_tc(
-            "polygon_crop", {
+        exact_crop.invoke(_tc(
+            "exact_crop", {
                 "pdf_path": dummy_pdf,
                 "page_number": 1,
-                "points": [(0, 0), (1000, 0), (1000, 1000), (0, 1000)],
+                "x": 0, "y": 0, "width": 1000, "height": 1000,
                 "output_filename": "fig.png",
                 "paper_id": 99999,
                 "question_number": "1",
@@ -399,14 +406,14 @@ def test_polygon_crop_unknown_paper_id_fails(dummy_pdf, tmp_db, tmp_outputs):
     assert not (tmp_outputs / "99999").exists()  # no orphan dirs on bad id
 
 
-def test_polygon_crop_rejects_traversal_filename(dummy_pdf, scanned_pdf, tmp_db, tmp_path):
+def test_exact_crop_rejects_traversal_filename(dummy_pdf, scanned_pdf, tmp_db, tmp_path):
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     with pytest.raises(Exception):
-        polygon_crop.invoke(_tc(
-            "polygon_crop", {
+        exact_crop.invoke(_tc(
+            "exact_crop", {
                 "pdf_path": dummy_pdf,
                 "page_number": 1,
-                "points": [(0, 0), (1000, 0), (1000, 1000), (0, 1000)],
+                "x": 0, "y": 0, "width": 1000, "height": 1000,
                 "output_filename": "../../evil.png",
                 "paper_id": pid,
                 "question_number": "1",
@@ -415,15 +422,16 @@ def test_polygon_crop_rejects_traversal_filename(dummy_pdf, scanned_pdf, tmp_db,
     assert not (tmp_path / "evil.png").exists()
 
 
-# ---------- polygon_crop: snap-first ----------
+# ---------- exact_crop ----------
 
-def _polygon(pdf, pid, pts, name, cid="t9", q="1"):
-    return polygon_crop.invoke(_tc(
-        "polygon_crop",
+def _exact(pdf, pid, rect, name, cid="t9", q="1"):
+    x, y, w, h = rect
+    return exact_crop.invoke(_tc(
+        "exact_crop",
         {
             "pdf_path": pdf,
             "page_number": 1,
-            "points": pts,
+            "x": x, "y": y, "width": w, "height": h,
             "output_filename": name,
             "paper_id": pid,
             "question_number": q,
@@ -439,19 +447,19 @@ def _prime_assist(pid, name, q="1", n=3):
         te._assist_attempt(pid, q, name)
 
 
-def test_polygon_crop_refused_before_assisted_tries(
+def test_exact_crop_refused_before_assisted_tries(
         dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
-    """Gate: polygon with 0 assisted attempts saves nothing."""
+    """Gate: exact box with 0 assisted attempts saves nothing."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf, _, _ = _pdf_with_images(tmp_path)
-    cmd = _polygon(pdf, pid, [(0, 0), (500, 0), (500, 500), (0, 500)], "e.png")
+    cmd = _exact(pdf, pid, (0, 0, 500, 500), "e.png")
     updates = cmd.update["messages"]
     assert len(updates) == 1 and "refused" in updates[0].content
     assert "0 of 3" in updates[0].content
     assert not list(tmp_outputs.rglob("e.png"))
 
 
-def test_polygon_crop_ignores_embedded_image(
+def test_exact_crop_ignores_embedded_image(
         dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
     """Polygon is exact-only: even a box around one embedded image renders
     the polygon region, never the original bytes (snap lives in assisted)."""
@@ -463,7 +471,7 @@ def test_polygon_crop_ignores_embedded_image(
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
     _prime_assist(pid, "e.png")
     # Red diagram is at (10,10)-(90,90) on a 200x200 page: box it loosely.
-    cmd = _polygon(pdf, pid, [(0, 0), (500, 0), (500, 500), (0, 500)], "e.png")
+    cmd = _exact(pdf, pid, (0, 0, 500, 500), "e.png")
     text, _, _ = _image_messages(cmd)
     assert "mode: snap" not in text
     saved = list(tmp_outputs.rglob("e.png"))
@@ -473,15 +481,15 @@ def test_polygon_crop_ignores_embedded_image(
     assert te.SNAP_LOG[-1][3] == "exact"
 
 
-def test_polygon_crop_stays_exact_without_image(
+def test_exact_crop_stays_exact_without_image(
         dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
     """No embedded image under the box: exact render, no snap claim."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _vector_pdf(tmp_path)  # strokes only, no embedded images
     _prime_assist(pid, "x.png")
-    cmd = _polygon(pdf, pid, [(300, 300), (500, 300), (500, 650), (300, 650)], "x.png")
+    cmd = _exact(pdf, pid, (300, 300, 200, 350), "x.png")
     text, _, _ = _image_messages(cmd)
-    assert "Exact crop of your polygon" in text and "mode: snap" not in text
+    assert "Exact crop of your box" in text and "mode: snap" not in text
 
 
 # ---------- assisted_crop: vector assist ----------
@@ -511,9 +519,10 @@ def _vector_pdf(tmp_path):
     return str(pdf)
 
 
-def _assist(pdf, pid, pts, name, cid="t1", q="1"):
+def _assist(pdf, pid, rect, name, cid="t1", q="1"):
     import tools_extractor as te
 
+    x, y, w, h = rect
     te.reset_assist_attempts()
     return assisted_crop.invoke(
         _tc(
@@ -521,7 +530,7 @@ def _assist(pdf, pid, pts, name, cid="t1", q="1"):
             {
                 "pdf_path": pdf,
                 "page_number": 1,
-                "points": pts,
+                "x": x, "y": y, "width": w, "height": h,
                 "output_filename": name,
                 "paper_id": pid,
                 "question_number": q,
@@ -532,17 +541,37 @@ def _assist(pdf, pid, pts, name, cid="t1", q="1"):
 
 
 def _final_box(text):
+    """Parse the reply's rect-form box, return corner ints [x0, y0, x1, y1]."""
     import re
 
     m = re.search(r"final box: \[([0-9, ]+)\]", text)
-    return [int(v) for v in m.group(1).split(",")]
+    x, y, w, h = (int(v) for v in m.group(1).split(","))
+    return [x, y, x + w, y + h]
+
+
+def test_reply_boxes_are_xywh(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Replies speak (x, y, width, height) -- never corner pairs."""
+    import re
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    _prime_assist(pid, "e.png")
+    cmd = _exact(pdf, pid, (300, 300, 200, 350), "e.png")
+    text, _, _ = _image_messages(cmd)
+    m = re.search(r"your box: \[([0-9, ]+)\]\. final box: \[([0-9, ]+)\]", text)
+    assert m, text
+    your = [int(v) for v in m.group(1).split(",")]
+    final = [int(v) for v in m.group(2).split(",")]
+    assert your == [300, 300, 200, 350]
+    assert final[0] >= 300 - 15 and final[1] >= 300 - 15  # margin, not corners
+    assert final[2] >= 200 and final[3] >= 350
 
 
 def test_assist_completes_clipped_shape(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
     """Box clipping the figure's right half grows to include the whole cluster."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _vector_pdf(tmp_path)
-    cmd = _assist(pdf, pid, [(300, 300), (500, 300), (500, 650), (300, 650)], "a.png")
+    cmd = _assist(pdf, pid, (300, 300, 200, 350), "a.png")
     text, _, _ = _image_messages(cmd)
     assert "mode: vector" in text
     assert "extended right by" in text
@@ -552,16 +581,43 @@ def test_assist_completes_clipped_shape(dummy_pdf, scanned_pdf, tmp_db, tmp_outp
 
 
 def test_assist_trims_long_text_keeps_label(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
-    """Long text line crossing the top edge is trimmed; short 'E' label stays."""
+    """Vector trim fallback: long text line crossing the top edge is
+    trimmed on a RAW page (direct _assist_box); short 'E' label stays.
+
+    In production the crop canvas is pre-stripped so this path rarely
+    fires -- it remains the safety net when stripping is skipped."""
+    import fitz
+    import tools_extractor as te
+
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _vector_pdf(tmp_path)
-    cmd = _assist(pdf, pid, [(300, 300), (500, 300), (500, 650), (300, 650)], "b.png")
+    _strokes, blocks, clusters = te._page_vectors(pdf, 1)
+    doc = fitz.open(pdf)
+    try:
+        out = te._assist_box(doc[0], fitz.Rect(180, 240, 300, 520),
+                             blocks, clusters)
+    finally:
+        doc.close()
+    assert out is not None
+    final, trim_notes, _capped, _verdicts = out
+    assert any(e == "top" and "Find the value" in (snip or "")
+               for e, snip in trim_notes)
+    assert 260.0 <= final.y0 <= 266.0  # text gone, stops at arrow stub
+    assert (final.x0 <= 205 <= final.x1
+            and final.y0 <= 292 <= final.y1)  # 'E' label kept
+
+
+def test_assist_pre_strips_canvas_before_vector(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Integration: assisted_crop resolves the crop canvas first, so the
+    long stem line is already gone when vector matching runs."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    cmd = _assist(pdf, pid, (300, 300, 200, 350), "b.png")
     text, _, _ = _image_messages(cmd)
-    assert "trimmed top by" in text and "Find the value" in text
+    assert "mode: vector" in text
+    assert "Find the value" not in text  # stripped before vector saw it
     box = _final_box(text)
-    assert 326 <= box[1] <= 330  # text gone, shrink stops at the arrow stub
-    # 'E' label at (205/600*1000=342, 292/800*1000=365) still inside
-    assert box[0] <= 342 <= box[2] and box[1] <= 365 <= box[3]
+    assert box[0] <= 342 <= box[2] and box[1] <= 365 <= box[3]  # 'E' kept
 
 
 def test_assist_ignores_chrome_stroke(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
@@ -570,7 +626,7 @@ def test_assist_ignores_chrome_stroke(dummy_pdf, scanned_pdf, tmp_db, tmp_output
     pdf = _vector_pdf(tmp_path)
     cmd = _assist(
         pdf, pid,
-        [(83, 925), (917, 925), (917, 975), (83, 975)],  # rule at y=750pt only
+        (83, 925, 834, 50),  # rule at y=750pt only
         "c.png",
     )
     text, _, _ = _image_messages(cmd)
@@ -583,13 +639,13 @@ def test_assist_idempotent(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path
 
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _vector_pdf(tmp_path)
-    pts = [(300, 300), (500, 300), (500, 650), (300, 650)]
+    pts = (300, 300, 200, 350)
     t1, _, _ = _image_messages(_assist(pdf, pid, pts, "d.png"))
     box = _final_box(t1)
     te.reset_assist_attempts()
     t2, _, _ = _image_messages(_assist(
         pdf, pid,
-        [(box[0], box[1]), (box[2], box[1]), (box[2], box[3]), (box[0], box[3])],
+        (box[0], box[1], box[2] - box[0], box[3] - box[1]),
         "d2.png", cid="t2",
     ))
     assert _final_box(t2) == box
@@ -604,12 +660,12 @@ def test_assist_sixth_call_refused(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, 
 
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _vector_pdf(tmp_path)
-    pts = [(300, 300), (500, 300), (500, 650), (300, 650)]
+    pts = (300, 300, 200, 350)
     te.reset_assist_attempts()
     for i in range(5):
         cmd = assisted_crop.invoke(_tc(
             "assisted_crop",
-            {"pdf_path": pdf, "page_number": 1, "points": pts,
+            {"pdf_path": pdf, "page_number": 1, "x": pts[0], "y": pts[1], "width": pts[2], "height": pts[3],
              "output_filename": "e.png", "paper_id": pid, "question_number": "1"},
             call_id=f"t{i}",
         ))
@@ -618,7 +674,7 @@ def test_assist_sixth_call_refused(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, 
     before = dest.read_bytes()
     cmd = assisted_crop.invoke(_tc(
         "assisted_crop",
-        {"pdf_path": pdf, "page_number": 1, "points": pts,
+        {"pdf_path": pdf, "page_number": 1, "x": pts[0], "y": pts[1], "width": pts[2], "height": pts[3],
          "output_filename": "e.png", "paper_id": pid, "question_number": "1"},
         call_id="t6",
     ))
@@ -636,12 +692,12 @@ def test_assist_counts_persist_in_sidecar(dummy_pdf, scanned_pdf, tmp_db, tmp_ou
 
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _vector_pdf(tmp_path)
-    pts = [(300, 300), (500, 300), (500, 650), (300, 650)]
+    pts = (300, 300, 200, 350)
     te.reset_assist_attempts()
     for i in range(2):
         assisted_crop.invoke(_tc(
             "assisted_crop",
-            {"pdf_path": pdf, "page_number": 1, "points": pts,
+            {"pdf_path": pdf, "page_number": 1, "x": pts[0], "y": pts[1], "width": pts[2], "height": pts[3],
              "output_filename": "f.png", "paper_id": pid, "question_number": "1"},
             call_id=f"c{i}",
         ))
@@ -651,7 +707,7 @@ def test_assist_counts_persist_in_sidecar(dummy_pdf, scanned_pdf, tmp_db, tmp_ou
     assert not sidecar.exists()
 
 
-def test_polygon_crop_is_exact_on_chrome_logo(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+def test_exact_crop_is_exact_on_chrome_logo(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
     """Box around the shared logo matches nothing (chrome excluded): exact."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf, red_raw, _ = _pdf_with_images(tmp_path)
@@ -661,15 +717,15 @@ def test_polygon_crop_is_exact_on_chrome_logo(dummy_pdf, scanned_pdf, tmp_db, tm
     te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
     # 200x200 page: blue logo at (150,10)-(170,30), repeated on all pages.
     _prime_assist(pid, "x.png")
-    cmd = polygon_crop.invoke(_tc(
-        "polygon_crop", {
+    cmd = exact_crop.invoke(_tc(
+        "exact_crop", {
             "pdf_path": pdf, "page_number": 1,
-            "points": [(700, 0), (900, 0), (900, 200), (700, 200)],
+            "x": 700, "y": 0, "width": 200, "height": 200,
             "output_filename": "x.png", "paper_id": pid, "question_number": "1",
         },
     ))
     text, _, _ = _image_messages(cmd)
-    assert "Exact crop of your polygon" in text
+    assert "Exact crop of your box" in text
     saved = tmp_outputs / str(pid) / "1" / "figures" / "x.png"
     got = Image.open(saved)
     assert (got.size[0], got.size[1]) != (80, 80)  # not the snapped original
@@ -696,7 +752,7 @@ def test_assist_extends_to_zero_height_line(dummy_pdf, scanned_pdf, tmp_db, tmp_
     """A pure horizontal line still extends the box (no silent |= drop)."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _line_figure_pdf(tmp_path)
-    cmd = _assist(pdf, pid, [(333, 312), (667, 312), (667, 575), (333, 575)], "z.png")
+    cmd = _assist(pdf, pid, (333, 312, 334, 263), "z.png")
     text, _, _ = _image_messages(cmd)
     assert "mode: vector" in text and "extended bottom by" in text
     assert _final_box(text)[3] == 625  # 500pt ground line
@@ -715,7 +771,7 @@ def test_assist_trims_interior_option_line(dummy_pdf, scanned_pdf, tmp_db, tmp_o
     import os as _os
 
     _os.replace(str(pdf) + ".tmp", pdf)
-    cmd = _assist(pdf, pid, [(250, 312), (750, 312), (750, 812), (250, 812)], "w.png")
+    cmd = _assist(pdf, pid, (250, 312, 500, 500), "w.png")
     text, _, _ = _image_messages(cmd)
     assert "mode: vector" in text and "trimmed bottom by" in text
     box = _final_box(text)
@@ -739,7 +795,7 @@ def test_assist_refuses_runaway_growth(dummy_pdf, scanned_pdf, tmp_db, tmp_outpu
     """A stroke running far past the box (>3x area) is not applied."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _long_rule_pdf(tmp_path)
-    cmd = _assist(pdf, pid, [(333, 312), (500, 312), (500, 437), (333, 437)], "v.png")
+    cmd = _assist(pdf, pid, (333, 312, 167, 125), "v.png")
     text, _, _ = _image_messages(cmd)
     assert "mode: vector" in text and "not applied" in text
     assert _final_box(text) == [333, 312, 500, 437]  # agent's box stands
@@ -750,14 +806,17 @@ def test_assist_suppresses_subpixel_noise(dummy_pdf, scanned_pdf, tmp_db, tmp_ou
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _vector_pdf(tmp_path)
     # right edge 0.5pt inside the cluster -> 1-unit delta, everything else exact
-    cmd = _assist(pdf, pid, [(333, 375), (666, 375), (666, 625), (333, 625)], "u.png")
+    cmd = _assist(pdf, pid, (333, 375, 333, 250), "u.png")
     text, _, _ = _image_messages(cmd)
     assert "mode: vector" in text and "no change needed" in text
 
 
 def test_assist_trims_short_stray_text_keeps_hugging_label(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
-    """1-word fragment far from strokes is trimmed; the close 'E' label stays."""
+    """1-word fragment far from strokes is trimmed by _assist_box on a RAW
+    page; the close 'E' label stays (canvas pre-strip would also remove
+    far debris in aggressive mode)."""
     import fitz
+    import tools_extractor as te
 
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _vector_pdf(tmp_path)
@@ -768,12 +827,199 @@ def test_assist_trims_short_stray_text_keeps_hugging_label(dummy_pdf, scanned_pd
     import os as _os
 
     _os.replace(str(pdf) + ".tmp", pdf)
-    cmd = _assist(pdf, pid, [(250, 312), (750, 312), (750, 812), (250, 812)], "s.png")
+    te._PAGE_VEC_CACHE.clear()
+    _strokes, blocks, clusters = te._page_vectors(pdf, 1)
+    doc = fitz.open(pdf)
+    try:
+        out = te._assist_box(doc[0], fitz.Rect(150, 249.6, 450, 649.6),
+                             blocks, clusters)
+    finally:
+        doc.close()
+    assert out is not None
+    final, trim_notes, _capped, _verdicts = out
+    assert any(e == "bottom" and "Q12" in (snip or "")
+               for e, snip in trim_notes)
+    assert final.y1 < 649.6  # stray fragment pulled the edge up
+    assert (final.x0 <= 205 <= final.x1
+            and final.y0 <= 292 <= final.y1)  # 'E' kept
+
+
+def test_assist_idempotent(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Feeding the final box back reproduces the same box and bytes."""
+    import tools_extractor as te
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    pts = (300, 300, 200, 350)
+    t1, _, _ = _image_messages(_assist(pdf, pid, pts, "d.png"))
+    box = _final_box(t1)
+    te.reset_assist_attempts()
+    t2, _, _ = _image_messages(_assist(
+        pdf, pid,
+        (box[0], box[1], box[2] - box[0], box[3] - box[1]),
+        "d2.png", cid="t2",
+    ))
+    assert _final_box(t2) == box
+    out = tmp_outputs / str(pid) / "1" / "figures"
+    assert (out / "d.png").read_bytes() == (out / "d2.png").read_bytes()
+
+
+def test_assist_sixth_call_refused(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Max 5 assisted calls per figure; the 6th saves nothing."""
+    import tools_extractor as te
+    from langchain_core.messages import ToolMessage
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    pts = (300, 300, 200, 350)
+    te.reset_assist_attempts()
+    for i in range(5):
+        cmd = assisted_crop.invoke(_tc(
+            "assisted_crop",
+            {"pdf_path": pdf, "page_number": 1, "x": pts[0], "y": pts[1], "width": pts[2], "height": pts[3],
+             "output_filename": "e.png", "paper_id": pid, "question_number": "1"},
+            call_id=f"t{i}",
+        ))
+        assert len(cmd.update["messages"]) == 2  # all 5 allowed through
+    dest = tmp_outputs / str(pid) / "1" / "figures" / "e.png"
+    before = dest.read_bytes()
+    cmd = assisted_crop.invoke(_tc(
+        "assisted_crop",
+        {"pdf_path": pdf, "page_number": 1, "x": pts[0], "y": pts[1], "width": pts[2], "height": pts[3],
+         "output_filename": "e.png", "paper_id": pid, "question_number": "1"},
+        call_id="t6",
+    ))
+    assert len(cmd.update["messages"]) == 1  # text only, no preview
+    assert "attempt limit" in cmd.update["messages"][0].content
+    assert isinstance(cmd.update["messages"][0], ToolMessage)
+    assert dest.read_bytes() == before  # nothing saved
+
+
+def test_assist_counts_persist_in_sidecar(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Attempts live in figures/_assist_counts.json; reset drops them."""
+    import json
+
+    import tools_extractor as te
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    pts = (300, 300, 200, 350)
+    te.reset_assist_attempts()
+    for i in range(2):
+        assisted_crop.invoke(_tc(
+            "assisted_crop",
+            {"pdf_path": pdf, "page_number": 1, "x": pts[0], "y": pts[1], "width": pts[2], "height": pts[3],
+             "output_filename": "f.png", "paper_id": pid, "question_number": "1"},
+            call_id=f"c{i}",
+        ))
+    sidecar = tmp_outputs / str(pid) / "1" / "figures" / "_assist_counts.json"
+    assert json.loads(sidecar.read_text()) == {"f.png": 2}
+    assert te.reset_assist_attempts(pid) == 1
+    assert not sidecar.exists()
+
+
+def test_exact_crop_is_exact_on_chrome_logo(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Box around the shared logo matches nothing (chrome excluded): exact."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf, red_raw, _ = _pdf_with_images(tmp_path)
+    import tools_extractor as te
+
+    te._SNAP_CACHE.clear()
+    te._CHROME_CACHE.pop(str(__import__("pathlib").Path(pdf).resolve()), None)
+    # 200x200 page: blue logo at (150,10)-(170,30), repeated on all pages.
+    _prime_assist(pid, "x.png")
+    cmd = exact_crop.invoke(_tc(
+        "exact_crop", {
+            "pdf_path": pdf, "page_number": 1,
+            "x": 700, "y": 0, "width": 200, "height": 200,
+            "output_filename": "x.png", "paper_id": pid, "question_number": "1",
+        },
+    ))
     text, _, _ = _image_messages(cmd)
-    assert "mode: vector" in text and "trimmed bottom by" in text and "Q12" in text
+    assert "Exact crop of your box" in text
+    saved = tmp_outputs / str(pid) / "1" / "figures" / "x.png"
+    got = Image.open(saved)
+    assert (got.size[0], got.size[1]) != (80, 80)  # not the snapped original
+    assert te.SNAP_LOG[-1][3] == "exact"
+
+
+def _line_figure_pdf(tmp_path):
+    """Figure drawn as 4 separate lines; bottom edge has a zero-height rect."""
+    import fitz
+
+    d = fitz.open()
+    p = d.new_page(width=600, height=800)
+    p.draw_line(fitz.Point(200, 300), fitz.Point(400, 300))
+    p.draw_line(fitz.Point(200, 300), fitz.Point(200, 500))
+    p.draw_line(fitz.Point(400, 300), fitz.Point(400, 500))
+    p.draw_line(fitz.Point(200, 500), fitz.Point(400, 500))  # ground line
+    pdf = tmp_path / "line.pdf"
+    d.save(str(pdf))
+    d.close()
+    return str(pdf)
+
+
+def test_assist_extends_to_zero_height_line(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """A pure horizontal line still extends the box (no silent |= drop)."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _line_figure_pdf(tmp_path)
+    cmd = _assist(pdf, pid, (333, 312, 334, 263), "z.png")
+    text, _, _ = _image_messages(cmd)
+    assert "mode: vector" in text and "extended bottom by" in text
+    assert _final_box(text)[3] == 625  # 500pt ground line
+
+
+def test_assist_trims_interior_option_line(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Long text fully inside the box, below all strokes, moves the edge up."""
+    import fitz
+
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    d = fitz.open(pdf)
+    d[0].insert_text((180, 600), "Option C is correct today", fontsize=12)
+    d.save(str(pdf) + ".tmp")
+    d.close()
+    import os as _os
+
+    _os.replace(str(pdf) + ".tmp", pdf)
+    cmd = _assist(pdf, pid, (250, 312, 500, 500), "w.png")
+    text, _, _ = _image_messages(cmd)
+    assert "mode: vector" in text and "trimmed bottom by" in text
     box = _final_box(text)
-    assert box[3] < 812  # stray fragment pulled the edge up
-    assert box[0] <= 342 <= box[2] and box[1] <= 365 <= box[3]  # 'E' kept
+    assert 580 <= box[3] < 812  # text top, not the agent's loose edge
+    assert 660 <= box[2] <= 670  # empty right margin shrunk to the ink
+
+
+def _long_rule_pdf(tmp_path):
+    import fitz
+
+    d = fitz.open()
+    p = d.new_page(width=600, height=800)
+    p.draw_line(fitz.Point(50, 300), fitz.Point(550, 300))  # one-off rule
+    pdf = tmp_path / "rule.pdf"
+    d.save(str(pdf))
+    d.close()
+    return str(pdf)
+
+
+def test_assist_refuses_runaway_growth(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """A stroke running far past the box (>3x area) is not applied."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _long_rule_pdf(tmp_path)
+    cmd = _assist(pdf, pid, (333, 312, 167, 125), "v.png")
+    text, _, _ = _image_messages(cmd)
+    assert "mode: vector" in text and "not applied" in text
+    assert _final_box(text) == [333, 312, 500, 437]  # agent's box stands
+
+
+def test_assist_suppresses_subpixel_noise(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs, tmp_path):
+    """Deltas under 3 units are rounding noise: not reported as corrections."""
+    pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
+    pdf = _vector_pdf(tmp_path)
+    # right edge 0.5pt inside the cluster -> 1-unit delta, everything else exact
+    cmd = _assist(pdf, pid, (333, 375, 333, 250), "u.png")
+    text, _, _ = _image_messages(cmd)
+    assert "mode: vector" in text and "no change needed" in text
 
 
 def _numbered_header_pdf(tmp_path):
@@ -803,7 +1049,7 @@ def test_numbered_headers_are_chrome(dummy_pdf, scanned_pdf, tmp_db, tmp_outputs
     cs, ct = te._chrome_for(pdf)
     assert len(ct) == 1  # digit-normalized header matched on all 3 pages
     # A box around header text only finds no strokes and no text: plain.
-    cmd = _assist(pdf, pid, [(300, 20), (700, 20), (700, 80), (300, 80)], "h.png")
+    cmd = _assist(pdf, pid, (300, 20, 400, 60), "h.png")
     text, _, _ = _image_messages(cmd)
     assert "mode: plain" in text
 
@@ -814,7 +1060,7 @@ def test_vector_render_has_ink_margin(dummy_pdf, scanned_pdf, tmp_db, tmp_output
     pdf = _line_figure_pdf(tmp_path)
     cmd = _assist(
         pdf, pid,
-        [(333, 375), (667, 375), (667, 625), (333, 625)],  # exact figure bounds
+        (333, 375, 334, 250),  # exact figure bounds
         "p.png",
     )
     text, _, _ = _image_messages(cmd)
@@ -846,7 +1092,7 @@ def test_grazing_stroke_does_not_veto_trim(dummy_pdf, scanned_pdf, tmp_db, tmp_o
     """A stroke ending inside the text zone must not save the text line."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _grazed_text_pdf(tmp_path)
-    cmd = _assist(pdf, pid, [(250, 250), (750, 250), (750, 750), (250, 750)], "g.png")
+    cmd = _assist(pdf, pid, (250, 250, 500, 500), "g.png")
     text, _, _ = _image_messages(cmd)
     assert "mode: vector" in text and "trimmed top by" in text
 
@@ -871,7 +1117,7 @@ def test_trim_never_slices_kept_label(dummy_pdf, scanned_pdf, tmp_db, tmp_output
     """A side trim vetoed when its strip holds a kept label (no ink there)."""
     pid = _registered_pid(tmp_db, dummy_pdf, scanned_pdf)
     pdf = _label_in_strip_pdf(tmp_path)
-    cmd = _assist(pdf, pid, [(250, 312), (750, 312), (750, 812), (250, 812)], "k.png")
+    cmd = _assist(pdf, pid, (250, 312, 500, 500), "k.png")
     text, _, _ = _image_messages(cmd)
     box = _final_box(text)
     assert box == [333, 375, 744, 625]  # right edge stops at the label, not 440

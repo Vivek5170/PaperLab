@@ -122,6 +122,24 @@ def test_split_tex_missing_figure_flagged(tmp_path):
     assert segs[1] == ("fig", "")
 
 
+def test_split_tex_image_options_keep_labels(tmp_path):
+    from app.render import split_tex
+
+    (tmp_path / "figures").mkdir()
+    for f in ("qfig2.png", "qfig3.png"):
+        (tmp_path / "figures" / f).write_bytes(b"fake")
+    segs = split_tex(
+        "Stem.\n\\begin{enumerate}\n"
+        "\\item \\includegraphics{figures/qfig2.png}\n"
+        "\\item \\includegraphics{figures/qfig3.png}\n"
+        "\\end{enumerate}",
+        tmp_path)
+    kinds = [k for k, _ in segs]
+    assert kinds == ["text", "fig", "text", "fig", "text"]
+    assert segs[0][1].endswith("A)")
+    assert segs[2][1] == "B)"
+
+
 def test_render_question_image_if_engine(tmp_path):
     from app.render import render_tex_to_png, tex_engine_available
 

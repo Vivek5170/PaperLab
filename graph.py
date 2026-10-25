@@ -25,7 +25,7 @@ from llm import get_llm, invoke_with_retry
 from tools_extractor import (
     assisted_crop,
     get_page_image,
-    polygon_crop,
+    exact_crop,
     submit_question,
     submit_solution,
     verify_latex_syntax,
@@ -47,7 +47,7 @@ INDEXER_TOOLS = [search_pdf_text, get_page_text, submit_metadata_and_boundaries]
 EXTRACTOR_TOOLS = [
     get_page_image,
     assisted_crop,
-    polygon_crop,
+    exact_crop,
     submit_question,
     submit_solution,
     get_page_text,  # key-sheet reads
@@ -55,7 +55,7 @@ EXTRACTOR_TOOLS = [
 
 # Tools whose results arrive as a Command (text ToolMessage + image
 # HumanMessage). They need the LangChain tool_call_id injected at invoke.
-COMMAND_TOOLS = {get_page_image.name, assisted_crop.name, polygon_crop.name}
+COMMAND_TOOLS = {get_page_image.name, assisted_crop.name, exact_crop.name}
 
 INDEXER_SUBMIT_TOOL = "submit_metadata_and_boundaries"
 
@@ -271,6 +271,10 @@ def clean_node(state: PipelineState) -> dict:
 
     Runs between Phase 1 and Phase 2 in every graph. Fail-open inside --
     on any error the original paths are kept, so extraction still runs.
+    clean_paper_pdfs also pre-builds the figure-only crop canvases
+    ({tag}_q/s_crop.pdf: chrome removed + long text truly deleted);
+    crop tools resolve to them automatically, transcription keeps the
+    full cleaned pages.
     """
     from pdf_clean import clean_paper_pdfs
 
@@ -279,6 +283,44 @@ def clean_node(state: PipelineState) -> dict:
         "question_pdf_path": cleaned["question_pdf"],
         "solution_pdf_path": cleaned["solution_pdf"],
     }
+
+
+def postprocess_node(state: PipelineState) -> dict:
+    """Once-per-paper figure cleanup after extraction completes.
+
+    Border peepings + loose whitespace on every saved figure, no AI.
+    Idempotent (re-runs are no-ops) and fail-open: never fails the
+    pipeline, never touches state.
+    """
+    try:
+        from postprocess_figures import postprocess_paper
+        rep = postprocess_paper(state["paper_id"])
+        peeps = sum(r.get("peeps_removed", 0) for r in rep.values())
+        trims = sum(1 for r in rep.values() if r.get("trimmed"))
+        print(f"postprocess: paper {state['paper_id']}: {len(rep)} "
+              f"figures, {peeps} peepings removed, {trims} trimmed")
+    except Exception as exc:
+        print(f"postprocess: paper {state['paper_id']} skipped "
+              f"({type(exc).__name__}: {exc})")
+    return {}
+
+
+def reflow_node(state: PipelineState) -> dict:
+    """Deterministic solution-tex reflow after figure cleanup.
+
+    One derivation step per paragraph, long math as display -- no AI, no
+    wording changes. Idempotent and fail-open like postprocess_node.
+    """
+    try:
+        from reflow_solutions import reflow_paper
+        rep = reflow_paper(state["paper_id"])
+        changed = sum(1 for r in rep.values() if r.get("changed"))
+        print(f"reflow: paper {state['paper_id']}: {len(rep)} solutions, "
+              f"{changed} reflowed")
+    except Exception as exc:
+        print(f"reflow: paper {state['paper_id']} skipped "
+              f"({type(exc).__name__}: {exc})")
+    return {}
 
 
 def _existing_id_scheme(paper_id: int) -> str | None:
@@ -366,7 +408,10 @@ def extractor_node(state: PipelineState) -> dict:
                 f"(physics questions {q_range})\n"
                 f"{sol_line}\n"
                 "These are cleaned copies (watermarks removed); pagination "
-                "and geometry are identical to the originals."
+                "and geometry are identical to the originals. "
+                "Crop tools (assisted_crop/exact_crop) automatically see "
+                "a figure-only canvas of these PDFs (long question text "
+                "deleted, diagram ink intact) -- pass the paths as given."
                 f"{scheme_line}"
             )
         ),
@@ -415,6 +460,8 @@ def _add_extractor(graph: StateGraph, entry: Optional[str]) -> None:
     graph.add_node("clean", clean_node)
     graph.add_node("extractor_init", extractor_init_node)
     graph.add_node("extractor", extractor_node)
+    graph.add_node("postprocess", postprocess_node)
+    graph.add_node("reflow", reflow_node)
     if entry is not None:
         # Standalone extractor graph: START enters here. In the full
         # graph Phase 1 routes into "clean" directly (indexer_done_target).
@@ -426,8 +473,11 @@ def _add_extractor(graph: StateGraph, entry: Optional[str]) -> None:
         {"end": END, "extractor": "extractor"}
     )
     graph.add_conditional_edges(
-        "extractor", route_extractor, {"continue": "extractor", "done": END}
+        "extractor", route_extractor,
+        {"continue": "extractor", "done": "postprocess"}
     )
+    graph.add_edge("postprocess", "reflow")
+    graph.add_edge("reflow", END)
 
 
 def build_phase1_graph():

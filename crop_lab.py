@@ -25,7 +25,13 @@ except ImportError:
     HAS_SIC = False
 
 st.set_page_config(page_title="Crop Lab", layout="wide")
-st.title("🔬 Crop Lab — snap vs assist, side by side")
+st.title("🔬 Crop Lab — test what the crop pipeline does with a box")
+st.caption("1 · Pick a PDF → 2 · pick a page → 3 · draw a box → "
+           "4 · Run a mode and read the verdict. Red box = yours, "
+           "green box = the tool's final box.")
+
+# ---------- 1 · Source PDF ----------
+st.sidebar.subheader("1 · Source PDF")
 
 # ---------- PDF + page selection ----------
 data_root = Path("data")
@@ -55,7 +61,66 @@ else:
         st.session_state["page"] = 1
         st.session_state["ckey"] = st.session_state.get("ckey", 0) + 1
         st.session_state.pop("result", None)
-doc = fitz.open(pdf_path)
+
+# ---------- cleaned PDF (same canvas production extractor sees) ----------
+import hashlib as _hl
+import pdf_clean as _pc
+
+
+def _cleaned_copy(src: str) -> tuple[str, dict | None]:
+    """Cleaned copy of src under /tmp/crop_lab_cleaned (cached by content).
+
+    Returns (work_path, report). Falls back to (src, None) on any error.
+    """
+    try:
+        h = _hl.sha1()
+        with open(src, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        d = Path("/tmp/crop_lab_cleaned")
+        d.mkdir(parents=True, exist_ok=True)
+        dst = d / (h.hexdigest()[:16] + ".pdf")
+        if dst.exists():
+            return str(dst), {"cached": True}
+        rep = _pc.clean_pdf_canvas(src, str(dst))
+        return str(dst), rep
+    except Exception as exc:
+        st.sidebar.warning(f"Cleaning failed ({exc}); using original.")
+        return src, None
+
+
+use_clean = st.sidebar.checkbox("Use cleaned PDF (production canvas)",
+                                value=True)
+use_strip = st.sidebar.checkbox("Strip long text (figure-only crop canvas)",
+                                value=True)
+if use_clean:
+    work_path, clean_rep = _cleaned_copy(pdf_path)
+else:
+    work_path, clean_rep = pdf_path, None
+if clean_rep is not None and not clean_rep.get("cached"):
+    st.sidebar.caption(
+        "Cleaned: %(chrome_images)d chrome-img, %(backgrounds)d bg, "
+        "%(patterns)d patterns, %(annots)d annots "
+        "(%(pages)d pages)." % clean_rep)
+elif clean_rep is not None:
+    st.sidebar.caption("Cleaned copy reused from cache.")
+if work_path != pdf_path:
+    st.sidebar.caption(f"Viewing cleaned copy of {Path(pdf_path).name}")
+if use_strip:
+    import pdf_longtext as _plt
+
+    work_path = _plt.ensure_crop_canvas(work_path)
+    if work_path != pdf_path:
+        st.sidebar.caption("Crop canvas: long text deleted (short labels "
+                           "kept); detection + save render from this.")
+if st.session_state.get("lab_work") != work_path:
+    for cache in (te._CHROME_STROKES, te._CHROME_TEXT, te._PAGE_VEC_CACHE,
+                  te._CHROME_CACHE, te._SNAP_CACHE):
+        cache.clear()
+    st.session_state["lab_work"] = work_path
+    st.session_state["ckey"] = st.session_state.get("ckey", 0) + 1
+    st.session_state.pop("result", None)
+doc = fitz.open(work_path)
 n_pages = len(doc)
 st.session_state["npages"] = n_pages
 st.session_state.setdefault("page", 1)
@@ -70,6 +135,7 @@ def _go(d):
     )
 
 
+st.sidebar.subheader("2 · Page")
 page_number = st.sidebar.number_input("Page", 1, n_pages, key="page")
 c_prev, c_next = st.sidebar.columns(2)
 c_prev.button("◀ Prev", on_click=_go, args=(-1,))
@@ -83,14 +149,41 @@ if st.session_state.get("lab_page") != page_number:
     st.session_state.pop("result", None)
     st.session_state["ckey"] = st.session_state.get("ckey", 0) + 1
 
+st.sidebar.subheader("3 · Crop mode")
 mode = st.sidebar.radio("Mode", ["assist (vector)", "snap",
-                                "exact (polygon + anti-clip)"])
+                                "exact (rectangle + anti-clip)"],
+                        help="assist: stroke completion + text trim. "
+                             "snap: match an embedded image. "
+                             "exact: your rectangle + anti-clip backstop.")
 anti = st.sidebar.checkbox("Anti-clip expansion", value=True)
-max_pad = st.sidebar.slider("Max expansion per edge (units)", 1.0, 15.0, 15.0)
+max_pad = st.sidebar.slider("Max expansion per edge (units)", 1.0, 25.0, 25.0)
 st.sidebar.caption(
     "0.1-unit steps, only where dark ink touches the border. "
-    "Off = old verbatim box (for before/after review)."
+    "25 = production default. Off = old verbatim box (for before/after)."
 )
+
+# ---------- 4 · your box (type numbers, or drag on the page below) ----------
+st.sidebar.subheader("4 · Your box: x, y, width, height (0-1000)")
+st.session_state.setdefault("x0", 100)
+st.session_state.setdefault("y0", 100)
+st.session_state.setdefault("x1", 900)
+st.session_state.setdefault("y1", 900)
+_cx0, _cy0 = st.session_state.x0, st.session_state.y0
+_cx1, _cy1 = st.session_state.x1, st.session_state.y1
+_bx = st.sidebar.number_input("x", 0, 1000, value=_cx0)
+_by = st.sidebar.number_input("y", 0, 1000, value=_cy0)
+_bw = st.sidebar.number_input("width", 1, 1000, value=max(1, _cx1 - _cx0))
+_bh = st.sidebar.number_input("height", 1, 1000, value=max(1, _cy1 - _cy0))
+x0, y0 = _bx, _by
+x1, y1 = min(1000, _bx + _bw), min(1000, _by + _bh)
+st.session_state.update(x0=x0, y0=y0, x1=x1, y1=y1)
+st.sidebar.caption(
+    f"corner: ({x0 / 1000 * W:.0f}, {y0 / 1000 * H:.0f}) · "
+    f"size: {x1 - x0}u \u00d7 {y1 - y0}u · "
+    "all boxes are [x, y, width, height]"
+)
+norm_pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+
 
 
 def _reset_box():
@@ -106,17 +199,9 @@ def _clear_caches():
     st.session_state.pop("result", None)
 
 
-st.sidebar.button("🧹 Reset box", on_click=_reset_box)
-st.sidebar.button("🗑 Clear caches", on_click=_clear_caches)
-
-# ---------- box state (canvas writes these before the inputs exist) ----------
-st.session_state.setdefault("x0", 100)
-st.session_state.setdefault("y0", 100)
-st.session_state.setdefault("x1", 900)
-st.session_state.setdefault("y1", 900)
 
 # ---------- type overlays ----------
-st.sidebar.subheader("Overlays (what each thing is)")
+st.sidebar.subheader("5 · Overlays (what each thing is)")
 LAYERS = st.sidebar.multiselect(
     "Show on page",
     ["stroke clusters", "chrome strokes", "long text", "short text",
@@ -153,15 +238,15 @@ def _apply_overlays(img):
     if not LAYERS:
         return img
     with st.spinner("Reading page vectors (chrome scan on first use)…"):
-        _s, blocks_nc, clusters = te._page_vectors(pdf_path, page_number)
-        chrome_s, chrome_t = te._chrome_for(pdf_path)
-    d = fitz.open(pdf_path)
+        _s, blocks_nc, clusters = te._page_vectors(work_path, page_number)
+        chrome_s, chrome_t = te._chrome_for(work_path)
+    d = fitz.open(work_path)
     try:
         pg = d[page_number - 1]
         drawings = [x["rect"] for x in pg.get_drawings()]
         raw_blocks = [b for b in pg.get_text("blocks") if str(b[4]).strip()]
         images = []
-        img_chrome = te._chrome_xrefs(pdf_path)
+        img_chrome = te._chrome_xrefs(work_path)
         for im in pg.get_images(full=True):
             if im[0] == 0:
                 continue
@@ -237,13 +322,13 @@ def to_px(b, img_w, img_h):
 # ---------- modes (pure helpers: no DB, no LLM, no saves) ----------
 def _run_snap():
     norm = [(int(x), int(y)) for x, y in norm_pts]
-    hit = te._try_snap(pdf_path, page_number, norm)
-    doc2 = fitz.open(pdf_path)
+    hit = te._try_snap(work_path, page_number, norm)
+    doc2 = fitz.open(work_path)
     pg = doc2[page_number - 1]
     r = pg.rect
     want = fitz.Rect(x0 / 1000 * r.width, y0 / 1000 * r.height,
                      x1 / 1000 * r.width, y1 / 1000 * r.height)
-    chrome = te._chrome_xrefs(pdf_path)
+    chrome = te._chrome_xrefs(work_path)
     rows = []
     for img in pg.get_images(full=True):
         xref = img[0]
@@ -279,8 +364,8 @@ def _run_snap():
 
 def _run_assist():
     norm = [(int(x), int(y)) for x, y in norm_pts]
-    _s, blocks, clusters = te._page_vectors(pdf_path, page_number)
-    doc2 = fitz.open(pdf_path)
+    _s, blocks, clusters = te._page_vectors(work_path, page_number)
+    doc2 = fitz.open(work_path)
     pg = doc2[page_number - 1]
     r = pg.rect
     want = fitz.Rect(x0 / 1000 * r.width, y0 / 1000 * r.height,
@@ -290,20 +375,25 @@ def _run_assist():
         # Plain fallback: same anti-clip backstop as production, rendered
         # here so you can review it instead of imagining it.
         box = [float(x0), float(y0), float(x1), float(y1)]
-        grown, pads, capped, blocked = (te._expand_box_for_ink(pg, box, max_pad)
-                                           if anti else (box, [0.0] * 4, [], []))
+        grown, pads, capped, cut = (te._expand_box_for_ink(pg, box, max_pad)
+                                                    if anti else (box, [0.0] * 4, [], [], []))
+        hints = (te._fix_hints(pg, grown, capped, cut)
+                 if anti and (capped or cut) else {})
         doc2.close()
         grown_pts = fitz.Rect(
             grown[0] / 1000 * r.width, grown[1] / 1000 * r.height,
             grown[2] / 1000 * r.width, grown[3] / 1000 * r.height)
-        crop = te._clip_render_to_pil(pdf_path, page_number, grown_pts)
+        crop = te._clip_render_to_pil(work_path, page_number, grown_pts)
         return {"mode": "assist", "hit": False,
                 "final1000": [int(round(v)) for v in grown],
                 "preview": crop, "rows": [], "verdicts": [],
                 "your1000": [x0, y0, x1, y1], "page": page_number,
-                "pads": pads, "capped": capped, "blocked": blocked,
+                "pads": pads, "capped": capped, "cut": cut,
                 "text": "no strokes touch your box — plain crop"
-                        + te._pad_note(pads, capped, blocked)}
+                         + te._pad_note(pads, capped, cut,
+                        final=te._corners_to_rect1000(
+                            *[int(round(v)) for v in grown]),
+                        hints=hints)}
     doc2.close()
     final, trims, capped, verdicts = out
     page_rect = fitz.Rect(0, 0, r.width, r.height)
@@ -333,22 +423,24 @@ def _run_assist():
         final1000[2] / 1000 * r.width, final1000[3] / 1000 * r.height,
     ), te._VEC_PAD)
     rb &= page_rect
-    crop = te._clip_render_to_pil(pdf_path, page_number, rb)
+    crop = te._clip_render_to_pil(work_path, page_number, rb)
     return {"mode": "assist", "hit": True, "final1000": final1000,
             "your1000": your1000, "preview": crop, "rows": [],
             "verdicts": verdicts, "page": page_number, "text": text}
 
 
 def _run_exact():
-    """Mirror production polygon_crop: rect corners as polygon, anti-clip
+    """Mirror production exact_crop: rectangle box, anti-clip
     expansion, masked render. Review the backstop, not the mask."""
     box = [float(x0), float(y0), float(x1), float(y1)]
-    doc2 = fitz.open(pdf_path)
+    doc2 = fitz.open(work_path)
     try:
         pg = doc2[page_number - 1]
         r = pg.rect
-        grown, pads, capped, blocked = (te._expand_box_for_ink(pg, box, max_pad)
-                                            if anti else (box, [0.0] * 4, [], []))
+        grown, pads, capped, cut = (te._expand_box_for_ink(pg, box, max_pad)
+                                            if anti else (box, [0.0] * 4, [], [], []))
+        hints = (te._fix_hints(pg, grown, capped, cut)
+                 if anti and (capped or cut) else {})
         w0 = grown[2] - grown[0] or 1.0
         h0 = grown[3] - grown[1] or 1.0
         fpts = [
@@ -375,40 +467,53 @@ def _run_exact():
             "final1000": [int(round(v)) for v in grown],
             "your1000": [x0, y0, x1, y1], "preview": bg,
             "rows": [], "verdicts": [], "page": page_number,
-            "pads": pads, "capped": capped, "blocked": blocked,
-            "text": "exact polygon crop" + te._pad_note(pads, capped, blocked)}
+            "pads": pads, "capped": capped, "cut": cut,
+            "text": "exact crop"  + te._pad_note(pads, capped, cut,
+                        final=te._corners_to_rect1000(
+                            *[int(round(v)) for v in grown]),
+                        hints=hints)}
 
 
 def _show_result(result):
     boxkey = "your1000" if "your1000" in result else "box1000"
     if result.get("page") != page_number or result.get(boxkey) != [x0, y0, x1, y1]:
         st.warning("⚠ box or page changed since this result — hit Run again.")
-    st.subheader(f"mode: {result['mode']} — {result['text']}")
     if result["mode"] == "snap":
+        st.subheader("snap — embedded image matched, original returned")
         if result["rows"]:
             st.table(result["rows"])
         else:
             st.caption("no embedded (non-chrome) images on this page")
         if result["preview"] is not None:
             st.image(result["preview"], caption="snapped original bytes")
+        return
+    # one-line verdict up front; full tool reply lives in the expander
+    bad = list(result.get("cut") or []) + list(result.get("capped") or [])
+    if bad:
+        st.subheader(f"{result['mode']} — still cut at: {'/'.join(bad)}")
+    elif result.get("pads") and any(p > 0 for p in result["pads"]):
+        st.subheader(f"{result['mode']} — edges grown clear")
     else:
-        if result["final1000"]:
-            st.code(f"your box:  {result['your1000']}\nfinal box: {result['final1000']}")
-            if result.get("pads") and any(p > 0 for p in result["pads"]):
-                names = ["left", "top", "right", "bottom"]
-                st.caption("anti-clip growth — " + ", ".join(
-                    f"{n}+{p:.1f}" for n, p in zip(names, result["pads"])
-                    if p > 0)
-                    + (" — STILL CUT at: " + "/".join(result["capped"])
-                       if result.get("capped")
-                       else (" — BLOCKED by text at: "
-                           + "/".join(result["blocked"])
-                           if result.get("blocked") else " — edges now clear")))
-            st.image(result["preview"], caption="final crop (250 DPI)")
-            if result.get("verdicts"):
-                st.subheader("leftover text — why each block survived")
-                st.table([{"text": v[0], "words": v[1], "verdict": v[2]}
-                          for v in result["verdicts"]])
+        st.subheader(f"{result['mode']} — box untouched")
+    if result["final1000"]:
+        _yb, _fb = result['your1000'], result['final1000']
+        st.code(f"your box:  [{_yb[0]}, {_yb[1]}, {_yb[2] - _yb[0]}, {_yb[3] - _yb[1]}]\n"
+                f"final box: [{_fb[0]}, {_fb[1]}, {_fb[2] - _fb[0]}, {_fb[3] - _fb[1]}]\n"
+                f"(x, y, width, height)")
+        if result.get("pads") and any(p != 0 for p in result["pads"]):
+            names = ["left", "top", "right", "bottom"]
+            st.caption("per-edge change — " + ", ".join(
+                f"{n}{p:+.1f}" for n, p in zip(names, result["pads"])
+                if p != 0)
+                + (" — unsolved edges kept at your box (see reply)"
+                   if bad else ""))
+        with st.expander("Full tool reply (what the agent sees)"):
+            st.write(result["text"])
+        st.image(result["preview"], caption="final crop (250 DPI)")
+        if result.get("verdicts"):
+            st.subheader("leftover text — why each block survived")
+            st.table([{"text": v[0], "words": v[1], "verdict": v[2]}
+                      for v in result["verdicts"]])
         else:
             st.caption("plain fallback would apply")
 
@@ -472,20 +577,6 @@ with col_page:
     x0, y0, x1, y1 = (st.session_state.x0, st.session_state.y0,
                       st.session_state.x1, st.session_state.y1)
 
-# ---------- precise box inputs (sidebar, after canvas so state is fresh) ----------
-st.sidebar.subheader("Your box (0-1000) — canvas or type")
-x0 = st.sidebar.number_input("x0", 0, 1000, key="x0")
-y0 = st.sidebar.number_input("y0", 0, 1000, key="y0")
-x1 = st.sidebar.number_input("x1", 0, 1000, key="x1")
-y1 = st.sidebar.number_input("y1", 0, 1000, key="y1")
-x0, x1 = min(x0, x1), max(x0, x1)
-y0, y1 = min(y0, y1), max(y0, y1)
-st.sidebar.caption(
-    f"points: ({x0 / 1000 * W:.0f}, {y0 / 1000 * H:.0f}) – "
-    f"({x1 / 1000 * W:.0f}, {y1 / 1000 * H:.0f})"
-)
-norm_pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
-
 with col_out:
     if st.sidebar.button("▶ Run", type="primary"):
         with st.spinner("Working (chrome scan on first call can take a bit)…"):
@@ -498,5 +589,9 @@ with col_out:
         _show_result(res)
     else:
         st.info("Draw a box, pick a mode, hit Run.")
+
+st.sidebar.subheader("Utilities")
+st.sidebar.button("🧹 Reset box", on_click=_reset_box)
+st.sidebar.button("🗑 Clear caches", on_click=_clear_caches)
 
 doc.close()

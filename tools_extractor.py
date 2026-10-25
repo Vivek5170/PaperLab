@@ -125,7 +125,7 @@ def _assist_attempt(paper_id: int, question_number: str, filename: str) -> int:
 
 
 def _assist_used(paper_id: int, question_number: str, filename: str) -> int:
-    """Attempt count WITHOUT incrementing (for the polygon_crop gate)."""
+    """Attempt count WITHOUT incrementing (for the exact_crop gate)."""
     try:
         loaded = json.loads(
             _counts_path(paper_id, question_number).read_text(encoding="utf-8"))
@@ -141,14 +141,14 @@ def _assist_used(paper_id: int, question_number: str, filename: str) -> int:
 # tries are enough signal; beyond that the agent is burning tokens.
 _POLYGON_MIN_ASSIST = 3
 
-# Anti-clip backstop (exact paths only: polygon + assisted-plain). The model
+# Anti-clip backstop (exact paths only: exact_crop + assisted-plain). The model
 # speaks integers 0-1000; fractions live here alone. Any edge touching dark
 # ink grows by _EDGE_INK_STEP units per round, up to _EDGE_INK_MAX per edge.
 # Small on purpose: a backstop, not autopilot -- gross misses stay the
 # model's job via the preview loop, and the cap doubles as the
 # infinite-wire handler (a wire still touches at cap: accept and stop).
 _EDGE_INK_STEP = 0.1
-_EDGE_INK_MAX = 15.0
+_EDGE_INK_MAX = 25.0
 _EDGE_INK_THRESH = 128  # gray below this counts as content ink
 _EDGE_CHECK_DPI = 150  # check renders: a passing edge means ~6px of
 _EDGE_CHECK_DEPTH = 3  # visible gap at final render DPI, past AA fringe
@@ -195,7 +195,11 @@ _VEC_PAD = 0.0  # no padding: the reported box is rendered exactly
 _VEC_LABEL_NEAR = 10.0  # short text within this of a stroke is a label (kept)
 _VEC_GROW_CAP = 3.0  # max final/agent area ratio; beyond this growth is refused
 _MIN_REPORT_DELTA = 3  # 0-1000 units below this are rounding noise, unreported
-_CROP_DPI = 250  # clip-render resolution for assisted/polygon crops
+_CROP_DPI = 250  # clip-render resolution for assisted/exact crops
+# Disk-save resolution for the same crops. The LLM preview path is
+# untouched (img_block thumbnails to CROP_PX either way), so the model
+# sees exactly what it saw before -- only the file on disk gets denser.
+_SAVE_DPI = 600
 _ASSIST_MAX_ATTEMPTS = 5
 
 # Attempt counts live on disk (figures/_assist_counts.json per question), not
@@ -361,13 +365,18 @@ def _cluster_rects(rects: list) -> list:
 
 
 def _to_1000(rect, page_rect) -> list[int]:
-    """PDF-points rect -> 0-1000 grid ints (top-left origin)."""
+    """PDF-points rect -> 0-1000 grid corner ints (top-left origin)."""
     return [
         int(round(rect.x0 / page_rect.width * 1000)),
         int(round(rect.y0 / page_rect.height * 1000)),
         int(round(rect.x1 / page_rect.width * 1000)),
         int(round(rect.y1 / page_rect.height * 1000)),
     ]
+
+
+def _corners_to_rect1000(x0: int, y0: int, x1: int, y1: int) -> list[int]:
+    """Corner ints -> [x, y, width, height] reply form (same grid)."""
+    return [x0, y0, x1 - x0, y1 - y0]
 
 
 def _chrome_xrefs(pdf_path: str) -> set[int]:
@@ -390,9 +399,9 @@ def _chrome_xrefs(pdf_path: str) -> set[int]:
 def _try_snap(
     pdf_path: str, page_number: int, norm_pts: list[tuple[int, int]]
 ) -> tuple[str, bytes, int] | None:
-    """Snap a 0-1000 polygon bbox to an embedded figure image, if any.
+    """Snap a 0-1000 box to an embedded figure image, if any.
 
-    Converts the polygon's bounding box to PDF points and returns the
+    Converts the box to PDF points and returns the
     original bytes (ext, data, xref) of the embedded image in either of two cases:
     1. IoU between the box and the image rect >= SNAP_IOU (tight box), or
     2. the box contains >= SNAP_COVERAGE of exactly one image AND the box
@@ -578,7 +587,7 @@ def get_page_image(
 ) -> Command:
     """Render a PDF page. The page image arrives in the next message.
 
-    Call this to SEE the page before emitting polygon coordinates or
+    Call this to SEE the page before emitting box coordinates or
     transcribing LaTeX.
 
     Args:
@@ -596,8 +605,8 @@ def get_page_image(
     )
 
 
-def _touching_ink(pix) -> list:
-    """Per edge (left, top, right, bottom): dark ink in the outermost band.
+def _touching_ink(pix) -> tuple:
+    """Per edge (left, top, right, bottom): (touches_ink, dark_px_count).
 
     Band = _EDGE_CHECK_DEPTH px at check DPI, so a passing edge guarantees
     several clean pixels (not a sub-pixel graze) at final render DPI.
@@ -605,54 +614,44 @@ def _touching_ink(pix) -> list:
     w, h, n = pix.width, pix.height, pix.n
     d = _EDGE_CHECK_DEPTH
     if w < 2 * d or h < 2 * d or n < 3:
-        return [False] * 4
+        return [False] * 4, [0] * 4
     s = pix.samples
 
     def is_dark(x, y):
         i = (y * w + x) * n
         return (s[i] + s[i + 1] + s[i + 2]) // 3 < _EDGE_INK_THRESH
 
-    return [
-        any(is_dark(x, y) for x in range(d) for y in range(h)),
-        any(is_dark(x, y) for x in range(w) for y in range(d)),
-        any(is_dark(x, y) for x in range(w - d, w) for y in range(h)),
-        any(is_dark(x, y) for x in range(w) for y in range(h - d, h)),
+    zones = [
+        [(x, y) for x in range(d) for y in range(h)],
+        [(x, y) for x in range(w) for y in range(d)],
+        [(x, y) for x in range(w - d, w) for y in range(h)],
+        [(x, y) for x in range(w) for y in range(h - d, h)],
     ]
+    counts = [sum(1 for x, y in z if is_dark(x, y)) for z in zones]
+    return [c > 0 for c in counts], counts
 
 
 _EDGE_NAMES = ["left", "top", "right", "bottom"]
 
 
-def _long_text_rects(page) -> list:
-    """Rects of question-text blocks (long = stem, not diagram labels)."""
-    rects = []
-    try:
-        blocks = page.get_text("blocks")
-    except Exception:
-        return rects
-    for b in blocks:
-        try:
-            if len(str(b[4]).split()) > _VEC_TRIM_WORDS:
-                rects.append(fitz.Rect(b[0], b[1], b[2], b[3]))
-        except Exception:
-            pass
-    return rects
-
 
 def _expand_box_for_ink(page, box: list, max_pad: float = _EDGE_INK_MAX) -> tuple:
     """Grow a 0-1000 float box past edge-touching ink.
 
-    +_EDGE_INK_STEP units per touching edge per round, max +max_pad
-    per edge. Never grows into question text: a strip holding a long
-    text block stops that edge instead (short labels are diagram content
-    and don't block). Returns (expanded_box, pads, capped, blocked):
-    `capped` = still touching at the max (box far too tight); `blocked`
-    = stopped by question text (edge sits on the wrong side of it).
+    The page this runs on is the figure-only crop canvas (long text
+    truly deleted, vector/raster intact), so there is no text veto at
+    all: +_EDGE_INK_STEP units per touching edge per round, max +max_pad
+    per edge. Returns (expanded_box, pads, capped, cut): `capped` = still
+    touching at the max with nothing beyond (terminating content);
+    `cut` = edge slices through content continuing outside (own diagram
+    or neighbor's). Unsolved edges (capped/cut) are reverted to the
+    requested position -- no partial extension is kept -- so the saved
+    preview honestly shows the cut and follow-up numbers anchor on the
+    model's own box.
     """
     r = page.rect
     pads = [0.0, 0.0, 0.0, 0.0]
     touched = [False] * 4
-    long_text = _long_text_rects(page)
 
     def pts(b):
         return fitz.Rect(
@@ -660,99 +659,358 @@ def _expand_box_for_ink(page, box: list, max_pad: float = _EDGE_INK_MAX) -> tupl
             b[2] / 1000 * r.width, b[3] / 1000 * r.height,
         ) & r
 
-    def strip(i, b):
-        """The sliver the next 0.1-unit step would swallow, in points."""
-        x0 = (b[0] - _EDGE_INK_STEP) / 1000 * r.width
-        y0 = (b[1] - _EDGE_INK_STEP) / 1000 * r.height
-        x1 = (b[2] + _EDGE_INK_STEP) / 1000 * r.width
-        y1 = (b[3] + _EDGE_INK_STEP) / 1000 * r.height
-        cur = pts(b)
-        if i == 0:
-            return fitz.Rect(x0, cur.y0, cur.x0, cur.y1)
-        if i == 1:
-            return fitz.Rect(cur.x0, y0, cur.x1, cur.y0)
-        if i == 2:
-            return fitz.Rect(cur.x1, cur.y0, x1, cur.y1)
-        return fitz.Rect(cur.x0, cur.y1, cur.x1, y1)
-
     for _ in range(int(max_pad / _EDGE_INK_STEP) + 1):
         b = [
             max(0.0, box[0] - pads[0]), max(0.0, box[1] - pads[1]),
             min(1000.0, box[2] + pads[2]), min(1000.0, box[3] + pads[3]),
         ]
         pix = page.get_pixmap(dpi=_EDGE_CHECK_DPI, clip=pts(b))
-        touched = _touching_ink(pix)
+        touched, _counts = _touching_ink(pix)
         if not any(touched):
-            return b, [round(p, 1) for p in pads], [], []
+            return b, [round(p, 1) for p in pads], [], []  # RET-A
         grew = False
         for i, on in enumerate(touched):
             if not on or pads[i] >= max_pad - 1e-9:
                 continue
-            if any(sr.intersects(strip(i, b)) for sr in long_text):
-                continue  # growing here would swallow question text
             pads[i] = min(max_pad, pads[i] + _EDGE_INK_STEP)
             grew = True
         if not grew:
             break
-    capped = [_EDGE_NAMES[i] for i, on in enumerate(touched)
-              if on and pads[i] >= max_pad - 1e-9]
-    blocked = [_EDGE_NAMES[i] for i, on in enumerate(touched)
-               if on and pads[i] < max_pad - 1e-9]
-    return b, [round(p, 1) for p in pads], capped, blocked
+    # Final classification render (one render; consistent basis for all
+    # verdicts below).
+    pix = page.get_pixmap(dpi=_EDGE_CHECK_DPI, clip=pts(b))
+    touched, _counts = _touching_ink(pix)
+    if not any(touched):
+        return b, [round(p, 1) for p in pads], [], []  # RET-A
+    maxed = [i for i, on in enumerate(touched)
+             if on and pads[i] >= max_pad - 1e-9]
+    if not maxed:
+        # Touching but neither capped nor cuttable (e.g. growth stalled):
+        # report as still-cut so the model looks at it.
+        left_idx = [i for i, on in enumerate(touched) if on]
+        left = [_EDGE_NAMES[i] for i in left_idx]
+        for i in left_idx:
+            pads[i] = 0.0  # no partial extension on unsolved edges
+        b = [
+            max(0.0, box[0] - pads[0]), max(0.0, box[1] - pads[1]),
+            min(1000.0, box[2] + pads[2]), min(1000.0, box[3] + pads[3]),
+        ]
+        return b, [round(p, 1) for p in pads], left, []
+    # Capped/exhausted while still touching: check whether content continues
+    # beyond the edge (cut through: own diagram or neighbor's) or
+    # terminates there (wire end). One extra render; rare path only.
+    outside = _outside_ink(page, b)
+    cut = [_EDGE_NAMES[i] for i in maxed if outside[i]]
+    capped = [_EDGE_NAMES[i] for i in maxed if not outside[i]]
+    for i in maxed:
+        pads[i] = 0.0  # no partial extension on unsolved edges: the saved
+        # preview honestly shows the cut and hints anchor on your numbers
+    b = [
+        max(0.0, box[0] - pads[0]), max(0.0, box[1] - pads[1]),
+        min(1000.0, box[2] + pads[2]), min(1000.0, box[3] + pads[3]),
+    ]
+    return b, [round(p, 1) for p in pads], capped, cut
 
 
-def _pad_note(pads, capped=(), blocked=()) -> str:
-    """Lite reply fragment reporting auto-expansion (model-facing)."""
+def _outside_ink(page, box: list, margin_units: float = 8.0) -> list:
+    """Per edge: dark ink just OUTSIDE the box (a lookahead band).
+
+    Together with edge-touching ink inside, this means the edge cuts
+    through content continuing outside -- own diagram or neighbor's, the
+    model must judge from the preview.
+    """
+    r = page.rect
+    c = [max(0.0, box[0] - margin_units), max(0.0, box[1] - margin_units),
+         min(1000.0, box[2] + margin_units),
+         min(1000.0, box[3] + margin_units)]
+    clip = fitz.Rect(c[0] / 1000 * r.width, c[1] / 1000 * r.height,
+                     c[2] / 1000 * r.width, c[3] / 1000 * r.height) & r
+    if clip.is_empty:
+        return [False] * 4
+    pix = page.get_pixmap(dpi=_EDGE_CHECK_DPI, clip=clip)
+    w, h, n = pix.width, pix.height, pix.n
+    d = _EDGE_CHECK_DEPTH
+    if w < 2 * d or h < 2 * d or n < 3:
+        return [False] * 4
+    s = pix.samples
+
+    def px(u, v):
+        return (int((u / 1000 * r.width - clip.x0) / clip.width * w),
+                int((v / 1000 * r.height - clip.y0) / clip.height * h))
+
+    def is_dark(x, y):
+        if not (0 <= x < w and 0 <= y < h):
+            return False
+        i = (y * w + x) * n
+        return (s[i] + s[i + 1] + s[i + 2]) // 3 < _EDGE_INK_THRESH
+
+    x0, _ = px(box[0], 0)
+    x1, _ = px(box[2], 0)
+    _, y0 = px(0, box[1])
+    _, y1 = px(0, box[3])
+    return [
+        any(is_dark(x, y) for x in range(x0 - d, x0) for y in range(h)),
+        any(is_dark(x, y) for x in range(w) for y in range(y0 - d, y0)),
+        any(is_dark(x, y) for x in range(x1, x1 + d) for y in range(h)),
+        any(is_dark(x, y) for x in range(w) for y in range(y1, y1 + d)),
+    ]
+
+
+_EDGE_PARAM = {"left": ("x", "decrease"), "top": ("y", "decrease"),
+                "right": ("width", "increase"),
+                "bottom": ("height", "increase")}
+
+# Thinking-procedure Step 2 rules, spelled out per edge (must match
+# prompts/extractor_prompt.md Step 2a-2d verbatim).
+_STEP2_RULES = {
+    "left": "Step 2a -- LEFT edge: diagram clipped there -- decrease x; "
+            "junk or foreign text there -- increase x.",
+    "top": "Step 2b -- TOP edge: diagram clipped there -- decrease y; "
+           "junk or foreign text there -- increase y.",
+    "right": "Step 2c -- RIGHT edge: diagram clipped there -- increase "
+             "width; junk or foreign text there -- decrease width.",
+    "bottom": "Step 2d -- BOTTOM edge: diagram clipped there -- increase "
+              "height; junk or foreign text there -- decrease height.",
+}
+
+
+def _edge_clearance(page, b, i, max_units=25.0):
+    """How far ink continues past edge i (0-1000 units), failure path only.
+
+    Renders one band outside the edge and takes the FARTHEST line that
+    still holds ink (>=2 dark px, so AA fringe and stray specks don't
+    count). Farthest-not-first-gap matters: dotted content (text glyphs:
+    ink, gap, ink...) would otherwise report one glyph width instead of
+    the true span. Returns (units_or_None, nearest_word_or_None): None
+    units = ink reaches the band end (runs deeper than max_units); the
+    word is the nearest text-layer word in that band (a shrink hint --
+    foreign text -- vs plain ink the model must judge from the preview).
+    """
+    r = page.rect
+    wpt = max_units / 1000 * (r.width if i in (0, 2) else r.height)
+    cur = fitz.Rect(b[0] / 1000 * r.width, b[1] / 1000 * r.height,
+                    b[2] / 1000 * r.width, b[3] / 1000 * r.height)
+    band = {0: fitz.Rect(cur.x0 - wpt, cur.y0, cur.x0, cur.y1),
+            1: fitz.Rect(cur.x0, cur.y0 - wpt, cur.x1, cur.y0),
+            2: fitz.Rect(cur.x1, cur.y0, cur.x1 + wpt, cur.y1),
+            3: fitz.Rect(cur.x0, cur.y1, cur.x1, cur.y1 + wpt)}[i] & r
+    if band.is_empty:
+        return None, None
+    try:
+        pix = page.get_pixmap(dpi=_EDGE_CHECK_DPI * 2, clip=band)
+    except Exception:
+        return None, None
+    w, h, n = pix.width, pix.height, pix.n
+    if w < 2 or h < 2 or n < 3:
+        return None, None
+    s = pix.samples
+
+    def dark(x, y):
+        j = (y * w + x) * n
+        return (s[j] + s[j + 1] + s[j + 2]) // 3 < _EDGE_INK_THRESH
+
+    span = w if i in (0, 2) else h
+    across = h if i in (0, 2) else w
+
+    def at(k, p):
+        # k = steps outward from the edge, p = position along the edge
+        if i == 0:
+            return (w - 1 - k, p)
+        if i == 2:
+            return (k, p)
+        if i == 1:
+            return (p, h - 1 - k)
+        return (p, k)
+
+    def line_dark(k):
+        # a line counts as ink with >=2 dark px (fringe/speck tolerant)
+        return sum(1 for p in range(across) if dark(*at(k, p))) >= 2
+
+    best = None
+    for k in range(span):
+        if line_dark(k):
+            best = k
+    if best is None:
+        return 0.0, None  # probe sees nothing: a ~2u nudge suffices
+    if best >= span - 1:
+        units = None  # ink reaches the band end: deeper than max_units
+    else:
+        units = best / span * max_units
+    word = None
+    try:
+        best = None
+        for wd in page.get_text("words"):
+            if not str(wd[4]).strip():
+                continue
+            wr = fitz.Rect(wd[:4])
+            if not wr.intersects(band):
+                continue
+            gap = {0: cur.x0 - wr.x1, 1: cur.y0 - wr.y1,
+                   2: wr.x0 - cur.x1, 3: wr.y0 - cur.y1}[i]
+            gapu = max(0.0, gap / (r.width if i in (0, 2) else r.height)
+                       * 1000)
+            if best is None or gapu < best[1]:
+                best = (str(wd[4]).strip(), gapu)
+        word = best
+    except Exception:
+        word = None
+    return units, word
+
+
+def _fix_hints(page, grown, capped, cut,
+               max_pad=_EDGE_INK_MAX) -> dict:
+    """Per-edge fix sentences for capped/cut edges (failure paths).
+
+    Tool measures, model judges: grow numbers assume the content out there
+    is the model's own diagram; the caution says the tool suggests extending
+    even for a neighbor's figure. Returns {edge: sentence}. Page open.
+    """
+    tips = {}
+    for e in list(capped) + [x for x in cut if x not in capped]:
+        i = _EDGE_NAMES.index(e)
+        try:
+            d, word = _edge_clearance(page, grown, i)
+        except Exception:
+            continue
+        if d is None:
+            d = 25.0  # deeper than the probe band: quote it as a lower bound
+        p, op = _EDGE_PARAM[e]
+        idx = {"x": 0, "y": 1, "width": 2, "height": 3}[p]
+        # grown is corners: width/height suggestions must be sizes,
+        # not the x1/y1 corner (that bug quoted ~908 for a 259-wide box)
+        if p == "width":
+            cur = grown[2] - grown[0]
+        elif p == "height":
+            cur = grown[3] - grown[1]
+        else:
+            cur = grown[idx]
+        val = cur - (d + 2.0) if op == "decrease" else cur + d + 2.0
+        rule = _STEP2_RULES[e]
+        if e in cut:
+            first = (f"{e} edge cuts through content continuing outside the "
+                     f"box. Nothing is extended on this side (edge kept at "
+                     f"your {p}) because extension doesn't solve it -- the "
+                     f"saved crop still cuts there.")
+        else:
+            first = (f"{e} edge: grew the max (+{max_pad:.1f}) and it still "
+                     f"touches content -- extension doesn't solve it, so "
+                     f"nothing is extended on this side (edge kept at your "
+                     f"{p}) and the saved crop still cuts there.")
+        tip = (f"{first} Fix it yourself per {rule} Measured: ink runs "
+               f"~{d:.0f}u past the edge -- {op} {p} by ~{d + 2.0:.0f}u "
+               f"(e.g. {p} approx {val:.0f}). Caution: this number assumes "
+               f"the content out there is your diagram; if your box caught "
+               f"a different figure, the tool still suggests extending to "
+               f"include it -- shrink past it instead.")
+        if word:
+            tip += f" Nearest text {word[0]!r} ~{word[1]:.0f}u out."
+        tips[e] = tip
+    return tips
+
+
+def _pad_note(pads, capped=(), cut=(), final=None,
+              hints=None) -> str:
+    """Lite reply fragment reporting auto-expansion (model-facing).
+
+    `final` is the grown box in reply units: corrections must anchor on
+    it -- tighten an edge by resubmitting that side strictly inside the
+    final numbers, loosen by going beyond them. Never guess from scratch.
+    `hints` is the per-edge dict from _fix_hints; edges missing from it
+    fall back to generic sentences (same Step 2 rule, no numbers).
+    """
     grown = [f"{n}+{p:.1f}" for n, p in zip(_EDGE_NAMES, pads) if p > 0]
-    if not grown and not blocked:
+    if not grown and not cut and not capped:
         return ""
+    hints = hints or {}
+    anchor = ""
+    needs_fix = bool(capped or cut)
+    if final is not None:
+        anchor = (" Correct from the final box %s: tighten an edge by "
+                  "resubmitting that side strictly inside these numbers, "
+                  "loosen by going beyond them. Per-edge numbers below are "
+                  "auto-measured from the page by fixed rules, not "
+                  "judgments -- verify against the preview and decide "
+                  "yourself."
+                  % (list(final),))
     note = ""
     if grown:
-        note += (" Auto-expanded %s units to clear edge-touching ink."
+        note += (" Auto-expanded %s to clear edge-touching ink."
                  % ", ".join(grown))
-    if capped:
-        note += (" Still cut at the %s edge after the max: move that edge "
-                 "outward past the content yourself and resubmit."
-                 % "/".join(capped))
-    elif blocked:
-        note += (" Stopped at the %s edge: question text sits there, growing "
-                 "further would swallow it. Place the edge in the gap between "
-                 "the text and the diagram yourself and resubmit."
-                 % "/".join(blocked))
-    elif grown:
-        note += " Edges now clear."
-    return note
+    if not needs_fix:
+        note += (" Edges now clear. New box is %s (format [x, y, width, "
+                 "height]). If the preview is not a perfect figure, "
+                 "correct it using thinking-procedure Step 2."
+                 % (list(final) if final is not None else [],))
+        return note
+    note += anchor
+    for e in cut:
+        note += " " + hints.get(e, (
+            f"{e} edge cuts through content continuing outside the box. "
+            f"Nothing is extended on this side (edge kept at your "
+            f"{_EDGE_PARAM[e][0]}) because extension doesn't solve it -- "
+            f"the saved crop still cuts there. Fix it yourself per "
+            f"{_STEP2_RULES[e]} Caution: this assumes the content out "
+            f"there is your diagram; if your box caught a different "
+            f"figure, shrink past it instead."))
+    for e in capped:
+        note += " " + hints.get(e, (
+            f"{e} edge: grew the max and it still touches content -- "
+            f"extension doesn't solve it, so nothing is extended on this "
+            f"side (edge kept at your {_EDGE_PARAM[e][0]}) and the saved "
+            f"crop still cuts there. Fix it yourself per "
+            f"{_STEP2_RULES[e]}"))
+    return note + " Resubmit."
 
 
 @tool
-def polygon_crop(
+def exact_crop(
     pdf_path: str,
     page_number: int,
-    points: list[tuple[int, int]],
+    x: int,
+    y: int,
+    width: int,
+    height: int,
     output_filename: str,
     paper_id: int,
     question_number: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
-    """Crop exactly the given polygon: what you draw is what gets saved.
+    """Crop exactly the given rectangle: what you draw is what gets saved.
 
     Last resort: refuses until the same file already has 3 assisted_crop
     attempts. You may call this multiple times with corrected
     coordinates; reuse the SAME output_filename (it overwrites).
 
-    Coordinates are integers 0-1000 only (fractions are truncated -- keep
-    sending ints, never floats). The tool itself may expand edges by
-    fractions of a unit (up to 15) where dark ink touches the border, and
-    says so in the reply -- "edges now clear" means done, "still cut" or
-    "blocked by text" means move the edge yourself. If the preview shows
-    unintended text seeping in from an expanded edge, redraw that edge to
-    fully exclude the text and resubmit -- the pad only fires on ink
-    touching the edge, so a clean edge stays put.
+    Your box is (x, y, width, height): integers 0-1000, top-left origin.
+    Fractions are truncated -- keep sending ints, never floats. Every box
+    in and out of every crop tool is [x, y, width, height] -- replies echo
+    your box and the final box in the same form, never corners. Adjust per
+    the prompt's Step 2a-2d (which edge is bad -> which parameter moves
+    which way); every bad edge's reply spells out its exact rule plus
+    measured numbers.
+
+    The tool itself may expand edges by fractions of a unit (up to 25)
+    where dark ink touches the border, and says so in the reply --
+    "edges now clear" means done, "still cut" means move the edge
+    yourself per the Step 2 rule named in the reply. If the preview shows
+    unintended text seeping in, redraw that edge to fully exclude the
+    text and resubmit, anchoring on the final box numbers -- the pad only
+    fires on ink touching the edge, so a clean edge stays put.
+
+    Correction suggestions in replies are mechanical rules of thumb
+    (which edge looks bad -> which parameter to move), not judgments
+    about your figure: the tool cannot tell your diagram from a
+    neighbor's figure or an intentional wire exit. Always verify against
+    the preview and decide yourself -- where a suggestion and the FIGURE
+    STANDARD disagree, the STANDARD wins.
 
     Args:
         pdf_path: Filesystem path to the PDF file.
         page_number: 1-based page number containing the figure.
-        points: List of (x, y) integer vertices on the 0-1000 grid.
+        x: Left edge, integer 0-1000.
+        y: Top edge, integer 0-1000.
+        width: Box width in grid units (x + width <= 1000).
+        height: Box height in grid units (y + height <= 1000).
         output_filename: e.g. "qfig1.png" (single filename, no paths).
         paper_id: Integer PK from LangGraph state; never invent one.
         question_number: STRING matching the submit_question call.
@@ -763,13 +1021,21 @@ def polygon_crop(
             "it must come from pre-flight registration via LangGraph state"
         )
     filename = directory_manager.safe_component(output_filename, "output_filename")
-    # Normalize points: LangChain may deliver lists instead of tuples.
-    norm_pts = [(int(x), int(y)) for x, y in points]
-    if len(norm_pts) < 3:
-        raise ValueError("polygon_crop requires at least 3 points")
-    for x, y in norm_pts:
-        if not (0 <= x <= 1000 and 0 <= y <= 1000):
-            raise ValueError(f"point {(x, y)} outside 0-1000 grid")
+    # Integers only: truncate, never round up (rounding up could push an
+    # edge onto neighboring text).
+    x, y, width, height = (int(v) for v in (x, y, width, height))
+    # Figure-only canvas: detection AND save see the crop canvas (long
+    # text truly deleted, vector/raster intact), never the raw page.
+    # Lazy import: pdf_longtext imports this module at its top level.
+    from pdf_longtext import ensure_crop_canvas
+    pdf_path = ensure_crop_canvas(pdf_path)
+    if not (0 <= x <= 1000 and 0 <= y <= 1000):
+        raise ValueError(f"top-left {(x, y)} outside 0-1000 grid")
+    if width < 1 or height < 1:
+        raise ValueError("width and height must be at least 1")
+    if x + width > 1000 or y + height > 1000:
+        raise ValueError("box must fit inside the 0-1000 grid")
+    norm_pts = [(x, y), (x + width, y), (x + width, y + height), (x, y + height)]
 
     # Last-resort gate: cheap plain refusal (no preview burned) that
     # redirects to assisted_crop, where snap-matching runs.
@@ -779,7 +1045,7 @@ def polygon_crop(
             update={
                 "messages": [
                     ToolMessage(
-                        f"polygon_crop refused: {tried} of "
+                        f"exact_crop refused: {tried} of "
                         f"{_POLYGON_MIN_ASSIST} required assisted_crop "
                         f"attempts used for {filename}. Call assisted_crop "
                         f"({_POLYGON_MIN_ASSIST - tried} tries left) with a "
@@ -795,6 +1061,7 @@ def polygon_crop(
     qdir = directory_manager.ensure_question_dir(paper_id, question_number)
     dest = qdir / directory_manager.FIGURES_DIR / filename
 
+    hints = ""
     doc = fitz.open(pdf_path)
     try:
         if page_number < 1 or page_number > len(doc):
@@ -806,18 +1073,21 @@ def polygon_crop(
         fxs = [x / 1000.0 * r.width for x, _ in norm_pts]
         fys = [y / 1000.0 * r.height for _, y in norm_pts]
         if max(fxs) <= min(fxs) or max(fys) <= min(fys):
-            raise ValueError("polygon has zero area after scaling to points")
+            raise ValueError("box has zero area after scaling to points")
         # Anti-clip: expand the bbox past edge-touching ink (0.1-unit
-        # steps, max 15 per edge), then map the polygon onto it. Fractions
-        # stay inside this tool; the model keeps sending ints.
+        # steps, max 25 per edge), then map the box corners onto it.
+        # Fractions stay inside this tool; the model keeps sending ints.
         bx = [float(min(f[0] for f in norm_pts)),
               float(min(f[1] for f in norm_pts)),
               float(max(f[0] for f in norm_pts)),
               float(max(f[1] for f in norm_pts))]
-        grown, pads, capped, blocked = (
+        grown, pads, capped, cut = (
             _expand_box_for_ink(page, bx)
-            if (bx[2] > bx[0] and bx[3] > bx[1]) else (bx, [0.0] * 4, [], [])
+            if (bx[2] > bx[0] and bx[3] > bx[1])
+            else (bx, [0.0] * 4, [], [])
         )
+        hints = (_fix_hints(page, grown, capped, cut)
+                 if (capped or cut) else {})
         sx = ((grown[2] - grown[0]) / (bx[2] - bx[0])
               if bx[2] > bx[0] else 1.0)
         sy = ((grown[3] - grown[1]) / (bx[3] - bx[1])
@@ -829,12 +1099,12 @@ def polygon_crop(
         fxs = [x / 1000.0 * r.width for x, _ in fpts]
         fys = [y / 1000.0 * r.height for _, y in fpts]
         clip = fitz.Rect(min(fxs), min(fys), max(fxs), max(fys)) & r
-        pix = page.get_pixmap(dpi=_CROP_DPI, clip=clip)
+        pix = page.get_pixmap(dpi=_SAVE_DPI, clip=clip)
         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
     finally:
         doc.close()
 
-    # Polygon mask in clip-local pixels. White background outside polygon.
+    # Rect mask in clip-local pixels. White background outside the box.
     cw, ch = img.size
     px_pts = [
         (
@@ -859,9 +1129,14 @@ def polygon_crop(
     final1000 = [int(round(v)) for v in grown]
     return image_reply(
         tool_call_id,
-        f"Saved {filename} to {dest}. Exact crop of your polygon. "
-        f"your box: {your1000}. final box: {final1000}."
-        + _pad_note(pads, capped, blocked) + " A preview is in the next message.",
+        f"Saved {filename} to {dest}. Exact crop of your box. "
+        f"your box: {_corners_to_rect1000(*your1000)}. "
+        f"final box: {_corners_to_rect1000(*final1000)} (boxes are "
+        f"[x, y, width, height])."
+        + _pad_note(pads, capped, cut,
+                      final=_corners_to_rect1000(*final1000),
+                      hints=hints)
+        + " A preview is in the next message.",
         f"[Crop preview: {filename}]",
         dest,
         CROP_PX,
@@ -1058,14 +1333,25 @@ def _assist_box(
 def assisted_crop(
     pdf_path: str,
     page_number: int,
-    points: list[tuple[int, int]],
+    x: int,
+    y: int,
+    width: int,
+    height: int,
     output_filename: str,
     paper_id: int,
     question_number: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
     """Crop a figure with small automatic corrections. Call this FIRST
-    for every figure; use polygon_crop only when this tool refuses you.
+    for every figure; use exact_crop only when this tool refuses you.
+
+    Your box is (x, y, width, height): integers 0-1000, top-left origin.
+    x, y is the top-left corner; width, height the size. Fractions are
+    truncated -- keep sending ints. Every box in and out of every crop
+    tool is [x, y, width, height] -- replies echo your box and the final
+    box in the same form, never corners. Adjust per the prompt's Step
+    2a-2d (which edge is bad -> which parameter moves which way); every
+    bad edge's reply spells out its exact rule plus measured numbers.
 
     Your box is the intent; the tool only fixes what it can prove:
     snap -- the box matches one embedded image, so the ORIGINAL bytes are
@@ -1073,22 +1359,29 @@ def assisted_crop(
     vector -- non-chrome pen strokes touching the box complete clipped shapes
       and long text lines at the edges are trimmed (short labels stay).
     plain -- no image and no strokes found; your box is saved as-is.
-    The reply states the mode, your box, the final box (0-1000), a
-    plain-language change list, and the attempt count.
 
-    Coordinates are integers 0-1000 only (fractions are truncated -- keep
-    sending ints). Non-snap saves may expand edges by fractions of a unit
-    where dark ink touches the border (plain/polygon up to 15 units, vector
-    up to 5); growth stops at question text and at the cap, and the reply
-    says what happened -- "still cut" or "blocked by text" means the fix
-    is yours. If the preview shows unintended text seeping in, redraw that
-    edge to fully exclude the text and resubmit -- a clean edge never
-    regrows.
+    Correction suggestions in replies are mechanical rules of thumb
+    (which edge looks bad -> which parameter to move), not judgments
+    about your figure: the tool cannot tell your diagram from a
+    neighbor's figure or an intentional wire exit. Always verify against
+    the preview and decide yourself -- where a suggestion and the FIGURE
+    STANDARD disagree, the STANDARD wins.
+    The reply states the mode, your box, the final box, a plain-language
+    change list, and the attempt count. Non-snap saves may expand edges by
+    fractions of a unit where dark ink touches the border (plain up to 25
+    units, vector up to 5); growth stops at the cap, and the reply says
+    what happened -- "still cut" means the fix is yours, with the Step 2
+    rule and a concrete number. If the preview shows unintended text
+    seeping in, redraw that edge to fully exclude the text and resubmit,
+    anchoring on the final box numbers -- a clean edge never regrows.
 
     Args:
         pdf_path: Filesystem path to the PDF file.
         page_number: 1-based page number containing the figure.
-        points: List of (x, y) integer vertices on the 0-1000 grid.
+        x: Left edge, integer 0-1000.
+        y: Top edge, integer 0-1000.
+        width: Box width in grid units (x + width <= 1000).
+        height: Box height in grid units (y + height <= 1000).
         output_filename: e.g. "qfig1.png" (single filename, no paths).
             Reuse the SAME name to correct.
         paper_id: Integer PK from LangGraph state; never invent one.
@@ -1100,13 +1393,21 @@ def assisted_crop(
             "it must come from pre-flight registration via LangGraph state"
         )
     filename = directory_manager.safe_component(output_filename, "output_filename")
-    # Normalize points: LangChain may deliver lists instead of tuples.
-    norm_pts = [(int(x), int(y)) for x, y in points]
-    if len(norm_pts) < 3:
-        raise ValueError("assisted_crop requires at least 3 points")
-    for x, y in norm_pts:
-        if not (0 <= x <= 1000 and 0 <= y <= 1000):
-            raise ValueError(f"point {(x, y)} outside 0-1000 grid")
+    # Integers only: LangChain may deliver floats; truncate, never round up
+    # (rounding up could push an edge onto neighboring text).
+    x, y, width, height = (int(v) for v in (x, y, width, height))
+    # Figure-only canvas: detection AND save see the crop canvas (long
+    # text truly deleted, vector/raster intact), never the raw page.
+    # Lazy import: pdf_longtext imports this module at its top level.
+    from pdf_longtext import ensure_crop_canvas
+    pdf_path = ensure_crop_canvas(pdf_path)
+    if not (0 <= x <= 1000 and 0 <= y <= 1000):
+        raise ValueError(f"top-left {(x, y)} outside 0-1000 grid")
+    if width < 1 or height < 1:
+        raise ValueError("width and height must be at least 1")
+    if x + width > 1000 or y + height > 1000:
+        raise ValueError("box must fit inside the 0-1000 grid")
+    norm_pts = [(x, y), (x + width, y), (x + width, y + height), (x, y + height)]
 
     # Count the attempt only after all input validation passed, so a bad
     # page number or degenerate box doesn't burn one of the five. The count
@@ -1124,7 +1425,7 @@ def assisted_crop(
         ys = [y / 1000.0 * r.height for _, y in norm_pts]
         want = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
         if want.is_empty or want.width <= 0 or want.height <= 0:
-            raise ValueError("polygon has zero area after scaling to points")
+            raise ValueError("box has zero area after scaling to points")
         page_rect = fitz.Rect(page.rect)
     finally:
         doc.close()
@@ -1136,8 +1437,8 @@ def assisted_crop(
                 "messages": [
                     ToolMessage(
                         "attempt limit reached (5 assisted calls for this "
-                        "figure). Nothing was saved. Use polygon_crop with "
-                        "your own coordinates.",
+                        "figure). Nothing was saved. Use exact_crop with "
+                        "your own x, y, width, height.",
                         tool_call_id=tool_call_id,
                     )
                 ]
@@ -1174,7 +1475,9 @@ def assisted_crop(
         return image_reply(
             tool_call_id,
             f"mode: snap, matched embedded image (xref {snap_xref}), "
-            f"original image returned. Your box was {want1000}. {tag}. "
+            f"original image returned. "
+            f"Your box was {_corners_to_rect1000(*want1000)} "
+            f"(boxes are [x, y, width, height]). {tag}. "
             "Preview attached.",
             f"[Crop preview: {filename}]",
             dest,
@@ -1229,8 +1532,10 @@ def assisted_crop(
         doc = fitz.open(pdf_path)
         try:
             vpage = doc[page_number - 1]
-            vgrown, vpads, vcapped, vblocked = _expand_box_for_ink(
+            vgrown, vpads, vcapped, vcut = _expand_box_for_ink(
                 vpage, [float(v) for v in final1000], max_pad=5.0)
+            vhints = (_fix_hints(vpage, vgrown, vcapped, vcut, max_pad=5.0)
+                      if (vcapped or vcut) else {})
         finally:
             doc.close()
         rep = fitz.Rect(
@@ -1240,36 +1545,43 @@ def assisted_crop(
             vgrown[3] / 1000 * page_rect.height,
         )
         render_box = _inflate(rep, _VEC_PAD) & page_rect
-        _clip_render_to_pil(pdf_path, page_number, render_box).save(
+        _clip_render_to_pil(pdf_path, page_number, render_box,
+                            dpi=_SAVE_DPI).save(
             str(dest), format="PNG"
         )
         _record_figure_mode(dest.parent, filename, "vector")
         SNAP_LOG.append((paper_id, str(question_number), filename, "vector"))
         return image_reply(
             tool_call_id,
-            "mode: vector. your box: %s. final box: %s. changes: %s.%s %s. "
-            "Preview attached."
-            % (want1000, final1000, change_txt,
-               _pad_note(vpads, vcapped, vblocked), tag),
+            "mode: vector. your box: %s. final box: %s (boxes are "
+            "[x, y, width, height]). changes: %s.%s %s. Preview attached."
+            % (_corners_to_rect1000(*want1000),
+               _corners_to_rect1000(*final1000), change_txt,
+               _pad_note(vpads, vcapped, vcut,
+                         final=_corners_to_rect1000(*final1000),
+                         hints=vhints), tag),
             f"[Crop preview: {filename}]",
             dest,
             CROP_PX,
         )
 
     # Nothing found: plain crop of the box, plus the same anti-clip
-    # expansion as polygon (fractions stay in here; the model keeps ints).
+    # expansion as usual (fractions stay in here; the model keeps ints).
     doc = fitz.open(pdf_path)
     try:
         page = doc[page_number - 1]
-        grown, pads, capped, blocked = _expand_box_for_ink(
+        grown, pads, capped, cut = _expand_box_for_ink(
             page, [float(v) for v in want1000])
+        phints = (_fix_hints(page, grown, capped, cut)
+                  if (capped or cut) else {})
     finally:
         doc.close()
     grown_pts = fitz.Rect(
         grown[0] / 1000 * r.width, grown[1] / 1000 * r.height,
         grown[2] / 1000 * r.width, grown[3] / 1000 * r.height,
     )
-    _clip_render_to_pil(pdf_path, page_number, grown_pts & page_rect).save(
+    _clip_render_to_pil(pdf_path, page_number, grown_pts & page_rect,
+                        dpi=_SAVE_DPI).save(
         str(dest), format="PNG"
     )
     _record_figure_mode(dest.parent, filename, "plain")
@@ -1278,8 +1590,13 @@ def assisted_crop(
     return image_reply(
         tool_call_id,
         "mode: plain, no image or strokes found, saved your box as-is. "
-        "your box: %s. final box: %s.%s %s. Preview attached."
-        % (want1000, grown1000, _pad_note(pads, capped, blocked), tag),
+        "your box: %s. final box: %s (boxes are [x, y, width, height])."
+        "%s %s. Preview attached."
+        % (_corners_to_rect1000(*want1000),
+           _corners_to_rect1000(*grown1000),
+           _pad_note(pads, capped, cut,
+                     final=_corners_to_rect1000(*grown1000),
+                     hints=phints), tag),
         f"[Crop preview: {filename}]",
         dest,
         CROP_PX,

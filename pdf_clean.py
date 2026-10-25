@@ -6,8 +6,9 @@ annotations are removed without reflowing anything, so page numbers and
 0-1000 coordinates map 1:1 onto the originals.
 
 The papers table keeps the ORIGINAL paths forever (library, archive,
-pairing and Full-PDF all use those). Cleaned copies live hash-named in
-``data/cleaned/`` and are reused across reruns. Every failure falls back
+pairing and Full-PDF all use those). Cleaned copies live in
+``data/cleaned/`` named ``{paper_id:02d}_{source_stem}__{clean,crop}.pdf``
+and are reused across reruns. Every failure falls back
 to the original path -- a dirty PDF the agent can still read beats a
 missing one.
 """
@@ -22,6 +23,31 @@ import fitz  # PyMuPDF
 
 import database
 import directory_manager
+
+
+def _slug(stem: str) -> str:
+    """Filesystem-safe slug preserving human readability of source names."""
+    s = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._")
+    s = re.sub(r"_+", "_", s)
+    return s or "paper"
+
+
+def cleaned_paths(paper_id: int, question_src: str | None,
+                  solution_src: str | None):
+    """Human-readable cleaned/crop-canvas paths for a paper.
+
+    ``{id:02d}_{slug(source_stem)}__{clean,crop}.pdf`` under CLEANED_DIR.
+    """
+    cdir = directory_manager.CLEANED_DIR
+    pre = f"{int(paper_id):02d}"
+    q = f"{pre}_{_slug(Path(question_src).stem)}__clean.pdf" if question_src else None
+    s = f"{pre}_{_slug(Path(solution_src).stem)}__clean.pdf" if solution_src else None
+    return {
+        "question_pdf": str(cdir / q) if q else None,
+        "solution_pdf": str(cdir / s) if s else None,
+        "question_crop_pdf": str(cdir / q).replace("__clean.pdf", "__crop.pdf") if q else None,
+        "solution_crop_pdf": str(cdir / s).replace("__clean.pdf", "__crop.pdf") if s else None,
+    }
 
 # Production defaults (footer/header text redaction stays OFF: boilerplate
 # text is harmless to the extractor and auto-strings risk overreach).
@@ -230,16 +256,46 @@ def _clean_one(src: str | None, dest: Path) -> tuple[str | None, dict | None]:
 
 def clean_paper_pdfs(paper_id: int) -> dict:
     """Clean a paper's PDFs for Phase 2 vision. Returns
-    {"question_pdf", "solution_pdf", "reports"} with cleaned paths, or the
-    original paths wherever cleaning was skipped/failed. Never raises for
-    a known paper (unknown paper_id still raises ValueError)."""
+    {"question_pdf", "solution_pdf", "question_crop_pdf",
+    "solution_crop_pdf", "reports"} with cleaned paths, or the original
+    paths wherever cleaning was skipped/failed. The crop canvases hold
+    ONLY figure content (chrome removed + long text stripped via true
+    text-object deletion; vector/raster ink untouched) and are what the
+    crop tools see. Never raises for a known paper (unknown paper_id
+    still raises ValueError)."""
+    from pdf_longtext import remove_chrome, strip_long_text
+
     row = database.get_paper(paper_id)
     if row is None:
         raise ValueError(f"paper_id {paper_id} does not exist")
-    tag = row["pdf_hash"] or str(paper_id)
+    names = cleaned_paths(paper_id, row["question_pdf_path"],
+                            row["solution_pdf_path"])
     cdir = directory_manager.CLEANED_DIR
-    q_clean, q_rep = _clean_one(row["question_pdf_path"], cdir / f"{tag}_q.pdf")
-    s_clean, s_rep = _clean_one(row["solution_pdf_path"], cdir / f"{tag}_s.pdf")
+    _dst = lambda n: Path(n) if n else None
+    q_clean, q_rep = _clean_one(row["question_pdf_path"], _dst(names["question_pdf"]))
+    s_clean, s_rep = _clean_one(row["solution_pdf_path"], _dst(names["solution_pdf"]))
+
+    def _crop_canvas(cleaned: str | None, name: str) -> str | None:
+        if not cleaned:
+            return None
+        dest = cdir / name
+        if dest.is_file():
+            return str(dest)
+        try:
+            nochrome = str(dest) + ".nochrome.tmp.pdf"
+            remove_chrome(cleaned, nochrome)
+            strip_long_text(nochrome, str(dest), aggressive=True)
+            Path(nochrome).unlink(missing_ok=True)
+            return str(dest) if dest.is_file() else cleaned
+        except Exception as exc:
+            print(f"pdf_clean: crop canvas {name} failed "
+                  f"({type(exc).__name__}: {exc}); using cleaned")
+            return cleaned
+
+    q_crop = _crop_canvas(q_clean, Path(names["question_crop_pdf"]).name
+                            if names["question_crop_pdf"] else None)
+    s_crop = _crop_canvas(s_clean, Path(names["solution_crop_pdf"]).name
+                            if names["solution_crop_pdf"] else None)
     reports = {"question": q_rep, "solution": s_rep}
     flat = {k: v for r in reports.values() if r for k, v in r.items()
             if isinstance(v, int)}
@@ -250,4 +306,5 @@ def clean_paper_pdfs(paper_id: int) -> dict:
           f"chrome={flat.get('chrome_images', 0)} "
           f"bg={flat.get('backgrounds', 0)}")
     return {"question_pdf": q_clean, "solution_pdf": s_clean,
+            "question_crop_pdf": q_crop, "solution_crop_pdf": s_crop,
             "reports": reports}

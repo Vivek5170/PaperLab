@@ -140,3 +140,59 @@ def test_graphs_compile(tmp_db):
     assert graph.phase1_app is not None
     assert graph.extractor_app is not None
     assert graph.app is not None
+
+
+def test_postprocess_node_cleans_figures(tmp_db, tmp_outputs, tmp_path):
+    """postprocess_node runs the figure cleanup for the paper, fail-open."""
+    import numpy as np
+    from PIL import Image
+    import graph as _g
+
+    qdir = tmp_outputs / "1" / "A-01" / "figures"
+    qdir.mkdir(parents=True)
+    a = np.full((200, 200, 3), 255, np.uint8)
+    a[80:120, 90:150] = 0
+    a[0:30, 0] = 0  # border sliver -> peep
+    Image.fromarray(a).save(qdir / "qfig1.png")
+    out = _g.postprocess_node({"paper_id": 1})
+    assert out == {}
+    b = np.array(Image.open(qdir / "qfig1.png").convert("L"))
+    assert (b[:, 0] == 255).all()  # sliver gone
+
+
+def test_postprocess_wired_after_extractor(tmp_db):
+    """Both graphs route extractor-done through postprocess to END."""
+    import graph as _g
+
+    for app in (_g.extractor_app, _g.app):
+        nodes = set(app.get_graph().nodes)
+        assert {"extractor", "postprocess"} <= nodes
+
+
+def test_reflow_wired_after_postprocess(tmp_db):
+    """Both graphs route postprocess -> reflow -> END."""
+    import graph as _g
+
+    for app in (_g.extractor_app, _g.app):
+        nodes = set(app.get_graph().nodes)
+        assert {"extractor", "postprocess", "reflow"} <= nodes
+
+
+def test_reflow_node_reflows_paper(tmp_db, tmp_outputs):
+    """reflow_node restructures solution bodies, fail-open, no state."""
+    import graph as _g
+
+    qdir = tmp_outputs / "1" / "1"
+    qdir.mkdir(parents=True)
+    (qdir / "solution.tex").write_text(
+        "\\textbf{Answer: 1) A}\n\n\\underline{\\textbf{Solution for 1}}\n\n"
+        "First step here. Second step with math $x = 1 + 2 + 3 + 4 + 5 + 6"
+        " + 7 + 8 + 9 + 10 + 11 + 12$ done.\n")
+    out = _g.reflow_node({"paper_id": 1})
+    assert out == {}
+    text = (qdir / "solution.tex").read_text()
+    assert "First step here.\n\nSecond step" in text
+    # native layout: text own line, equation own line, trailing
+    # "done." glued to its equation -- nothing orphans
+    assert "Second step with math\n\n$x = 1" in text
+    assert "$$" not in text
