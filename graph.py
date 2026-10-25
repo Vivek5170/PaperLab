@@ -305,6 +305,24 @@ def postprocess_node(state: PipelineState) -> dict:
     return {}
 
 
+def reflow_node(state: PipelineState) -> dict:
+    """Deterministic solution-tex reflow after figure cleanup.
+
+    One derivation step per paragraph, long math as display -- no AI, no
+    wording changes. Idempotent and fail-open like postprocess_node.
+    """
+    try:
+        from reflow_solutions import reflow_paper
+        rep = reflow_paper(state["paper_id"])
+        changed = sum(1 for r in rep.values() if r.get("changed"))
+        print(f"reflow: paper {state['paper_id']}: {len(rep)} solutions, "
+              f"{changed} reflowed")
+    except Exception as exc:
+        print(f"reflow: paper {state['paper_id']} skipped "
+              f"({type(exc).__name__}: {exc})")
+    return {}
+
+
 def _existing_id_scheme(paper_id: int) -> str | None:
     """Naming convention already stored for this paper, if any.
 
@@ -443,6 +461,7 @@ def _add_extractor(graph: StateGraph, entry: Optional[str]) -> None:
     graph.add_node("extractor_init", extractor_init_node)
     graph.add_node("extractor", extractor_node)
     graph.add_node("postprocess", postprocess_node)
+    graph.add_node("reflow", reflow_node)
     if entry is not None:
         # Standalone extractor graph: START enters here. In the full
         # graph Phase 1 routes into "clean" directly (indexer_done_target).
@@ -457,7 +476,8 @@ def _add_extractor(graph: StateGraph, entry: Optional[str]) -> None:
         "extractor", route_extractor,
         {"continue": "extractor", "done": "postprocess"}
     )
-    graph.add_edge("postprocess", END)
+    graph.add_edge("postprocess", "reflow")
+    graph.add_edge("reflow", END)
 
 
 def build_phase1_graph():

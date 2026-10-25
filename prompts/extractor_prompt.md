@@ -135,8 +135,12 @@ Process the document efficiently to save tokens:
       For a group, repeat this whole block once per sub-question
       (`\textbf{Answer: 33) 18}` / `\underline{\textbf{Solution for 33}}` / solution,
       then `\textbf{Answer: 34) 4}` / `\underline{\textbf{Solution for 34}}` / solution).
-      Transcribe the COMPLETE solution text -- never write placeholders like
-      "see figure" instead of the actual solution content.
+       Transcribe the COMPLETE solution text -- never write placeholders like
+       "see figure" instead of the actual solution content. Structure the
+       body for readability: one derivation step per line (text and
+       equations never share a line -- start each equation on its own
+       line), a blank line between steps -- never emit the whole
+       solution as a single line.
    c. Call `submit_solution`. If it returns NOT SAVED, fix and resubmit.
 6. Move to the next question page and repeat until you finish the last physics question page.
 7. Once ALL physics questions and solutions in the boundary are submitted, you are finished. Stop.

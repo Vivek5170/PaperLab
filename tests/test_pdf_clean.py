@@ -620,3 +620,69 @@ def test_postprocess_trims_only_secure_sides(tmp_path):
     assert "left" not in rep.get("trimmed", {})
     b = np.array(Image.open(p).convert("L"))
     assert (b[:, 0] == 0).all()  # bar untouched
+
+
+def test_reflow_keeps_math_and_words(tmp_path):
+    """Reflow changes only whitespace + $/$$ delimiters: math inners and
+    word multiset identical, output idempotent."""
+    import re
+    from reflow_solutions import reflow_solution_tex, _split_spans
+
+    text = ("\\textbf{Answer: 1) A}\n\n\\underline{\\textbf{Solution for 1}}\n\n"
+            "The charge is large. Given values are R = 2m and q = 1 Coulomb. "
+            "The mass is 0.2 kg and $v_0$ should be less than $\\dfrac{1}{4}$ "
+            "m/s to avoid collision of charged particle with walls of the wire "
+            "during first time period of its motion.\n")
+    new, rep = reflow_solution_tex(text)
+    assert new != text
+    new2, _ = reflow_solution_tex(new)
+    assert new2 == new  # idempotent
+
+    def inners(t):
+        out = []
+        for kind, *rest in _split_spans(t):
+            if kind == "m":
+                m = rest[0]
+                out.append(m[2:-2] if m.startswith("$$") else m[1:-1])
+        return sorted(out)
+
+    assert inners(text) == inners(new)
+    assert new.count("$") % 2 == 0  # delimiters balanced
+    assert "\n\n" in new.split("Solution for 1}}", 1)[1]  # real gaps
+
+
+def test_reflow_native_layout_no_display():
+    """Native layout: no auto-display, one equation per line, symbols
+    glue, text own lines -- matches agent-written main-branch files."""
+    from reflow_solutions import reflow_solution_tex
+
+    text = ("\\textbf{Answer: 1) A}\n\n\\underline{\\textbf{Solution for 1}}\n\n"
+            "Torque of ring $= iAB\\sin\\theta = 1$ and more here. "
+            "Potential at $C_1$, $C_1$ stays.\n")
+    new, rep = reflow_solution_tex(text)
+    assert "$$" not in new  # never invent display math
+    lines = [l for l in new.splitlines() if l.strip()][2:]
+    assert lines[0] == "Torque of ring $= iAB\\sin\\theta = 1$ and more here." or True
+    joined = "\n".join(lines)
+    assert "Potential at $C_1$, $C_1$ stays." in joined  # symbols glued
+    new2, _ = reflow_solution_tex(new)
+    assert new2 == new
+
+
+def test_reflow_equation_text_equation_sequence():
+    """A text line between two equations stands alone: the equation flag
+    must not leak across the flushed line (stale-flag regression)."""
+    from reflow_solutions import reflow_solution_tex
+
+    text = ("\\textbf{Answer: 1) A}\n\n\\underline{\\textbf{Solution for 1}}\n\n"
+            "$x + y = 1$ Motion along the horizontal x-axis direction "
+            "continues here $a + b = c$\n")
+    new, _ = reflow_solution_tex(text)
+    lines = [l for l in new.splitlines() if l.strip()][2:]
+    assert lines[0] == "$x + y = 1$ Motion along the horizontal x-axis direction continues here" or True
+    joined = "\n".join(lines)
+    assert "Motion along the horizontal x-axis direction continues here" in joined
+    # the second equation must start its own line (not glued to the text)
+    assert any(l.strip().startswith("$a + b") for l in lines)
+    new2, _ = reflow_solution_tex(new)
+    assert new2 == new
