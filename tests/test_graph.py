@@ -115,7 +115,78 @@ def test_existing_id_scheme(tmp_db, tmp_path):
 
 def test_route_extractor_init(tmp_db):
     assert route_extractor_init({"status": "aborted_no_text"}) == "end"
+    assert route_extractor_init({"status": "split_failed"}) == "end"
     assert route_extractor_init({"paper_id": 1}) == "extractor"  # partial state ok
+
+
+def test_split_node_noops_and_fails_closed(tmp_db, tmp_path, monkeypatch):
+    """0/1/None are no-ops; a bad split point fails closed, never silent."""
+    import directory_manager
+    import graph
+    from graph import split_combined_node
+
+    q = tmp_path / "q.pdf"
+    q.write_bytes(b"Q")
+    pid = database.register_paper(str(q))
+    # No boundaries yet (NULL) -> no-op.
+    assert split_combined_node({"paper_id": pid}) == {}
+    # Questions-only -> no-op.
+    conn = database.get_connection()
+    try:
+        conn.execute(
+            "UPDATE papers SET q_start=1, q_end=2, sol_section_start=0 "
+            "WHERE id = ?", (pid,))
+        conn.commit()
+    finally:
+        conn.close()
+    assert split_combined_node({"paper_id": pid}) == {}
+    # Bogus split point (beyond EOF) -> split_failed, not silent {}.
+    conn = database.get_connection()
+    try:
+        conn.execute(
+            "UPDATE papers SET q_start=1, q_end=2, s_start=5, s_end=6, "
+            "sol_section_start=5, question_pdf_path = ?, "
+            "solution_pdf_path = ? WHERE id = ?",
+            (str(q), str(q), pid),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    out = split_combined_node({"paper_id": pid})
+    assert out == {"status": "split_failed"}
+    # ("q.pdf" here is not a real PDF, so the slice itself fails.)
+    with pytest.raises(ValueError):
+        split_combined_node({"paper_id": 99999})
+
+
+def test_split_node_rebuilds_missing_file_without_rebasing(
+        tmp_db, tmp_path, monkeypatch, dummy_pdf):
+    """A swept split file is rebuilt; s_* (already rebased) untouched."""
+    import directory_manager
+    from graph import split_combined_node
+    from tools_indexer import submit_metadata_and_boundaries
+
+    monkeypatch.setattr(directory_manager, "CLEANED_DIR",
+                        tmp_path / "cleaned")
+    pid = database.register_paper(dummy_pdf, dummy_pdf)
+    assert submit_metadata_and_boundaries.invoke({
+        "paper_id": pid, "paper_name": "P", "exam_type": "E",
+        "paper_date": "d", "source_institute": "I",
+        "q_start": 1, "q_end": 1, "sol_section_start": 2,
+        "s_start": 2, "s_end": 2}) is True
+    first = split_combined_node({"paper_id": pid})
+    assert first["s_start"] == 1 and first["s_end"] == 1
+    split_file = first["solution_pdf_path"]
+    assert split_file.endswith("_solsplit.pdf")
+    import os
+    os.unlink(split_file)  # simulate a cache sweep
+    second = split_combined_node({"paper_id": pid})
+    assert second["solution_pdf_path"] == split_file
+    assert "s_start" not in second  # no double rebase
+    row = database.get_paper(pid)
+    assert (row["s_start"], row["s_end"]) == (1, 1)
+    third = split_combined_node({"paper_id": pid})
+    assert third == {}  # file exists again: plain no-op
 
 
 def test_route_extractor(tmp_db):

@@ -15,6 +15,7 @@ import os
 import shutil
 import sys
 import time
+from pathlib import Path
 
 import config  # noqa: F401 -- must be first: pins env from config.yaml + .env
 import database
@@ -27,17 +28,42 @@ from tools_extractor import reset_assist_attempts
 
 
 def _wipe_paper(paper_id: int) -> None:
-    """Clear a paper's Outputs, question rows and token rows for a fresh run."""
+    """Clear a paper's Outputs, question rows and token rows for a fresh run.
+
+    Also resets boundaries/metadata (stale ``q/s`` would defeat the
+    idle-indexer guard) and removes a combined split file, restoring the
+    original same-file solution pointer so re-indexing starts clean.
+    """
     out = directory_manager.paper_dir(paper_id)
     if out.is_dir():
         shutil.rmtree(out)
+    row = database.get_paper(paper_id)
     conn = database.get_connection()
     try:
         conn.execute("DELETE FROM questions WHERE paper_id = ?", (paper_id,))
         conn.execute("DELETE FROM token_usage WHERE paper_id = ?", (paper_id,))
+        conn.execute(
+            "UPDATE papers SET paper_name = NULL, exam_type = NULL, "
+            "paper_date = NULL, source_institute = NULL, q_start = NULL, "
+            "q_end = NULL, s_start = NULL, s_end = NULL, "
+            "sol_section_start = NULL, error = NULL WHERE id = ?",
+            (paper_id,),
+        )
         conn.commit()
     finally:
         conn.close()
+    if row is not None:
+        sol = row["solution_pdf_path"]
+        if sol and str(sol).endswith("_solsplit.pdf"):
+            try:
+                Path(sol).unlink(missing_ok=True)
+            except OSError:
+                pass
+            if row["question_pdf_path"]:
+                database.update_paper_paths(
+                    paper_id, row["question_pdf_path"],
+                    row["question_pdf_path"],
+                )
 
 
 def summarize_tokens(paper_id: int) -> dict:
@@ -106,9 +132,23 @@ def run_pipeline(paper_id: int, force: bool = False) -> dict:
         final1 = phase1_app.invoke(
             initial_state(paper_id, qpdf, spdf), config={"recursion_limit": 25}
         )
-        if final1.get("status") == "aborted_no_text":
+        if final1.get("status") in ("aborted_no_text", "split_failed"):
             elapsed = time.time() - t0
-            database.set_paper_status(paper_id, "failed", "no text layer", elapsed)
+            err = ("no text layer" if final1.get("status") == "aborted_no_text"
+                   else "combined split failed")
+            database.set_paper_status(paper_id, "failed", err, elapsed)
+            return {
+                "paper_id": paper_id,
+                "status": "failed",
+                "summary": summarize_tokens(paper_id),
+                "elapsed_sec": elapsed,
+            }
+        if database.get_paper(paper_id)["q_start"] is None:
+            # Idle indexer (LLM stopped without submitting): never hand an
+            # unindexed paper to the extractor as a phantom "done".
+            elapsed = time.time() - t0
+            database.set_paper_status(
+                paper_id, "failed", "indexer produced no boundaries", elapsed)
             return {
                 "paper_id": paper_id,
                 "status": "failed",

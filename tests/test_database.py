@@ -131,6 +131,19 @@ def test_compute_paper_hash_stable_and_order_sensitive(tmp_path):
     )
 
 
+def test_compute_paper_hash_same_file_spellings_dedup(tmp_path):
+    """Combined flow: same file via different relative spellings hashes once."""
+    import os
+
+    a = tmp_path / "a.pdf"
+    a.write_bytes(b"AAA")
+    rel = os.path.relpath(str(a), str(tmp_path))
+    assert database.compute_paper_hash(str(a), str(a)) == database.compute_paper_hash(
+        str(a))
+    assert database.compute_paper_hash(
+        str(a), str(tmp_path / rel)) == database.compute_paper_hash(str(a))
+
+
 def test_grouped_question_numbers_stored_verbatim(tmp_db):
     conn = database.get_connection()
     try:

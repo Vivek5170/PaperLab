@@ -304,10 +304,12 @@ def stage_upload() -> None:
     st.caption("Nothing enters processing until you explicitly confirm the pairs.")
     if "_staged_msg" in st.session_state:
         st.success(st.session_state.pop("_staged_msg"))
-    q_files = st.file_uploader("Question PDFs", type="pdf", accept_multiple_files=True,
-                               key="up_q")
-    s_files = st.file_uploader("Solution PDFs", type="pdf", accept_multiple_files=True,
-                               key="up_s")
+    q_files = st.file_uploader("Questions (or combined Q + Key + Solutions PDFs)",
+                               type="pdf", accept_multiple_files=True, key="up_q")
+    st.caption("Single file holding QP + Key + Solutions? Upload it here — "
+               "you'll pair it with “↩ Same file (combined)” below.")
+    s_files = st.file_uploader("Solution PDFs (separate files only)", type="pdf",
+                               accept_multiple_files=True, key="up_s")
     if st.button("Stage files"):
         nq = len(save_uploads(q_files or []))
         ns = len(save_uploads(s_files or []))
@@ -336,18 +338,27 @@ def stage_upload() -> None:
     st.divider()
     st.subheader("Verify pairs")
     st.caption("Auto-matched by filename — correct any mismatch before confirming.")
+    st.caption("Solution choices per question file: a separate solution PDF, "
+               "“↩ Same file (combined)” when one PDF holds QP + Key + Solutions, "
+               "or “— none —” for questions-only papers.")
     if "_register_msgs" in st.session_state:
         for kind, text in st.session_state.pop("_register_msgs"):
             (st.info if kind == "info" else st.success)(text)
     pairs = auto_pair(q_names, s_names)
     final = []
+    SAME = "↩ Same file (combined Q+Key+Sol)"
     for q, s_default in pairs:
         c1, c2 = st.columns([1, 1])
         c1.write(f"**{q}**")
-        options = ["— none —"] + s_names
+        options = ["— none —", SAME] + s_names
         idx = options.index(s_default) if s_default in options else 0
         s_choice = c2.selectbox("Solution PDF", options, index=idx, key=f"pair_{q}")
-        final.append((q, None if s_choice == "— none —" else s_choice))
+        if s_choice == "— none —":
+            final.append((q, None))
+        elif s_choice == SAME:
+            final.append((q, q))  # combined: same file is its own solution
+        else:
+            final.append((q, s_choice))
 
     if st.button("Confirm pairs & register", type="primary"):
         msgs = []
@@ -358,8 +369,8 @@ def stage_upload() -> None:
                 msgs.append(("info",
                              f"#{pid} {q}: already registered — identified, not re-queued."))
             else:
-                msgs.append(("success",
-                              f"Confirmed paper_id={pid}: {q}" + (f" + {s}" if s else "")))
+                tag = " (combined)" if s == q else (f" + {s}" if s else "")
+                msgs.append(("success", f"Confirmed paper_id={pid}: {q}{tag}"))
         st.session_state["_register_msgs"] = msgs
         st.rerun()
 
@@ -497,13 +508,25 @@ def _paper_pdf_cached(title: str, sig: str, items: tuple) -> bytes | None:
 
 
 def _paper_pdf_button(slot, pid: int, paper_name: str) -> None:
-    """Full paper PDF (question + key + solution per question, ruled off)."""
+    """Full paper PDF, built LAZILY: one click builds (cached), then downloads.
+
+    Previously every library card read all its tex files + hashed them on
+    every rerun; now nothing touches disk until the user asks for the PDF.
+    """
     import hashlib
 
-    from app.render import _FULLPDF_REV
+    from app.render import _FULLPDF_REV, tex_engine_available
 
+    if not tex_engine_available():
+        return
+    flag = f"pdf_ready_{pid}"
+    if slot.button("📄 Full PDF", key=f"mkpdf_{pid}"):
+        st.session_state[flag] = True
+    if not st.session_state.get(flag):
+        return
     items = _paper_items(pid)
     if not items:
+        slot.caption("PDF failed")
         return
     sig = _FULLPDF_REV + "|" + hashlib.sha256("\n".join(
         f"{q}\n{qt}\n{st}" for q, qt, st, _ in items).encode()).hexdigest()
@@ -511,17 +534,31 @@ def _paper_pdf_button(slot, pid: int, paper_name: str) -> None:
         pdf = _paper_pdf_cached(
             paper_name or f"Paper {pid}", sig, tuple(items))
     if pdf:
-        slot.download_button("📄 Full PDF", data=pdf,
+        slot.download_button("⬇ Full PDF", data=pdf,
                              file_name=f"paper{pid}_full.pdf",
                              mime="application/pdf", key=f"dl_full_{pid}")
     else:
         slot.caption("PDF failed")
 
 
+@st.cache_data(show_spinner=False)
+def _orig_pdf_bytes(path: str, mtime_ns: int) -> bytes | None:
+    """Original-PDF bytes, cached by path+mtime so reruns never re-read."""
+    try:
+        p = Path(path)
+        if p.is_file():
+            return p.read_bytes()
+    except OSError:
+        return None
+    return None
+
+
 def _pdf_download_button(slot, path: str, key: str) -> None:
     """Original-PDF download button; quiet note when the file is gone."""
+    data = None
     try:
-        data = Path(path).read_bytes() if path and Path(path).is_file() else None
+        if path and Path(path).is_file():
+            data = _orig_pdf_bytes(path, Path(path).stat().st_mtime_ns)
     except OSError:
         data = None
     if data is None:
@@ -529,6 +566,17 @@ def _pdf_download_button(slot, path: str, key: str) -> None:
     else:
         slot.download_button("⬇", data=data, file_name=Path(path).name,
                              mime="application/pdf", key=key)
+
+
+def _question_counts() -> dict:
+    """Question totals per paper in ONE query (no per-card connection)."""
+    conn = database.get_connection()
+    try:
+        return {pid: n for pid, n in
+                conn.execute("SELECT paper_id, COUNT(*) FROM questions "
+                             "GROUP BY paper_id").fetchall()}
+    finally:
+        conn.close()
 
 
 def stage_library() -> None:
@@ -542,21 +590,21 @@ def stage_library() -> None:
         st.write("")
         if st.button("Refresh", key="lib_refresh"):
             st.rerun()
-    papers = [r for r in _all_papers() if (r["status"] or "") == "done"]
+    all_rows = _all_papers()
+    counts = _question_counts()
+    papers = [r for r in all_rows if (r["status"] or "") == "done"]
     show_all = st.checkbox("Include unfinished papers", value=False)
     if show_all:
-        papers = _all_papers()
+        papers = all_rows
     query = st.text_input("Search papers", placeholder="fuzzy search by name…")
-    exams = ["All"] + exam_options(papers if show_all else _all_papers())
+    exams = ["All"] + exam_options(all_rows)
     exam = st.selectbox("Exam", exams)
     papers = filter_papers(papers, query, exam)
     if not papers:
         st.info("No completed papers yet — process some on the Processing page.")
         return
     for r in papers:
-        nq = database.get_connection().execute(
-            "SELECT COUNT(*) FROM questions WHERE paper_id = ?",
-            (r["id"],)).fetchone()[0]
+        nq = counts.get(r["id"], 0)
         with st.container(border=True):
             c1, c2 = st.columns([4, 1])
             c1.markdown(f"### {r['paper_name'] or f'Paper {r['id']}'}")

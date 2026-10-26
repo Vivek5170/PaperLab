@@ -27,7 +27,8 @@ OUTPUT_BASE = Path(os.environ.get("PHYSICS_OUTPUT_BASE", Path(__file__).parent /
 # Managed source-PDF lifecycle root: uploads/ (staged) -> processing/
 # (confirmed) -> archive/ (done). Only files under DATA_ROOT are ever
 # moved or swept; outside paths (example_data/, /tmp, CLI one-offs) are
-# left alone. Overridable for tests via the DATA_ROOT env var.
+# left alone. The *_DIR constants below bind at import: tests must patch
+# each DIR they touch (patching DATA_ROOT alone does not rebind them).
 DATA_ROOT = Path(os.environ.get("DATA_ROOT", Path(__file__).parent / "data"))
 UPLOADS_DIR = DATA_ROOT / "uploads"
 PROCESSING_DIR = DATA_ROOT / "processing"

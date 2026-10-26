@@ -184,6 +184,17 @@ def test_clean_paper_pdfs_unknown_paper(tmp_db):
         clean_paper_pdfs(99999)
 
 
+def test_clean_paper_pdfs_same_path_cleans_once(
+        tmp_db, tmp_path, monkeypatch, dummy_pdf):
+    """Pre-split combined file: one cleaned copy shared for both roles."""
+    pid = database.register_paper(dummy_pdf, dummy_pdf)
+    monkeypatch.setattr(directory_manager, "CLEANED_DIR", tmp_path / "cleaned")
+    out = clean_paper_pdfs(pid)
+    assert out["solution_pdf"] == out["question_pdf"]
+    assert Path(out["question_pdf"]).is_file()
+    assert "cleaned" in out["question_pdf"]
+
+
 # --------------------------------------------- anti-clip expansion (exact paths)
 
 

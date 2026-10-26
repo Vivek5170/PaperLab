@@ -79,6 +79,7 @@ class PipelineState(TypedDict):
     q_end: Optional[int]
     s_start: Optional[int]
     s_end: Optional[int]
+    sol_section_start: Optional[int]
 
     # LangGraph message state (for LLM memory)
     messages: List[BaseMessage]
@@ -104,6 +105,7 @@ def initial_state(
         "q_end": None,
         "s_start": None,
         "s_end": None,
+        "sol_section_start": None,
         "messages": [],
         "status": "running",
         "execution_time_sec": 0.0,
@@ -227,13 +229,35 @@ def _run_agent_turn(
 
 def indexer_node(state: PipelineState) -> dict:
     """One Indexer ReAct turn; sets "indexer_complete" on submit success."""
-    if state.get("solution_pdf_path"):
+    import os as _os
+
+    q_path = state.get("question_pdf_path")
+    s_path = state.get("solution_pdf_path")
+    _same = bool(s_path) and bool(q_path) and _os.path.realpath(
+        s_path) == _os.path.realpath(q_path)
+    if _same:
         sol_line = (
-            f"Solution PDF: {state['solution_pdf_path']} "
-            f"({state['s_page_count']} pages, text layer present)"
+            f"Solution PDF: SAME FILE as question PDF ({q_path}, "
+            f"{state['q_page_count']} pages). This is a COMBINED paper: "
+            "questions, then the key table, then worked solutions, all in "
+            "one file. Report sol_section_start=N (key page if a key table "
+            "exists, else first solution page) plus q_start/q_end and "
+            "s_start/s_end in ORIGINAL pages with q_end < N <= s_start."
+        )
+    elif s_path:
+        sol_line = (
+            f"Solution PDF: {s_path} "
+            f"({state['s_page_count']} pages, text layer present). "
+            "Separate files: pass sol_section_start=1."
         )
     else:
-        sol_line = "Solution PDF: none provided"
+        sol_line = (
+            "Solution PDF: none provided as a separate file. Two options: "
+            "(a) the question PDF itself contains Key + Solutions at the "
+            "end (COMBINED) -- report sol_section_start=N plus s_start/s_end "
+            "in that same file; (b) truly no solutions anywhere -- pass "
+            "sol_section_start=0 and s as 0."
+        )
     opener = lambda: [  # noqa: E731
         SystemMessage(content=_load_indexer_prompt()),
         HumanMessage(
@@ -264,6 +288,156 @@ def route_indexer(state: PipelineState) -> str:
                 return "done"
             return "done" if not names else "continue"
     return "continue"
+
+
+def split_combined_node(state: PipelineState) -> dict:
+    """Deterministic split: combined one-file paper -> two files.
+
+    The indexer reports pages in ORIGINAL numbering plus
+    ``sol_section_start`` (0 = no solutions, 1 = separate PDFs,
+    N > 1 = combined split point: key page if a key table exists,
+    else first solution page). For N > 1 this node slices
+    ``question[ N..end ]`` into a new solution PDF and rebases
+    ``s_start/s_end`` onto it (new = old - N + 1), so the extractor
+    always sees the familiar two-file layout with the key at p.1.
+
+    Idempotent (re-runs reuse the split file); non-combined papers
+    (0/1/None) are no-ops. Fail-CLOSED for a known paper: a bad split
+    point returns ``split_failed`` so no downstream node silently
+    extracts with a false key-at-p.1 assumption. Raises only for an
+    unknown paper_id.
+    """
+    import fitz  # PyMuPDF
+
+    row = database.get_paper(state["paper_id"])
+    if row is None:
+        raise ValueError(f"paper_id {state['paper_id']} does not exist")
+    try:
+        n = row["sol_section_start"]
+    except (KeyError, IndexError, TypeError):
+        n = None
+    if n is None or int(n) <= 1:
+        if int(n or 0) == 1:
+            # Separate layout claims the key table is on solution p.1
+            # (a cover page before it breaks that assumption). Cheap peek:
+            # warn only -- the extractor already falls back to per-solution
+            # answers when p.1 holds no key table.
+            try:
+                import re as _re
+
+                _doc = fitz.open(row["solution_pdf_path"] or "")
+                try:
+                    _t = _doc[0].get_text().lower() if len(_doc) else ""
+                finally:
+                    _doc.close()
+                if not (_re.search(r"\bq\.?\s*no|answer\s*key|\bkey\b", _t)
+                        and _re.search(r"\b\d+\b", _t[:400])):
+                    print(f"split_combined: paper {state['paper_id']}: no key "
+                          "table detected on solution p.1 -- extractor will "
+                          "take answers from each solution's conclusion")
+            except Exception:
+                pass
+        return {}
+    n = int(n)
+    q_path = row["question_pdf_path"]
+    existing_sol = row["solution_pdf_path"]
+    already_split = bool(existing_sol and str(existing_sol).endswith(
+        "_solsplit.pdf"))
+    try:
+        import directory_manager
+
+        dest_dir = directory_manager.CLEANED_DIR
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        stem = Path(q_path).stem
+        safe = "".join(
+            c if (c.isalnum() or c in "._-") else "_" for c in stem
+        ).strip("._") or "paper"
+        dest = dest_dir / f"{state['paper_id']:02d}_{safe}_solsplit.pdf"
+        if already_split:
+            # Rerun/resume: s_* already rebased, never touch them again.
+            # Rebuild the file if a cache sweep deleted it.
+            if dest.is_file():
+                if str(dest) != str(existing_sol):
+                    conn = database.get_connection()
+                    try:
+                        conn.execute(
+                            "UPDATE papers SET solution_pdf_path = ? "
+                            "WHERE id = ?",
+                            (str(dest), state["paper_id"]),
+                        )
+                        conn.commit()
+                    finally:
+                        conn.close()
+                    return {"solution_pdf_path": str(dest)}
+                return {}
+            src = fitz.open(q_path)
+            try:
+                out = fitz.open()
+                try:
+                    out.insert_pdf(src, from_page=n - 1, to_page=len(src) - 1)
+                    out.save(str(dest), garbage=4, deflate=True)
+                finally:
+                    out.close()
+            finally:
+                src.close()
+            print(f"split_combined: paper {state['paper_id']}: "
+                  f"rebuilt missing {dest.name}")
+            update = {"solution_pdf_path": str(dest)}
+            if str(dest) != str(existing_sol):
+                conn = database.get_connection()
+                try:
+                    conn.execute(
+                        "UPDATE papers SET solution_pdf_path = ? WHERE id = ?",
+                        (str(dest), state["paper_id"]),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+            return update
+        src = fitz.open(q_path)
+        try:
+            total = len(src)
+            if not (1 <= n <= total):
+                raise ValueError(f"split page {n} out of range 1..{total}")
+            s_start, s_end = row["s_start"], row["s_end"]
+            if s_start is None or s_end is None:
+                raise ValueError("combined split needs s_start/s_end")
+            if not (n <= int(s_start) <= int(s_end) <= total):
+                raise ValueError(
+                    f"need split {n} <= s {s_start}-{s_end} within {total}"
+                )
+            if not dest.is_file():
+                out = fitz.open()
+                try:
+                    out.insert_pdf(src, from_page=n - 1, to_page=total - 1)
+                    out.save(str(dest), garbage=4, deflate=True)
+                finally:
+                    out.close()
+        finally:
+            src.close()
+        new_s_start = int(row["s_start"]) - n + 1
+        new_s_end = int(row["s_end"]) - n + 1
+        conn = database.get_connection()
+        try:
+            conn.execute(
+                "UPDATE papers SET solution_pdf_path = ?, s_start = ?, "
+                "s_end = ? WHERE id = ?",
+                (str(dest), new_s_start, new_s_end, state["paper_id"]),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        update: dict = {
+            "solution_pdf_path": str(dest),
+            "s_start": new_s_start,
+            "s_end": new_s_end,
+            "sol_section_start": n,
+        }
+        return update
+    except Exception as exc:
+        print(f"split_combined: paper {state['paper_id']} FAILED "
+              f"({type(exc).__name__}: {exc})")
+        return {"status": "split_failed"}
 
 
 def clean_node(state: PipelineState) -> dict:
@@ -370,6 +544,10 @@ def extractor_init_node(state: PipelineState) -> dict:
         "s_start": row["s_start"],
         "s_end": row["s_end"],
     }
+    try:
+        update["sol_section_start"] = row["sol_section_start"]
+    except (KeyError, IndexError, TypeError):
+        pass
     if not state.get("question_pdf_path"):
         update["question_pdf_path"] = row["question_pdf_path"]
     if not state.get("solution_pdf_path"):
@@ -378,8 +556,11 @@ def extractor_init_node(state: PipelineState) -> dict:
 
 
 def route_extractor_init(state: PipelineState) -> str:
-    """Skip the vision agent for papers with nothing to extract."""
-    return "end" if state.get("status") == "aborted_no_text" else "extractor"
+    """Skip the vision agent for papers with nothing to extract --
+    including a failed combined split (fail-closed, never guess)."""
+    if state.get("status") in ("aborted_no_text", "split_failed"):
+        return "end"
+    return "extractor"
 
 
 def extractor_node(state: PipelineState) -> dict:
@@ -446,14 +627,16 @@ def _add_phase1(graph: StateGraph, indexer_done_target: str = "clean") -> None:
     graph.add_node("pre_check", pre_check_node)
     graph.add_node("abort", abort_node)
     graph.add_node("indexer", indexer_node)
+    graph.add_node("split", split_combined_node)
     graph.add_edge(START, "pre_check")
     graph.add_conditional_edges(
         "pre_check", text_layer_gate, {"abort": "abort", "indexer": "indexer"}
     )
     graph.add_edge("abort", END)
     graph.add_conditional_edges(
-        "indexer", route_indexer, {"continue": "indexer", "done": indexer_done_target}
+        "indexer", route_indexer, {"continue": "indexer", "done": "split"}
     )
+    graph.add_edge("split", indexer_done_target)
 
 
 def _add_extractor(graph: StateGraph, entry: Optional[str]) -> None:
@@ -463,9 +646,12 @@ def _add_extractor(graph: StateGraph, entry: Optional[str]) -> None:
     graph.add_node("postprocess", postprocess_node)
     graph.add_node("reflow", reflow_node)
     if entry is not None:
-        # Standalone extractor graph: START enters here. In the full
-        # graph Phase 1 routes into "clean" directly (indexer_done_target).
-        graph.add_edge(entry, "clean")
+        # Standalone extractor graph: START enters here via split (safety:
+        # a combined paper indexed before the split existed still splits).
+        # In the full graph Phase 1 routes split -> "clean" directly.
+        graph.add_node("split", split_combined_node)
+        graph.add_edge(entry, "split")
+        graph.add_edge("split", "clean")
     graph.add_edge("clean", "extractor_init")
     graph.add_conditional_edges(
         "extractor_init",

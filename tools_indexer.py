@@ -120,6 +120,7 @@ def submit_metadata_and_boundaries(
     source_institute: str,
     q_start: int,
     q_end: int,
+    sol_section_start: int,
     s_start: int | None = None,
     s_end: int | None = None,
 ) -> bool:
@@ -133,10 +134,18 @@ def submit_metadata_and_boundaries(
         source_institute: Institute or publisher, e.g. "IIT Madras".
         q_start: 1-based first page of the questions section (>= 1).
         q_end: 1-based last page of the questions section (>= q_start).
-        s_start: 1-based first page of the solutions section, or None/0
-            when the paper has no solutions.
-        s_end: 1-based last page of the solutions section (>= s_start),
-            or None/0 when the paper has no solutions.
+        sol_section_start: REQUIRED section flag, always pass explicitly:
+            0 = no solutions anywhere in this paper;
+            1 = separate solution PDF (its key/solutions start at its p.1);
+            N > 1 = combined single file: the solutions section (key table
+            page if one exists, else the first solution page) starts at
+            page N of the QUESTION file. Python splits the file there so
+            the extractor sees two files.
+        s_start: 1-based first page of the physics SOLUTIONS (key table
+            excluded), in original file pages, or None/0 when there are
+            no solutions.
+        s_end: 1-based last page of the physics solutions (>= s_start),
+            or None/0 when there are no solutions.
 
     Returns:
         True on success; resubmitting overwrites. Invalid paper_id or
@@ -147,6 +156,16 @@ def submit_metadata_and_boundaries(
         s_start = None
     if s_end == 0:
         s_end = None
+    if not isinstance(sol_section_start, int) or isinstance(
+        sol_section_start, bool
+    ):
+        raise ValueError(
+            f"sol_section_start must be an integer, got {sol_section_start!r}"
+        )
+    if sol_section_start < 0:
+        raise ValueError(
+            f"sol_section_start must be >= 0, got {sol_section_start!r}"
+        )
     _check_range("q_start", q_start, minimum=1)
     _check_range("q_end", q_end, minimum=q_start)
     if s_start is not None:
@@ -155,9 +174,49 @@ def submit_metadata_and_boundaries(
         _check_range("s_end", s_end, minimum=s_start if s_start is not None else 1)
     if (s_start is None) != (s_end is None):
         raise ValueError("s_start and s_end must either both be set or both be null")
+    if sol_section_start == 0 and (s_start is not None or s_end is not None):
+        raise ValueError("sol_section_start=0 means no solutions: pass s as 0 too")
+    if sol_section_start >= 1 and (s_start is None or s_end is None):
+        raise ValueError(
+            "sol_section_start>=1 means solutions exist: s_start/s_end required"
+        )
     database.init_db()
     conn = database.get_connection()
     try:
+        row = conn.execute(
+            "SELECT question_pdf_path, solution_pdf_path FROM papers WHERE id = ?",
+            (paper_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(
+                f"paper_id {paper_id} does not exist; "
+                "it must come from pre-flight registration via LangGraph state"
+            )
+        import os as _os
+
+        q_path, s_path = row["question_pdf_path"], row["solution_pdf_path"]
+        combined = bool(s_path) and bool(q_path) and _os.path.realpath(
+            s_path) == _os.path.realpath(q_path)
+        if combined:
+            # Combined single file: split point lives in the question file,
+            # after the questions, at or before the first solution page.
+            if sol_section_start <= 1:
+                raise ValueError(
+                    "combined file (solution == question): sol_section_start "
+                    f"must be > 1, got {sol_section_start}"
+                )
+            if not (q_end < sol_section_start <= s_start):
+                raise ValueError(
+                    "combined file: need q_end < sol_section_start <= s_start, "
+                    f"got q {q_start}-{q_end}, split {sol_section_start}, "
+                    f"s {s_start}-{s_end}"
+                )
+        elif sol_section_start > 1:
+            raise ValueError(
+                "sol_section_start > 1 is only for a combined single file "
+                "(solution == question); separate PDFs must pass 1, "
+                "questions-only must pass 0"
+            )
         cur = conn.execute(
             """
             UPDATE papers SET
@@ -168,7 +227,8 @@ def submit_metadata_and_boundaries(
                 q_start = ?,
                 q_end = ?,
                 s_start = ?,
-                s_end = ?
+                s_end = ?,
+                sol_section_start = ?
             WHERE id = ?
             """,
             (
@@ -180,6 +240,7 @@ def submit_metadata_and_boundaries(
                 q_end,
                 s_start,
                 s_end,
+                sol_section_start,
                 paper_id,
             ),
         )

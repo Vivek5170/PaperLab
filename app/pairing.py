@@ -16,7 +16,10 @@ import database
 import directory_manager
 from preflight import preflight_register
 
-# Staging dir scanned by the Upload page; an alias of the managed layout.
+# Staging dir scanned by the Upload page. NOTE: bound at import for the
+# long-lived UI process (env is fixed at startup there). Tests that need
+# isolation must monkeypatch this name AND directory_manager.UPLOADS_DIR;
+# patching directory_manager.DATA_ROOT alone does not rebind it.
 UPLOAD_DIR = directory_manager.UPLOADS_DIR
 PAIR_THRESHOLD = 0.35
 
@@ -41,9 +44,43 @@ def is_solution_name(name: str) -> bool:
     return bool(_SOL_WORD_RE.search(_norm(name)))
 
 
+_KEY_WORD_RE = re.compile(r"\b(answer\s?keys?|answerkey|keys?)\b")
+_QM_WORD_RE = re.compile(r"\b(qp|questions?)\b")
+# A separate key file ("Answer Key.pdf", "GTA Key & Sols") must stay a
+# solution; only a key word PLUS an in-name question marker counts as a
+# combined single file ("PTA-9 QP, Key & Solutions"). "Paper" alone is
+# too generic (every "* Paper 1 Solutions.pdf" has it), so it only
+# counts together with a solutions word.
+_SOL_CONTENT_RE = re.compile(r"\b(solutions?|sols?|answers?)\b")
+
+
+def is_combined_name(name: str) -> bool:
+    """A single file holding Q + Key + Solutions (e.g. 'PTA-9 QP, Key & Solutions').
+
+    Without this rule such files match ``is_solution_name`` and would
+    leave the question list empty. Bare key files ("Answer Key.pdf",
+    "Paper 1 Key.pdf", "GTA Key & Sols", "* Paper 1 Solutions.pdf")
+    stay solutions; the UI's manual Same-file option covers filenames
+    too ambiguous to call either way.
+    """
+    norm = _norm(name)
+    if not _KEY_WORD_RE.search(norm):
+        return False
+    if _QM_WORD_RE.search(norm):
+        return True
+    residual = _KEY_WORD_RE.sub(" ", norm)
+    return bool(
+        re.search(r"\bpaper\b", residual) and _SOL_CONTENT_RE.search(residual)
+    )
+
+
 def split_candidates(names: list[str]) -> tuple[list[str], list[str]]:
-    """Partition staged files into (questions, solutions). Exhaustive."""
-    questions = [n for n in names if not is_solution_name(n)]
+    """Partition staged files into (questions, solutions). Exhaustive.
+
+    Combined single files (Q + Key + Sol in one PDF) count as questions;
+    the UI offers 'same file' as their solution pairing.
+    """
+    questions = [n for n in names if is_combined_name(n) or not is_solution_name(n)]
     solutions = [n for n in names if n not in questions]
     return questions, solutions
 
@@ -69,8 +106,9 @@ def auto_pair(q_names: list[str], s_names: list[str]) -> list[tuple[str, str | N
     return pairs
 
 
-def save_uploads(files, dest: Path = UPLOAD_DIR) -> list[str]:
+def save_uploads(files, dest: Path | None = None) -> list[str]:
     """Persist uploaded files (objects with .name/.getbuffer or paths)."""
+    dest = Path(dest) if dest is not None else directory_manager.UPLOADS_DIR
     dest.mkdir(parents=True, exist_ok=True)
     saved = []
     for f in files:
@@ -141,6 +179,39 @@ def relocate_managed_files(paper_id: int, dest_dir: str | Path) -> bool:
     new_paths: dict[str, str | None] = {}
     originals: list[Path] = []
     changed = False
+    try:
+        cleaned_root = directory_manager.CLEANED_DIR.resolve()
+    except OSError:
+        cleaned_root = None
+    # Combined flow: both columns point at the same file -- move once,
+    # point both at the destination (deleting the source once).
+    import os as _os
+
+    q_str = row["question_pdf_path"]
+    if cleaned_root is not None and q_str:
+        try:
+            if Path(q_str).resolve().is_relative_to(cleaned_root):
+                return False  # derived copy already pinned; nothing to move
+        except OSError:
+            pass
+    if (row["solution_pdf_path"] and q_str and _os.path.realpath(
+            row["solution_pdf_path"]) == _os.path.realpath(q_str)):
+        src = Path(q_str)
+        if src.is_file() and _is_within(src, root):
+            dest = _dest_for(dest_dir, src, paper_id)
+            if dest.resolve() != src.resolve():
+                if not dest.exists() or dest.read_bytes() != src.read_bytes():
+                    tmp = dest.with_name(dest.name + ".part")
+                    shutil.copy2(str(src), str(tmp))
+                    tmp.rename(dest)
+                database.update_paper_paths(paper_id, str(dest), str(dest))
+                try:
+                    if src.is_file():
+                        src.unlink()
+                except OSError:
+                    pass
+                return True
+            return False
     for col in ("question_pdf_path", "solution_pdf_path"):
         src_str = row[col]
         if not src_str:
@@ -150,6 +221,15 @@ def relocate_managed_files(paper_id: int, dest_dir: str | Path) -> bool:
         if not src.is_file() or not _is_within(src, root):
             new_paths[col] = src_str
             continue
+        if cleaned_root is not None:
+            try:
+                if src.resolve().is_relative_to(cleaned_root):
+                    # Derived cache (split/cleaned/crop copies): pinned where
+                    # the pipeline wrote them, never swept into archive/.
+                    new_paths[col] = src_str
+                    continue
+            except OSError:
+                pass
         dest = _dest_for(dest_dir, src, paper_id)
         if dest.resolve() == src.resolve():
             new_paths[col] = str(src)
@@ -206,6 +286,19 @@ def delete_paper_everywhere(paper_id: int) -> bool:
     out = directory_manager.paper_dir(paper_id)
     if out.is_dir():
         shutil.rmtree(out, ignore_errors=True)
+    # Derived per-paper files (split + cleaned/crop copies) live in
+    # CLEANED_DIR and are otherwise orphaned forever.
+    try:
+        cdir = directory_manager.CLEANED_DIR
+        if cdir.is_dir():
+            for p in cdir.glob(f"{int(paper_id):02d}_*"):
+                try:
+                    if p.is_file():
+                        p.unlink()
+                except OSError:
+                    pass
+    except OSError:
+        pass
     return True
 
 
@@ -223,12 +316,29 @@ def reconcile_missing_sources() -> list[int]:
         ).fetchall()
     finally:
         conn.close()
+    try:
+        cleaned_root = directory_manager.CLEANED_DIR.resolve()
+    except OSError:
+        cleaned_root = None
     removed = []
     for r in rows:
         paths = [r["question_pdf_path"]]
         if r["solution_pdf_path"]:
             paths.append(r["solution_pdf_path"])
-        if any(not Path(p).is_file() for p in paths):
+        doomed = False
+        for p in paths:
+            if Path(p).is_file():
+                continue
+            if cleaned_root is not None:
+                try:
+                    if Path(p).resolve().is_relative_to(cleaned_root):
+                        # Derived split/cleaned copy: the split node
+                        # rebuilds it from the question file on next run.
+                        continue
+                except OSError:
+                    pass
+            doomed = True
+        if doomed:
             if delete_paper_everywhere(int(r["id"])):
                 removed.append(int(r["id"]))
     return removed

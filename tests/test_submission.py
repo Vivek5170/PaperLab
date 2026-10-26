@@ -22,6 +22,7 @@ _META = {
     "source_institute": "IIT Madras",
     "q_start": 1,
     "q_end": 5,
+    "sol_section_start": 1,
     "s_start": 6,
     "s_end": 10,
 }
@@ -55,6 +56,7 @@ def test_submit_metadata_updates_preregistered_row(tmp_db, tmp_path):
         conn.close()
     assert row["paper_name"] == "JEE Advanced 2024 Paper 1"
     assert (row["q_start"], row["q_end"], row["s_start"], row["s_end"]) == (1, 5, 6, 10)
+    assert row["sol_section_start"] == 1
     # Pre-flight columns untouched by the agent UPDATE.
     assert row["question_pdf_path"] == stub["question_pdf_path"]
     assert row["pdf_hash"] == stub["pdf_hash"]
@@ -68,6 +70,29 @@ def test_submit_metadata_recall_overwrites(tmp_db, tmp_path):
     assert database.get_paper(pid)["q_end"] == 7
 
 
+def test_submit_metadata_combined_split_point(tmp_db, tmp_path):
+    """Combined file (solution == question): N must satisfy q_end < N <= s."""
+    q = tmp_path / "combo_q.pdf"
+    q.write_bytes(b"combined")
+    pid = database.register_paper(str(q), str(q))
+    meta = {**_META, "q_start": 1, "q_end": 8, "sol_section_start": 9,
+            "s_start": 10, "s_end": 14}
+    assert submit_metadata_and_boundaries.invoke({"paper_id": pid, **meta}) is True
+    row = database.get_paper(pid)
+    assert row["sol_section_start"] == 9
+    assert (row["s_start"], row["s_end"]) == (10, 14)
+    # Bad split points fail: at/before q_end, past s_start, or 1/0.
+    for bad_n in (1, 0, 8, 11):
+        with pytest.raises(Exception):
+            submit_metadata_and_boundaries.invoke(
+                {"paper_id": pid, **{**meta, "sol_section_start": bad_n}})
+    # Separate PDFs must pass 1, questions-only must pass 0.
+    pid2 = _paper_id(tmp_db, tmp_path, tag="sep")
+    with pytest.raises(Exception):
+        submit_metadata_and_boundaries.invoke(
+            {"paper_id": pid2, **{**_META, "sol_section_start": 5}})
+
+
 def test_submit_metadata_unknown_paper_id_fails(tmp_db):
     with pytest.raises(Exception):
         submit_metadata_and_boundaries.invoke({"paper_id": 99999, **_META})
@@ -79,16 +104,18 @@ def test_submit_metadata_question_only_paper(tmp_db, tmp_path):
     q.write_bytes(b"questions only")
     pid = database.register_paper(str(q))  # no solution PDF
     meta = {k: v for k, v in _META.items() if k not in ("s_start", "s_end")}
+    meta["sol_section_start"] = 0
     assert submit_metadata_and_boundaries.invoke({"paper_id": pid, **meta}) is True
     row = database.get_paper(pid)
     assert (row["q_start"], row["q_end"]) == (1, 5)
     assert row["s_start"] is None and row["s_end"] is None
+    assert row["sol_section_start"] == 0
 
 
 def test_submit_metadata_zero_means_no_solutions(tmp_db, tmp_path):
     """Prompt convention: agent passes 0 for solution bounds -> stored NULL."""
     pid = _paper_id(tmp_db, tmp_path)
-    meta = {**_META, "s_start": 0, "s_end": 0}
+    meta = {**_META, "sol_section_start": 0, "s_start": 0, "s_end": 0}
     assert submit_metadata_and_boundaries.invoke({"paper_id": pid, **meta}) is True
     row = database.get_paper(pid)
     assert row["s_start"] is None and row["s_end"] is None
@@ -102,6 +129,8 @@ def test_submit_metadata_rejects_bad_boundaries(tmp_db, tmp_path):
         {**_META, "s_start": 6, "s_end": None},  # s_end missing
         {**_META, "s_start": None, "s_end": 10},  # s_start missing
         {**_META, "s_start": -1, "s_end": 10},
+        {**_META, "sol_section_start": 0},  # 0 ⟺ s null
+        {k: v for k, v in _META.items() if k != "sol_section_start"},  # missing
     ]
     for bad in bad_cases:
         with pytest.raises(Exception):

@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS papers (
     q_end INTEGER,
     s_start INTEGER,
     s_end INTEGER,
+    sol_section_start INTEGER,
     status TEXT DEFAULT 'uploaded',
     error TEXT,
     elapsed_sec REAL
@@ -131,6 +132,31 @@ def init_db(db_path: str | Path | None = None) -> Path:
             conn.execute("ALTER TABLE papers ADD COLUMN error TEXT")
         if "elapsed_sec" not in cols:
             conn.execute("ALTER TABLE papers ADD COLUMN elapsed_sec REAL")
+        if "sol_section_start" not in cols:
+            conn.execute("ALTER TABLE papers ADD COLUMN sol_section_start INTEGER")
+            cols.add("sol_section_start")
+        # Backfill indexed rows: separate PDFs started their section at p.1,
+        # questions-only papers get 0. Unindexed rows stay NULL. Same-path
+        # (combined) rows are left NULL -- their split point is unknown and
+        # must come from a re-index, never guessed as 1. Guarded for
+        # pre-boundary DBs that lack q_start/s_start entirely.
+        if {"q_start", "s_start", "sol_section_start"} <= cols:
+            has_paths = {"question_pdf_path", "solution_pdf_path"} <= cols
+            same_path = (
+                "AND solution_pdf_path IS NOT NULL "
+                "AND question_pdf_path IS NOT solution_pdf_path"
+                if has_paths else ""
+            )
+            conn.execute(
+                "UPDATE papers SET sol_section_start = 1 "
+                "WHERE q_start IS NOT NULL AND s_start IS NOT NULL "
+                f"AND sol_section_start IS NULL {same_path}"
+            )
+            conn.execute(
+                "UPDATE papers SET sol_section_start = 0 "
+                "WHERE q_start IS NOT NULL AND s_start IS NULL "
+                "AND sol_section_start IS NULL"
+            )
         conn.commit()
     finally:
         conn.close()
@@ -156,10 +182,16 @@ def compute_paper_hash(question_pdf_path: str, solution_pdf_path: str | None = N
         Hex digest string stored in ``papers.pdf_hash``.
     """
     h = hashlib.sha256()
-    for path in (question_pdf_path,) if solution_pdf_path is None else (
-        question_pdf_path,
-        solution_pdf_path,
-    ):
+    if solution_pdf_path is None or os.path.realpath(
+        solution_pdf_path
+    ) == os.path.realpath(question_pdf_path):
+        # Combined flow (same file chosen as its own solution): hash once.
+        # realpath (not plain string compare) so "./q.pdf" vs "q.pdf"
+        # still dedups to one row.
+        paths = (question_pdf_path,)
+    else:
+        paths = (question_pdf_path, solution_pdf_path)
+    for path in paths:
         with open(path, "rb") as f:
             for chunk in iter(lambda: f.read(8192), b""):
                 h.update(chunk)

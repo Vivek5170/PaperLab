@@ -79,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
         f"S pp. {row['s_start']}-{row['s_end']})"
     )
 
+    t0 = time.time()
+
     def run_once(messages: list) -> dict:
         start = time.time()
         try:
@@ -87,12 +89,16 @@ def main(argv: list[str] | None = None) -> int:
                 config={"recursion_limit": 200},
             )
         except Exception as exc:
+            database.set_paper_status(
+                paper_id, "failed", f"{type(exc).__name__}: {exc}",
+                time.time() - t0,
+            )
             print(f"Graph run failed: {type(exc).__name__}: {exc}")
             raise SystemExit(1)
         final["execution_time_sec"] = time.time() - start
         return final
 
-    t0 = time.time()
+    database.set_paper_status(paper_id, "extracting")
     reset_assist_attempts(paper_id)
     final = run_once([])
     submitted, missing = get_coverage(paper_id)
@@ -109,10 +115,18 @@ def main(argv: list[str] | None = None) -> int:
         )
         from langchain_core.messages import HumanMessage
 
+        # run_once records failed + exits(1) on error, so no stuck state.
         final = run_once(list(final["messages"]) + [HumanMessage(content=gap)])
         submitted, missing = get_coverage(paper_id)
 
     elapsed = time.time() - t0
+    if missing:
+        database.set_paper_status(
+            paper_id, "failed", f"missing solutions: {', '.join(missing)}",
+            elapsed,
+        )
+    else:
+        database.set_paper_status(paper_id, "done", elapsed_sec=elapsed)
     _per_turn_log(final["messages"])
     from tools_extractor import SNAP_LOG
 

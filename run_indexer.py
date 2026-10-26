@@ -3,6 +3,11 @@
 Usage:
     python run_indexer.py <question_pdf> [<solution_pdf>]
 
+    Combined single file (Q + Key + Sol in one PDF): pass the same
+    path twice -- the indexer reports sol_section_start and the
+    splitter hands the extractor two files.
+
+
 Prints Status, Time Taken, Tokens Used, and the final papers row to prove
 the metadata UPDATE landed.
 """
@@ -40,15 +45,31 @@ def main(argv: list[str] | None = None) -> int:
         print(f"PDF not found: {exc}")
         return 1
 
+    prev_status = database.get_paper(paper_id)["status"]
+    if prev_status == "done":
+        print(f"paper_id={paper_id} already done (re-run via pipeline --force)")
+        return 1
+    database.set_paper_status(paper_id, "indexing")
     state = initial_state(paper_id, question_pdf, solution_pdf)
     start = time.time()
     try:
         final = phase1_app.invoke(state, config={"recursion_limit": 25})
     except Exception as exc:
+        database.set_paper_status(
+            paper_id, "failed", f"{type(exc).__name__}: {exc}", time.time() - start
+        )
         print(f"Graph run failed: {type(exc).__name__}: {exc}")
         return 1
     elapsed = time.time() - start
     final["execution_time_sec"] = elapsed
+    if final.get("status") == "aborted_no_text":
+        database.set_paper_status(paper_id, "failed", "no text layer", elapsed)
+    elif final.get("status") == "split_failed":
+        database.set_paper_status(paper_id, "failed", "combined split failed",
+                                  elapsed)
+    else:
+        # Indexed, awaiting extraction -> back to the queue.
+        database.set_paper_status(paper_id, "uploaded")
 
     tokens = summarize_tokens(paper_id)["total"]
     row = database.get_paper(paper_id)

@@ -216,6 +216,24 @@ def test_split_candidates_underscore_and_answerkey_names():
     assert auto_pair(qq, ss) == [(q, s)]
 
 
+def test_split_candidates_combined_single_file():
+    """Combined Q+Key+Sol files count as questions; bare key/solution
+    files (even with generic exam words) stay solutions."""
+    from app.pairing import is_combined_name, split_candidates
+
+    assert is_combined_name("Phy_SR.CO PTA-9 (2022 P2) QP, Key & Solutions_18-10-2026.pdf")
+    assert is_combined_name("NEET 2024 Paper, Key & Solutions.pdf")
+    assert not is_combined_name("JEE 2024 Paper 1 Solutions.pdf")
+    assert not is_combined_name("Answer Key.pdf")
+    assert not is_combined_name("Paper 1 Key.pdf")
+    assert not is_combined_name("GTA-01_Key & Sols.pdf")
+    assert not is_combined_name("GTA-01_QP.pdf")
+    q, s = split_candidates(["Phy_SR.CO PTA-9 (2022 P2) QP, Key & Solutions_18-10-2026.pdf",
+                             "JEE 2024 Paper 1 Solutions.pdf"])
+    assert q == ["Phy_SR.CO PTA-9 (2022 P2) QP, Key & Solutions_18-10-2026.pdf"]
+    assert s == ["JEE 2024 Paper 1 Solutions.pdf"]
+
+
 def _managed_pair(tmp_path, monkeypatch, tag="T"):
     """Register a pair under a fake DATA_ROOT; return (pid, q, s, root)."""
     import database
@@ -257,6 +275,42 @@ def test_relocate_managed_moves_and_updates_db(tmp_db, tmp_path, monkeypatch):
     assert row["question_pdf_path"] == str(root / "processing" / q.name)
     assert row["solution_pdf_path"] == str(root / "processing" / s.name)
     assert not q.exists() and (root / "processing" / q.name).is_file()
+
+
+def test_relocate_skips_cleaned_derived_files(tmp_db, tmp_path, monkeypatch):
+    """Split/cleaned copies under CLEANED_DIR are pinned, never archived."""
+    import database
+    import directory_manager
+    from app.pairing import relocate_managed_files
+
+    pid, q, s, root = _managed_pair(tmp_path, monkeypatch)
+    cleaned = tmp_path / "cleaned"
+    cleaned.mkdir()
+    monkeypatch.setattr(directory_manager, "CLEANED_DIR", cleaned)
+    split = cleaned / f"{pid:02d}_x_solsplit.pdf"
+    split.write_bytes(b"SPLIT")
+    database.update_paper_paths(pid, str(q), str(split))
+    assert relocate_managed_files(pid, root / "processing") is True
+    row = database.get_paper(pid)
+    assert row["question_pdf_path"] == str(root / "processing" / q.name)
+    assert row["solution_pdf_path"] == str(split)  # pinned in cleaned/
+    assert split.is_file()
+
+
+def test_delete_paper_removes_cleaned_files(tmp_db, tmp_path, monkeypatch):
+    """Derived per-paper files in CLEANED_DIR go with the paper."""
+    import database
+    import directory_manager
+    from app.pairing import delete_paper_everywhere
+
+    pid, q, s, root = _managed_pair(tmp_path, monkeypatch)
+    cleaned = tmp_path / "cleaned"
+    cleaned.mkdir()
+    monkeypatch.setattr(directory_manager, "CLEANED_DIR", cleaned)
+    stray = cleaned / f"{pid:02d}_x_solsplit.pdf"
+    stray.write_bytes(b"SPLIT")
+    assert delete_paper_everywhere(pid) is True
+    assert not stray.exists()
 
 
 def test_relocate_leaves_unmanaged_paths(tmp_db, tmp_path, monkeypatch):

@@ -38,10 +38,18 @@ def cleaned_paths(paper_id: int, question_src: str | None,
 
     ``{id:02d}_{slug(source_stem)}__{clean,crop}.pdf`` under CLEANED_DIR.
     """
+    import hashlib as _hl
+
     cdir = directory_manager.CLEANED_DIR
     pre = f"{int(paper_id):02d}"
     q = f"{pre}_{_slug(Path(question_src).stem)}__clean.pdf" if question_src else None
     s = f"{pre}_{_slug(Path(solution_src).stem)}__clean.pdf" if solution_src else None
+    if q and s and q == s and question_src != solution_src:
+        # Same basename from different directories (CLI one-offs): the
+        # second _clean_one would "reuse" the first file's bytes for the
+        # wrong PDF. Disambiguate with a short hash of the source path.
+        tag = _hl.sha1(str(solution_src).encode()).hexdigest()[:8]
+        s = f"{pre}_{_slug(Path(solution_src).stem)}_{tag}__clean.pdf"
     return {
         "question_pdf": str(cdir / q) if q else None,
         "solution_pdf": str(cdir / s) if s else None,
@@ -268,8 +276,22 @@ def clean_paper_pdfs(paper_id: int) -> dict:
     row = database.get_paper(paper_id)
     if row is None:
         raise ValueError(f"paper_id {paper_id} does not exist")
-    names = cleaned_paths(paper_id, row["question_pdf_path"],
-                            row["solution_pdf_path"])
+    q_src, s_src = row["question_pdf_path"], row["solution_pdf_path"]
+    if s_src and q_src and Path(s_src).resolve() == Path(q_src).resolve():
+        # Pre-split combined file reaching clean directly: clean once,
+        # share the copy for both roles (split normally prevents this).
+        from pdf_longtext import ensure_crop_canvas
+
+        cdir = directory_manager.CLEANED_DIR
+        solo = cleaned_paths(paper_id, q_src, None)["question_pdf"]
+        q_clean, q_rep = _clean_one(q_src, Path(solo))
+        q_crop = ensure_crop_canvas(q_clean)
+        print(f"pdf_clean: paper {paper_id} -> "
+              f"{Path(q_clean).name if q_clean else None} (shared Q+S)")
+        return {"question_pdf": q_clean, "solution_pdf": q_clean,
+                "question_crop_pdf": q_crop, "solution_crop_pdf": q_crop,
+                "reports": {"question": q_rep, "solution": "shared"}}
+    names = cleaned_paths(paper_id, q_src, s_src)
     cdir = directory_manager.CLEANED_DIR
     _dst = lambda n: Path(n) if n else None
     q_clean, q_rep = _clean_one(row["question_pdf_path"], _dst(names["question_pdf"]))
