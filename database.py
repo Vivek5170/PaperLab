@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS papers (
     s_start INTEGER,
     s_end INTEGER,
     sol_section_start INTEGER,
+    sections TEXT,
     status TEXT DEFAULT 'uploaded',
     error TEXT,
     elapsed_sec REAL
@@ -89,6 +90,16 @@ CREATE TABLE IF NOT EXISTS token_usage (
 );
 """
 
+# Allowed per-question format types (Node 2, section-first).
+# Base: scq single-correct, msq multi-correct, int integer 0-9,
+# num decimal/numeric, mtx match-table. par-* = passage group with
+# uniform sub-format, par-mix = mixed subs, unknown = explicit fallback.
+QTYPE_VALUES = (
+    "scq", "msq", "int", "num", "mtx",
+    "par-scq", "par-msq", "par-int", "par-num", "par-mtx", "par-mix",
+    "unknown",
+)
+
 SCHEMA_QUESTIONS = """
 CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,6 +107,8 @@ CREATE TABLE IF NOT EXISTS questions (
     question_number TEXT NOT NULL,
     latex_folder TEXT,
     status TEXT DEFAULT 'draft',
+    qtype TEXT NOT NULL DEFAULT 'unknown'
+        CHECK (qtype IN ('scq','msq','int','num','mtx','par-scq','par-msq','par-int','par-num','par-mtx','par-mix','unknown')),
     FOREIGN KEY (paper_id) REFERENCES papers(id) ON DELETE CASCADE,
     UNIQUE (paper_id, question_number)
 );
@@ -125,7 +138,15 @@ def init_db(db_path: str | Path | None = None) -> Path:
         conn.execute(SCHEMA_PAPERS)
         conn.execute(SCHEMA_QUESTIONS)
         conn.execute(SCHEMA_TOKEN_USAGE)
+        qcols = {r["name"] for r in conn.execute("PRAGMA table_info(questions)")}
+        if "qtype" not in qcols:
+            conn.execute(
+                "ALTER TABLE questions ADD COLUMN qtype TEXT NOT NULL DEFAULT 'unknown'"
+            )
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(papers)")}
+        if "sections" not in cols:
+            conn.execute("ALTER TABLE papers ADD COLUMN sections TEXT")
+            cols.add("sections")
         if "status" not in cols:
             conn.execute("ALTER TABLE papers ADD COLUMN status TEXT DEFAULT 'uploaded'")
         if "error" not in cols:
@@ -218,6 +239,34 @@ def get_paper(paper_id: int) -> sqlite3.Row | None:
         return conn.execute(
             "SELECT * FROM papers WHERE id = ?", (paper_id,)
         ).fetchone()
+    finally:
+        conn.close()
+
+
+def set_question_qtype(paper_id: int, question_number: str, qtype: str) -> bool:
+    """Correct one question's format type (Streamlit correction control).
+
+    Validated against QTYPE_VALUES; raises ValueError for a bad type or
+    an unknown (paper_id, question_number). Returns True on success.
+    """
+    qt = str(qtype or "").strip().lower()
+    if qt not in QTYPE_VALUES:
+        raise ValueError(
+            f"bad qtype {qtype!r}: must be one of {', '.join(QTYPE_VALUES)}"
+        )
+    init_db()
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE questions SET qtype = ? WHERE paper_id = ? AND question_number = ?",
+            (qt, paper_id, str(question_number)),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            raise ValueError(
+                f"no question {question_number!r} in paper_id {paper_id}"
+            )
+        return True
     finally:
         conn.close()
 

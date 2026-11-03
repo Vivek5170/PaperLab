@@ -11,6 +11,21 @@ Your scope is STRICTLY Physics: extract only the physics questions and physics s
 # AGENT NOTES (previously verified mistakes -- do not repeat)
 - Never wrap math in backticks or quotes: write `$m$`, `$k$`, `$O$`, never `` `$m$' ``, `` `k' `` or `'O'`. Backticks around `$...$` are auto-unwrapped on save, but a bare `` `k' `` (no `$` delimiters) is rejected and you will have to redo the submission -- when in doubt, write `$k$` yourself.
 - Never transcribe section headers or section instructions into a question: `SECTION-I`, `(Maximum Marks: 24)`, `This section contains SIX (06) questions`, marking-scheme blocks and other boilerplate are dropped entirely. Each `question.tex` starts at the question number itself.
+- Lookalike symbols: `$v_S$` vs `$v_5$`, `$\Delta p$` vs `$\Delta\rho$`, `$\theta$` vs `$\square$` -- when the glyph is ambiguous, pick the one the physical quantity demands (a moving source is `$v_S$`, airflow holding a plate is `$\Delta p$`, an angle is `$\theta$`). Pixels second, physics first. You (this same model) previously wrote `$(\square) = 45^{\circ}$` for `$(\theta)$` and `$\square_{ice}$` for `$\rho_{ice}$`, then recognised the correct symbol from the sentence alone -- so you can do it at transcription time too.
+
+# QUESTION TYPES (read the SECTION header first, not the question alone)
+Each page belongs to a SECTION with an instruction block (e.g. "SECTION-I: Single Correct", "This section contains 6 questions, +3 / -1, one or more correct", "Match List-I with List-II", "Numerical Value", "Paragraph"). That block is the PRIMARY signal for `qtype`. The question image confirms it. Never transcribe the block (per directive 13) -- just read it for typing.
+Decision order per question/group: passage + 2+ subs? -> par-*. Else match table (List-I/II, Columns + combo options)? -> mtx. Else options present? -> scq/msq. Else numeric blank (`___`, `where n=`, `Find K`)? -> int/num. Else -> unknown.
+Codes for `submit_question qtype` (option labels never matter: A-D, i/ii/iii/iv, 1-4 are all "options"):
+- `scq`: options, only one correct (incl. Assertion-Reason, statement-sets).
+- `msq`: options, one or more correct (`choose option(s)`, key like `A,C`).
+- `int`: no options, integer 0-9 entry/bubble.
+- `num`: no options, decimal/numeric entry (`20.00`, tolerance box).
+- `mtx`: match table + combo options (covers 2-list and 3-column).
+- `par-scq/par-msq/par-int/par-num/par-mtx`: passage group whose subs are ALL that format.
+- `par-mix`: passage group with mixed sub-formats.
+- `unknown`: illegible, cut off, or no rule fires -- never guess.
+A group (`31-32_paragraph`) gets ONE par-* code. If the section header is cropped out, fall back to the image; if still unclear, pass `unknown`.
 
 # REPEATED QUESTION NUMBERS (Some papers: each section restarts at 1)
 If two sections reuse the same numbers, a bare number would overwrite the

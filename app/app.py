@@ -145,7 +145,7 @@ def _paper_questions(pid: int):
         # section-prefixed ids ("A-01", "B-01") order correctly; SQLite CAST
         # would map every prefixed id to 0 and scramble sections.
         rows = conn.execute(
-            "SELECT question_number FROM questions WHERE paper_id = ?",
+            "SELECT question_number, qtype FROM questions WHERE paper_id = ?",
             (pid,)).fetchall()
         return sorted(rows, key=lambda r: _qn_sort_key(r["question_number"]))
     finally:
@@ -579,6 +579,27 @@ def _question_counts() -> dict:
         conn.close()
 
 
+def _qtype_counts() -> dict:
+    """{paper_id: {qtype: n}} in ONE query for the library cards."""
+    out: dict = {}
+    conn = database.get_connection()
+    try:
+        for pid, qt, n in conn.execute(
+                "SELECT paper_id, qtype, COUNT(*) FROM questions "
+                "GROUP BY paper_id, qtype").fetchall():
+            out.setdefault(pid, {})[qt or "unknown"] = n
+    finally:
+        conn.close()
+    return out
+
+
+def _qtype_summary(counts: dict) -> str:
+    """Stable-order 'scq 4 · msq 3 ...' line; empty when no questions."""
+    order = [t for t in database.QTYPE_VALUES if t in counts]
+    order += [t for t in counts if t not in order]
+    return " · ".join(f"{t} {counts[t]}" for t in order)
+
+
 def stage_library() -> None:
     if st.session_state.get("paper") is not None:
         _paper_page()
@@ -592,6 +613,7 @@ def stage_library() -> None:
             st.rerun()
     all_rows = _all_papers()
     counts = _question_counts()
+    qtypes = _qtype_counts()
     papers = [r for r in all_rows if (r["status"] or "") == "done"]
     show_all = st.checkbox("Include unfinished papers", value=False)
     if show_all:
@@ -611,6 +633,8 @@ def stage_library() -> None:
             c1.caption(f"{r['exam_type'] or 'Unknown exam'} · "
                        f"{r['paper_date'] or 'undated'} · "
                        f"{nq} questions · #{r['id']}")
+            if qtypes.get(r["id"]):
+                c1.caption(f"🏷️ {_qtype_summary(qtypes[r['id']])}")
             if r["source_institute"]:
                 c1.caption(f"🏫 {r['source_institute']}")
             if r["question_pdf_path"]:
@@ -652,7 +676,19 @@ def _reader() -> None:
         return
     st.divider()
     st.caption(paper_title(paper))
-    ids = question_ids(_paper_questions(pid))
+    import json as _json
+
+    try:
+        _secs = _json.loads(paper["sections"]) if paper["sections"] else []
+    except (ValueError, TypeError):
+        _secs = []
+    _sec_of: dict = {}
+    for _s in _secs:
+        for _qn0 in _s.get("questions", []):
+            _sec_of[_qn0] = (_s.get("section", ""), _s.get("basis", ""))
+    _rows = _paper_questions(pid)
+    _qt_of = {r["question_number"]: (r["qtype"] or "unknown") for r in _rows}
+    ids = question_ids(_rows)
     if not ids:
         st.info("No questions submitted for this paper yet.")
         return
@@ -662,14 +698,34 @@ def _reader() -> None:
     with nav:
         st.caption("Questions")
         for qn in ids:
-            if st.button(qn, key=f"nav_{pid}_{qn}", width="stretch"):
+            _qt = _qt_of.get(qn, "unknown")
+            if st.button(f"{qn} · {_qt}", key=f"nav_{pid}_{qn}", width="stretch"):
                 st.session_state["q"] = qn
                 st.session_state["show_ans"] = False
     with reading:
         qn = st.session_state["q"]
         qdir = directory_manager.get_question_dir(pid, qn)
         editable = is_admin()
+        cur_qt = _qt_of.get(qn, "unknown")
+        sec_name, sec_basis = _sec_of.get(qn, ("", ""))
         st.subheader(f"Question {qn}")
+        st.caption(f"🏷️ {cur_qt}" + (f" · {sec_name}" if sec_name else ""))
+        if sec_basis:
+            with st.expander("Why this type (section basis)", expanded=False):
+                st.caption(sec_basis)
+        if editable:
+            _opts = list(database.QTYPE_VALUES)
+            _sel = st.selectbox(
+                "Correct question type", _opts,
+                index=_opts.index(cur_qt) if cur_qt in _opts else len(_opts) - 1,
+                key=f"qt_{pid}_{qn}")
+            if _sel != cur_qt:
+                try:
+                    database.set_question_qtype(pid, qn, _sel)
+                    st.toast(f"qtype {qn}: {cur_qt} → {_sel}")
+                except ValueError as exc:
+                    st.error(str(exc))
+                st.rerun()
         with st.container():
             qtex = (qdir / "question.tex").read_text(encoding="utf-8") \
                 if (qdir / "question.tex").is_file() else "*missing*"
