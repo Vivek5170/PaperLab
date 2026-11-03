@@ -1674,32 +1674,52 @@ def verify_latex_syntax(latex_string: str) -> str:
 
 
 @tool
-def submit_question(paper_id: int, question_number: str, latex_content: str) -> str:
+def submit_question(paper_id: int, question_number: str, latex_content: str,
+                     qtype: str = "unknown") -> str:
     """Compile-check and save a question. Nothing is saved if errors are returned.
 
     Writes ``latex_content`` to Outputs/{paper_id}/{question_number}/
     question.tex. Resubmitting the SAME question_number overwrites -- use
-    that to correct mistakes. Reference cropped figures with a relative
-    path, e.g. \\includegraphics[width=\\linewidth]{figures/qfig1.png}
+    that to correct mistakes (including a wrong qtype). Reference cropped
+    figures with a relative path, e.g.
+    \\includegraphics[width=\\linewidth]{figures/qfig1.png}
     (question-side crops only; sfig* references are rejected). Save also
     auto-fixes what it can: one paragraph per inline option, backtick
     unwrapping, text-mode underscore escaping.
+
+    Question type is decided from the SECTION header first, the question
+    image second, never from the transcribed tex alone:
+    scq single-correct choice (A-D or i/ii/iii/iv, one correct, incl.
+    Assertion-Reason/statement-sets); msq multi-correct (one or more);
+    int integer 0-9 entry; num decimal/numeric entry; mtx match-table
+    (List-I/II or Columns + combo options); par-scq/par-msq/par-int/
+    par-num/par-mtx passage group with uniform subs; par-mix mixed subs;
+    unknown when illegible or no rule fires.
 
     Args:
         paper_id: Integer PK from LangGraph state; never invent one.
         question_number: STRING ("1", "15a", "15-17_paragraph").
         latex_content: LaTeX source for the question.
+        qtype: One of scq, msq, int, num, mtx, par-scq, par-msq,
+            par-int, par-num, par-mtx, par-mix, unknown. Defaults to
+            unknown -- pass explicitly whenever the section header or
+            image makes it clear.
 
     Returns:
         "saved" on success, or "NOT SAVED:\\n..." listing every problem
-        (missing figure files, LaTeX errors). Fixes: correct and resubmit
-        with the SAME question_number. Raises for an unknown paper_id.
+        (missing figure files, LaTeX errors, bad qtype). Fixes: correct
+        and resubmit with the SAME question_number. Raises for an unknown
+        paper_id.
     """
     if database.get_paper(paper_id) is None:
         raise ValueError(
             f"paper_id {paper_id} does not exist; "
             "it must come from pre-flight registration via LangGraph state"
         )
+    qt = str(qtype or "unknown").strip().lower()
+    if qt not in database.QTYPE_VALUES:
+        return ("NOT SAVED:\nbad qtype %r: must be one of %s"
+                % (qtype, ", ".join(database.QTYPE_VALUES)))
     # Inline options ("A) ... B) ..." on one line) merge in both renderers
     # (single \n is a space in LaTeX and markdown). One paragraph per option
     # at save time so the PNG and the HTML agree. Hard-wrapped stems are
@@ -1740,14 +1760,14 @@ def submit_question(paper_id: int, question_number: str, latex_content: str) -> 
         ).fetchone()
         if row is None:
             conn.execute(
-                "INSERT INTO questions (paper_id, question_number, latex_folder, status)"
-                " VALUES (?, ?, ?, 'draft')",
-                (paper_id, str(question_number), str(qdir)),
+                "INSERT INTO questions (paper_id, question_number, latex_folder, status, qtype)"
+                " VALUES (?, ?, ?, 'draft', ?)",
+                (paper_id, str(question_number), str(qdir), qt),
             )
         else:
             conn.execute(
-                "UPDATE questions SET latex_folder = ? WHERE id = ?",
-                (str(qdir), row["id"]),
+                "UPDATE questions SET latex_folder = ?, qtype = ? WHERE id = ?",
+                (str(qdir), qt, row["id"]),
             )
         conn.commit()
     finally:
