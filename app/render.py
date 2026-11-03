@@ -632,6 +632,40 @@ def _resolve_table(base: Path, table: dict) -> dict:
             "rows": [[_cell(c) for c in r] for r in table["rows"]]}
 
 
+# Paragraph groups ("15-16_paragraph"): the extractor stores the whole
+# question on ONE source line, so sub-question stems ("16.") and the
+# passage header share lines with neighbouring content. LaTeX reflows
+# flowing text, but the markdown preview shows one glued wall. Split
+# group stems onto their own paragraphs here (display only -- stored
+# .tex is untouched). Runs after tables (cells are one line by design)
+# and only for NN that the directory name declares, so "Fig. 2." and
+# decimals like "3.16." never match.
+_GROUP_DIR_RE = re.compile(r"(?P<a>\d{1,3})-(?P<b>\d{1,3})_paragraph$")
+_GROUP_HEADER_RE = re.compile(
+    r"^(?P<head>(?:Paragraph for Questions?(?: Nos\.?)?\s+[\d,\s\-–]+"
+    r"(?:\s*(?:and|to|&)\s*\d+)?|PARAGRAPH(?:-[IVX\d]+)?))"
+    r"\s+(?=[A-Z$\\])")
+_ABBR_GUARD = (r"(?<!Fig)(?<!FIG)(?<!fig)(?<!Eq)(?<!EQ)(?<!eq)"
+               r"(?<!No)(?<!NO)(?<!no)(?<!Sec)(?<!SEC)(?<!sec)"
+               r"(?<!Ex)(?<!EX)(?<!ex)(?<![\d.])")
+
+
+def _split_group_stems(tex: str, base_dir: str | Path) -> str:
+    """Break passage headers and sub-question stems in group questions."""
+    m = _GROUP_DIR_RE.search(Path(base_dir).name)
+    if not m:
+        return tex
+    a, b = int(m.group("a")), int(m.group("b"))
+    if not (a < b <= a + 12):
+        return tex
+    tex = _GROUP_HEADER_RE.sub(r"\g<head>" + "\n\n", tex, count=1)
+    for num in range(a, b + 1):
+        pat = re.compile(r"\s+" + _ABBR_GUARD + r"\b" + str(num)
+                         + r"\.\s+(?=[A-Z$\\(\[])")
+        tex = pat.sub("\n\n" + str(num) + ". ", tex)
+    return re.sub(r"\n{3,}", "\n\n", tex)
+
+
 def split_tex(tex: str, base_dir: str | Path):
     """Split tex into segments: ("text", markdown), ("fig", abspath) or
     ("table", {"header", "rows"}) with figures inline as cells."""
@@ -641,6 +675,8 @@ def split_tex(tex: str, base_dir: str | Path):
     # figures first would shred tables into unparseable halves.
     tables: list = []
     tex = _render_tabulars(tex, tables=tables)
+    # Paragraph groups need stem breaks, but never inside table cells.
+    tex = _split_group_stems(tex, base_dir)
     # Image-only options (\item followed by just a figure) would lose
     # their A)/B)/... labels when split below; materialize them first.
     tex = _materialize_fig_item_labels(tex)

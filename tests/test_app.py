@@ -85,6 +85,38 @@ def test_tex_preserves_paragraph_breaks():
     assert "First para $x=1$.\n\nSecond para $y=2$." in out
 
 
+def test_split_group_stems_breaks_header_and_stems():
+    """Paragraph groups stored on one line: header and each NN. stem get
+    their own paragraph in display (stored .tex untouched)."""
+    from app.render import _split_group_stems
+
+    one_line = ("Paragraph for Questions 15 and 16 A ball of mass 'm' here : "
+                "15. First stem $x=1$. \\begin{enumerate} \\item $a$ \\item $b$ "
+                "\\end{enumerate} 16. Second stem $y=2$.")
+    out = _split_group_stems(one_line, "17/15-16_paragraph")
+    assert out.startswith("Paragraph for Questions 15 and 16\n\nA ball")
+    assert "\n\n15. First stem" in out
+    assert "\n\n16. Second stem" in out
+    # Idempotent: already-broken input is stable.
+    assert _split_group_stems(out, "17/15-16_paragraph") == out
+
+
+def test_split_group_stems_ignores_non_groups_and_abbreviations():
+    from app.render import _split_group_stems
+
+    # Non-group dirs: byte-identical passthrough.
+    plain = "1. Stem $x=1$. See Fig. 2. Value 3.16 here."
+    assert _split_group_stems(plain, "17/1") == plain
+    # Inside a group dir: abbreviations/decimals never split.
+    tricky = ("See Fig. 2. Value 3.16. Eq. 5. Ref No. 7. "
+              "15. Real stem $x$. 16. Next $y$.")
+    out = _split_group_stems(tricky, "17/15-16_paragraph")
+    assert "Fig. 2. Value 3.16. Eq. 5. Ref No. 7." in out
+    assert "\n\n15. Real stem" in out and "\n\n16. Next" in out
+    # Absurd ranges are left alone rather than guessed.
+    assert _split_group_stems("1. x 99. y", "7/1-99_paragraph") == "1. x 99. y"
+
+
 def test_tex_display_brackets_become_dollars():
     from app.render import tex_to_markdown
 
