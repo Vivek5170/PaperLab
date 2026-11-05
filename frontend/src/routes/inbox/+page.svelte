@@ -1,7 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api.js';
-	import { inboxItems, role, loginOpen } from '$lib/stores.js';
+	import { inboxItems, inboxList, role, loginOpen } from '$lib/stores.js';
 	import Segments from '$lib/components/Segments.svelte';
 	import ClassifyForm from '$lib/components/ClassifyForm.svelte';
 
@@ -14,7 +14,7 @@
 	let showSolution = $state(false);
 	let lastShown = $state(null);
 
-	const items = $derived($inboxItems ?? []);
+	const items = $derived(Array.isArray($inboxItems) ? $inboxItems : []);
 	const current = $derived(items[index]);
 
 	$effect(() => {
@@ -31,7 +31,7 @@
 		try {
 			if (force || $inboxItems === null) {
 				const res = await api.getInbox();
-				inboxItems.set(Array.isArray(res) ? res : res.items);
+				inboxItems.set(inboxList(res));
 			}
 		} catch (e) {
 			if (e.message.startsWith('401')) {

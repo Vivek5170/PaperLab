@@ -34,3 +34,12 @@ export const sidebarOpen = writable(false);
 
 /** Tagging Inbox items, shared so layout badge and inbox page fetch once. */
 export const inboxItems = writable(null);
+
+/**
+ * The inbox endpoint returns `{total, items}` but both writers must store
+ * a plain array — the layout badge reads `.length` and the inbox page
+ * reads `[index]`. Normalizing in one place means a slow fetch can never
+ * clobber a good array with a raw response object (last-writer-wins races
+ * stay harmless because both writers store the same shape).
+ */
+export const inboxList = (res) => (Array.isArray(res) ? res : (res?.items ?? null));

@@ -4,7 +4,7 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Topbar from '$lib/components/Topbar.svelte';
 	import LoginDialog from '$lib/components/LoginDialog.svelte';
-	import { inboxItems, role, theme } from '$lib/stores.js';
+	import { inboxItems, inboxList, role, theme } from '$lib/stores.js';
 	import { api } from '$lib/api.js';
 
 	let { children } = $props();
@@ -34,7 +34,7 @@
 			/* backend offline: shell still renders */
 		}
 		try {
-			inboxItems.set(await api.getInbox().catch(() => null));
+			inboxItems.set(inboxList(await api.getInbox().catch(() => null)));
 		} catch {
 			/* students / offline: no badge */
 		}
