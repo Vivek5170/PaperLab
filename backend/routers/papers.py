@@ -183,6 +183,12 @@ def get_questions(paper_id: int):
             for r in _ordered_questions(paper_id)]
 
 
+@router.get("/{paper_id}/questions/{qn}")
+def get_one_question(paper_id: int, qn: str):
+    _require_paper(paper_id)
+    return _question_detail(paper_id, qn)
+
+
 @router.get("/{paper_id}/questions/{qn}/figures/{name}")
 def get_figure(paper_id: int, qn: str, name: str):
 

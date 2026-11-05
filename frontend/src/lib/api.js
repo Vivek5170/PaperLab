@@ -137,5 +137,7 @@ export const api = {
 		request('/auth/login', { method: 'POST', body: JSON.stringify({ password }) }),
 	logout: () => request('/auth/logout', { method: 'POST' }),
 	me: () => request('/auth/me'),
-	getMeta: () => request('/papers/meta')
+	getMeta: () => request('/papers/meta'),
+	getQuestion: (paperId, qn) =>
+		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}`),
 };

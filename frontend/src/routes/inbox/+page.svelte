@@ -9,9 +9,10 @@
 
 	let index = $state(0);
 	let loading = $state(true);
+	let loadingDetail = $state(false);
 	let error = $state('');
 	let showSolution = $state(false);
-	let lastShown = $state('');
+	let lastShown = $state(null);
 
 	const items = $derived($inboxItems ?? []);
 	const current = $derived(items[index]);
@@ -20,6 +21,7 @@
 		if (current && lastShown !== current.number) {
 			lastShown = current.number;
 			showSolution = false;
+			loadDetail();
 		}
 	});
 
@@ -28,7 +30,8 @@
 		error = '';
 		try {
 			if (force || $inboxItems === null) {
-				inboxItems.set(await api.getInbox());
+				const res = await api.getInbox();
+				inboxItems.set(Array.isArray(res) ? res : res.items);
 			}
 		} catch (e) {
 			if (e.message.startsWith('401')) {
@@ -43,9 +46,24 @@
 		}
 	}
 
+	let detail = $state(null);
+
+	async function loadDetail() {
+		detail = null;
+		if (!current) return;
+		loadingDetail = true;
+		try {
+			detail = await api.getQuestion(current.paperId, current.number);
+		} catch (e) {
+			error = e.message;
+		} finally {
+			loadingDetail = false;
+		}
+	}
+
 	function dropCurrent() {
 		inboxItems.update((list) =>
-			(list ?? []).filter((q) => q.number !== current.number)
+			(list ?? []).filter((q) => q.number !== current?.number || q.paperId !== current?.paperId)
 		);
 		if (index >= items.length) index = Math.max(0, items.length - 1);
 	}
@@ -119,8 +137,11 @@
 			{#if current.suggestion}
 				<p class="suggest">Agent suggestion: {current.suggestion}</p>
 			{/if}
+			{#if loadingDetail || !detail}
+				<p class="pl-sub">Loading question…</p>
+			{:else}
 			<svelte:boundary>
-				<Segments segments={current.question} />
+				<Segments segments={detail.question} />
 				<div class="row">
 					<button
 						type="button"
@@ -132,21 +153,22 @@
 				</div>
 				{#if showSolution}
 					<div class="solution">
-						<Segments segments={current.solution} />
+						<Segments segments={detail.solution} />
 					</div>
 				{/if}
-				{#key current.paperId + current.number}
+				{#key detail.paperId + detail.number}
 					<ClassifyForm
-						paperId={current.paperId}
-						number={current.number}
-						initial={current}
+						paperId={detail.paperId}
+						number={detail.number}
+						initial={detail}
 						onSaved={dropCurrent}
 					/>
 				{/key}
 				{#snippet failed()}
 					<p class="pl-error" role="alert">Could not display this question. Skipping is safe — the data is unchanged.</p>
 				{/snippet}
-			</svelte:boundary>
+				</svelte:boundary>
+			{/if}
 		</div>
 	{/if}
 {/if}

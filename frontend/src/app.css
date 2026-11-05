@@ -2,6 +2,14 @@
    Palette from DESIGN.md; radii follow the reference layout (soft cards,
    pill controls) rather than the sharp archival spec. */
 
+@font-face {
+	font-family: 'Roboto';
+	font-style: normal;
+	font-weight: 500 700;
+	font-display: swap;
+	src: url('/fonts/roboto-latin.woff2') format('woff2');
+}
+
 :root {
 	color-scheme: light;
 	--pl-paper: #faf7f0;

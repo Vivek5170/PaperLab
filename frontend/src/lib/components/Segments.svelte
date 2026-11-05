@@ -14,6 +14,123 @@
 	let el = $state(null);
 	let zoom = $state(null);
 
+	const GREEK = { alpha: 'alpha', beta: 'beta', gamma: 'gamma', delta: 'delta', epsilon: 'epsilon', varepsilon: 'epsilon', zeta: 'zeta', eta: 'eta', theta: 'theta', lambda: 'lambda', mu: 'mu', nu: 'nu', xi: 'xi', pi: 'pi', rho: 'rho', sigma: 'sigma', tau: 'tau', phi: 'phi', varphi: 'phi', chi: 'chi', psi: 'psi', omega: 'omega', Gamma: 'capital gamma', Delta: 'capital delta', Theta: 'capital theta', Lambda: 'capital lambda', Xi: 'capital xi', Pi: 'capital pi', Sigma: 'capital sigma', Phi: 'capital phi', Psi: 'capital psi', Omega: 'ohm' };
+	const WORDS = { times: 'times', cdot: 'dot', pm: 'plus or minus', mp: 'minus or plus', leq: 'less than or equal to', geq: 'greater than or equal to', le: 'less than or equal to', ge: 'greater than or equal to', neq: 'not equal to', ne: 'not equal to', approx: 'approximately', equiv: 'equivalent to', sim: 'similar to', propto: 'proportional to', infty: 'infinity', partial: 'partial', nabla: 'nabla', ldots: 'dot dot dot', cdots: 'dot dot dot', to: 'to', rightarrow: 'goes to', leftarrow: 'comes from', Rightarrow: 'implies', Leftrightarrow: 'if and only if', in: 'in', cup: 'union', cap: 'intersection', sum: 'sum', prod: 'product', int: 'integral', lim: 'limit', log: 'log', ln: 'natural log', sin: 'sine', cos: 'cosine', tan: 'tangent', exp: 'exponential', det: 'determinant', prime: 'prime', percent: 'percent', quad: '', qquad: '', hspace: '', vspace: '', left: '', right: '', big: '', Big: '', bigg: '', Bigg: '', ',': '', ';': '', '!': '', text: '' };
+
+	function extractBrace(s, i) {
+		let depth = 0;
+		for (let j = i; j < s.length; j++) {
+			if (s[j] === '{') depth++;
+			else if (s[j] === '}') {
+				depth--;
+				if (!depth) return [s.slice(i + 1, j), j + 1];
+			}
+		}
+		return [s.slice(i + 1), s.length];
+	}
+
+	/** Best-effort plain-language reading of TeX for screen readers. MathML carries the precise form. */
+	function spokenMath(tex) {
+		let s = String(tex);
+		let out = '';
+		let i = 0;
+		const skipSpaces = () => {
+			while (s[i] === ' ') i++;
+		};
+		const readArg = () => {
+			skipSpaces();
+			if (s[i] === '{') {
+				const [v, j] = extractBrace(s, i);
+				i = j;
+				return spokenMath(v);
+			}
+			return s[i++] || '';
+		};
+		while (i < s.length) {
+			const ch = s[i];
+			if (ch === '\\') {
+				const m = /^\\([a-zA-Z]+)/.exec(s.slice(i));
+				if (m) {
+					const name = m[1];
+					i += 1 + name.length;
+					if (['frac', 'dfrac', 'tfrac'].includes(name)) {
+						out += ` (${readArg()} over ${readArg()}) `;
+					} else if (name === 'sqrt') {
+						skipSpaces();
+						let root = 'square root of ';
+						if (s[i] === '[') {
+							const k = s.indexOf(']', i);
+							root = `${s.slice(i + 1, k)} root of `;
+							i = k + 1;
+						}
+						out += ` ${root}${readArg()} `;
+					} else if (['bar', 'hat'].includes(name)) {
+						out += ` ${readArg()} hat `;
+					} else if (name === 'vec') {
+						out += ` ${readArg()} vector `;
+					} else if (name === 'dot') {
+						out += ` ${readArg()} dot `;
+					} else if (name === 'ddot') {
+						out += ` ${readArg()} double dot `;
+					} else if (name === 'tilde') {
+						out += ` ${readArg()} tilde `;
+					} else if (['overline', 'underline'].includes(name)) {
+						out += ` ${readArg()} `;
+					} else if (GREEK[name] !== undefined) {
+						out += ` ${GREEK[name]} `;
+					} else if (WORDS[name] !== undefined) {
+						out += ` ${WORDS[name]} `;
+					} else {
+						out += ` ${name} `;
+					}
+					continue;
+				}
+				// spacing / escaped chars: \, \: \; \! \  \% \& \$
+				const esc = s[i + 1];
+				i += 2;
+				if (esc === '%') out += ' percent ';
+				else if (esc === '&') out += ' and ';
+				else out += ' ';
+				continue;
+			}
+			if (ch === '_') {
+				i++;
+				out += ` sub ${readArg()} `;
+				continue;
+			}
+			if (ch === '^') {
+				i++;
+				out += ` to the power of ${readArg()} `;
+				continue;
+			}
+			if (ch === '{' || ch === '}') {
+				i++;
+				out += ' ';
+				continue;
+			}
+			if (ch === '&') {
+				i++;
+				out += ' and ';
+				continue;
+			}
+			if (/[a-zA-Z0-9]/.test(ch)) {
+				let j = i;
+				while (j < s.length && /[a-zA-Z0-9]/.test(s[j])) j++;
+				out += ` ${s.slice(i, j)} `;
+				i = j;
+				continue;
+			}
+			if (ch === '-') out += ' minus ';
+			else if (ch === '+') out += ' plus ';
+			else if (ch === '=') out += ' equals ';
+			else if (ch === '*') out += ' times ';
+			else if (ch === "'") out += ' prime ';
+			else if (ch === '|') out += ' absolute value of ';
+			i++;
+		}
+		return out.replace(/\s+/g, ' ').trim().slice(0, 240);
+	}
+
 	function withBust(url) {
 		return bust && url.startsWith('/api/') ? `${url}?v=${bust}` : url;
 	}
@@ -40,7 +157,7 @@
 			}
 			node.innerHTML = html;
 			node.setAttribute('role', 'img');
-			node.setAttribute('aria-label', tex);
+			node.setAttribute('aria-label', spokenMath(tex) || 'mathematical expression');
 			node.dataset.done = '1';
 		}
 	});

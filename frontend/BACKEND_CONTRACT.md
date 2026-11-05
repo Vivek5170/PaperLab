@@ -35,7 +35,8 @@ Base URL: same-origin `/api` (dev proxy in `vite.config.js` forwards it to
 ## Tagging Inbox (archivist)
 
 - `GET /api/inbox` ->
-  `[{paperId, number, qtype, difficulty, suggestion, topics: [{code, path, auto}], question: [segments], solution: [segments]}]` (untagged only)
+  `{total, items: [{paperId, number, qtype, difficulty, suggestion, topics: [{code, path, name, auto}]}]}` (light list, untagged only; fetch each question via `GET /api/papers/{id}/questions/{qn}`)
+- `GET /api/papers/{id}/questions/{qn}` -> full single question (`number, qtype, difficulty, suggestion, topics, question + solution` segments)
 
 ## Topics (archivist for writes)
 

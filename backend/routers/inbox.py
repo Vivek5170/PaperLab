@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends
 import database
 import directory_manager
 from backend.deps import require_admin
-from backend.segments import tex_segments
 
 router = APIRouter()
 
@@ -26,15 +25,6 @@ def get_inbox():
         conn.close()
     items = []
     for r in rows:
-        qdir = directory_manager.get_question_dir(r["paper_id"], r["question_number"])
-        try:
-            qtex = (qdir / "question.tex").read_text(encoding="utf-8")
-        except OSError:
-            qtex = "*missing*"
-        try:
-            stex = (qdir / "solution.tex").read_text(encoding="utf-8")
-        except OSError:
-            stex = "*missing*"
         try:
             qid = database.get_question_id(r["paper_id"], r["question_number"])
             links = []
@@ -55,7 +45,5 @@ def get_inbox():
             "difficulty": r["difficulty"],
             "suggestion": r["topic_suggestion"],
             "topics": links,
-            "question": tex_segments(qtex, qdir, r["paper_id"], r["question_number"]),
-            "solution": tex_segments(stex, qdir, r["paper_id"], r["question_number"]),
         })
-    return items
+    return {"total": len(items), "items": items}
