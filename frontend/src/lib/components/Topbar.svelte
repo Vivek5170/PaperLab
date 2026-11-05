@@ -1,13 +1,16 @@
 <script>
+	import { page } from '$app/stores';
 	import { role, searchQuery, theme, loginOpen, sidebarOpen } from '$lib/stores.js';
 	import { api } from '$lib/api.js';
 
 	let { crumbs = [] } = $props();
 
 	const isArchivist = $derived($role === 'archivist');
+	const onArchive = $derived($page.url.pathname.startsWith('/archive'));
 
 	function onKeydown(event) {
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+			if (!onArchive) return;
 			event.preventDefault();
 			document.getElementById('global-search')?.focus();
 		}
@@ -52,6 +55,7 @@
 			{isArchivist ? 'Archivist' : 'Student'}
 		</button>
 
+		{#if onArchive}
 		<div class="search">
 			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
 				<circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
@@ -65,6 +69,7 @@
 			/>
 			<kbd>Ctrl K</kbd>
 		</div>
+		{/if}
 
 		<button
 			type="button"
