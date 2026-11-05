@@ -67,11 +67,13 @@
 						<tr>
 							{#each seg.header as cell, hi (hi)}
 								<th>
-									{#if cell.kind === 'fig'}
-										<img src={withBust(cell.url)} alt="Table figure" loading="lazy" />
-									{:else}
-										{@html cell.html || ''}
-									{/if}
+									{#each cell as item, hii (hii)}
+										{#if item.kind === 'fig'}
+											<img src={withBust(item.url)} alt="Table figure" loading="lazy" />
+										{:else}
+											{@html item.html || ''}
+										{/if}
+									{/each}
 								</th>
 							{/each}
 						</tr>
@@ -81,11 +83,13 @@
 							<tr>
 								{#each row as cell, c (c)}
 									<td>
-										{#if cell.kind === 'fig'}
-											<img src={withBust(cell.url)} alt="Table figure" loading="lazy" />
-										{:else}
-											{@html cell.html || ''}
-										{/if}
+										{#each cell as item, ci (ci)}
+											{#if item.kind === 'fig'}
+												<img src={withBust(item.url)} alt="Table figure" loading="lazy" />
+											{:else}
+												{@html item.html || ''}
+											{/if}
+										{/each}
 									</td>
 								{/each}
 							</tr>
