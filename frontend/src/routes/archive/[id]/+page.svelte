@@ -5,6 +5,7 @@
 	import { role } from '$lib/stores.js';
 	import Segments from '$lib/components/Segments.svelte';
 	import ClassifyForm from '$lib/components/ClassifyForm.svelte';
+	import FigurePanel from '$lib/components/FigurePanel.svelte';
 
 	const id = $derived($page.params.id);
 	const isArchivist = $derived($role === 'archivist');
@@ -13,11 +14,22 @@
 	let questions = $state([]);
 	let current = $state('');
 	let showSolution = $state(false);
+	let showTopics = $state(false);
+	let showQImage = $state(false);
+	let showSImage = $state(false);
+	let qImgOk = $state(true);
+	let sImgOk = $state(true);
 	let editing = $state(false);
+	let showFigures = $state(false);
+	let figRev = $state(0);
 	let loading = $state(true);
 	let error = $state('');
 
 	let currentQ = $state(null);
+
+	function renderUrl(part) {
+		return `/api/papers/${id}/questions/${encodeURIComponent(current)}/render?part=${part}`;
+	}
 
 	async function refresh() {
 		[paper, questions] = await Promise.all([api.getPaper(id), api.getQuestions(id)]);
@@ -31,6 +43,13 @@
 		current = qn;
 		currentQ = questions.find((q) => q.number === qn) ?? null;
 		showSolution = false;
+		showTopics = false;
+		showQImage = false;
+		showSImage = false;
+		qImgOk = true;
+		sImgOk = true;
+		editing = false;
+		showFigures = false;
 	}
 
 	onMount(async () => {
@@ -91,64 +110,112 @@
 
 		<article class="pane">
 			{#if currentQ}
-				<h2>Question {currentQ.number}</h2>
-				<p class="pl-sub">
-					Type: {currentQ.qtype}{currentQ.difficulty
-						? ` - Difficulty: ${currentQ.difficulty}`
-						: ' - Difficulty: not graded'}
-				</p>
+				<h2 class="qtitle">Question {currentQ.number}</h2>
+				<div class="meta-row">
+					<span class="typebadge">{currentQ.qtype}</span>
+					<span class="difftext">{currentQ.difficulty ?? 'Not graded'}</span>
+				</div>
 				{#if currentQ.topics?.length}
-					<p>
-						{#each currentQ.topics as t, i (t.code)}
-							<span class="pl-chip">{i === 0 ? 'Primary: ' : 'Also: '}{t.path}{t.auto ? ' (auto)' : ''}</span>
-						{/each}
-					</p>
+					<div class="topics">
+						<button type="button" class="topics-label" aria-expanded={showTopics} onclick={() => (showTopics = !showTopics)}>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 2H2v10l9.3 9.3a1 1 0 0 0 1.4 0l8.6-8.6a1 1 0 0 0 0-1.4L12 2z"/><circle cx="7" cy="7" r="1.5"/></svg>
+							Topics
+						</button>
+						{#if !showTopics}
+							<span class="tchip" title={currentQ.topics[0].path}>{currentQ.topics[0].name}{currentQ.topics[0].auto ? ' (auto)' : ''}</span>
+							{#if currentQ.topics.length > 1}
+								<button type="button" class="morebtn" onclick={() => (showTopics = true)}>+{currentQ.topics.length - 1} more</button>
+							{/if}
+						{:else}
+							<div class="allchips">
+								{#each currentQ.topics as tt (tt.code)}
+									<span class="tchip" title={tt.path}>{tt.name}{tt.auto ? ' (auto)' : ''}</span>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				{/if}
-				<svelte:boundary>
-					<Segments segments={currentQ.question} />
-					{#snippet failed()}
-						<p class="pl-error" role="alert">Could not display this question. The data is unchanged.</p>
-					{/snippet}
-				</svelte:boundary>
-				<button
-					type="button"
-					class="pl-btn"
-					onclick={() => (showSolution = !showSolution)}
-				>
-					{showSolution ? 'Hide solution' : 'Show solution'}
-				</button>
+				<div class="statement">
+					<svelte:boundary>
+						<Segments segments={currentQ.question} bust={figRev} zoomable />
+						{#snippet failed()}
+							<p class="pl-error" role="alert">Could not display this question. The data is unchanged.</p>
+						{/snippet}
+					</svelte:boundary>
+				</div>
+				<div class="row">
+					<button type="button" class="pl-btn" onclick={() => (showSolution = !showSolution)}>
+						{showSolution ? 'Hide solution' : 'Show solution'}
+					</button>
+					<button type="button" class="pl-btn" onclick={() => { showQImage = !showQImage; qImgOk = true; }}>
+						{showQImage ? 'Hide compiled image' : 'Render question as image'}
+					</button>
+				</div>
+				{#if showQImage}
+					{#if qImgOk}
+						<img class="compiled" src={renderUrl('question')} alt="Compiled question" onerror={() => (qImgOk = false)} />
+					{:else}
+						<p class="pl-sub">TeX engine unavailable - the view above stands.</p>
+					{/if}
+				{/if}
 				{#if showSolution}
-					<div class="solution">
+					<div class="statement solution">
 						<svelte:boundary>
-							<Segments segments={currentQ.solution} />
+							<Segments segments={currentQ.solution} bust={figRev} zoomable />
 							{#snippet failed()}
 								<p class="pl-error" role="alert">Could not display this solution.</p>
 							{/snippet}
 						</svelte:boundary>
 					</div>
+					<div class="row">
+						<button type="button" class="pl-btn" onclick={() => { showSImage = !showSImage; sImgOk = true; }}>
+							{showSImage ? 'Hide compiled image' : 'Render solution as image'}
+						</button>
+					</div>
+					{#if showSImage}
+						{#if sImgOk}
+							<img class="compiled" src={renderUrl('solution')} alt="Compiled solution" onerror={() => (sImgOk = false)} />
+						{:else}
+							<p class="pl-sub">TeX engine unavailable - the view above stands.</p>
+						{/if}
+					{/if}
 				{/if}
 				{#if isArchivist}
-					<button
-						type="button"
-						class="pl-btn"
-						onclick={() => (editing = !editing)}
-					>
-						{editing ? 'Done' : 'Edit classification'}
-					</button>
+					<div class="row">
+						<button type="button" class="pl-btn" onclick={() => { editing = !editing; if (editing) showFigures = false; }}>
+							{editing ? 'Done' : 'Edit classification'}
+						</button>
+						<button type="button" class="pl-btn" onclick={() => { showFigures = !showFigures; if (showFigures) editing = false; }}>
+							{showFigures ? 'Done' : 'Manage figures'}
+						</button>
+					</div>
 					{#if editing}
 						{#key currentQ.paperId + currentQ.number}
-						<ClassifyForm
-							paperId={id}
-							number={currentQ.number}
-							initial={currentQ}
-							onSaved={(detail) => {
-								questions = questions.map((q) =>
-									q.number === detail.number ? detail : q
-								);
-								currentQ = detail;
+							<ClassifyForm
+								paperId={id}
+								number={currentQ.number}
+								initial={currentQ}
+								onSaved={(detail) => {
+									questions = questions.map((q) =>
+										q.number === detail.number ? detail : q
+									);
+									currentQ = detail;
+								}}
+							/>
+						{/key}
+					{/if}
+					{#if showFigures}
+						<FigurePanel
+							paperId={currentQ.paperId}
+							qn={currentQ.number}
+							rev={figRev}
+							onChanged={async () => {
+								figRev += 1;
+								const all = await api.getQuestions(id);
+								questions = all;
+								currentQ = all.find((q) => q.number === current) ?? currentQ;
 							}}
 						/>
-						{/key}
 					{/if}
 				{/if}
 			{/if}
@@ -210,22 +277,122 @@
 		font-size: 0.8rem;
 	}
 	.pane {
+		max-width: 1000px;
+	}
+	.pane h2.qtitle {
+		font-family: 'Roboto', Inter, system-ui, sans-serif;
+		font-size: 1.75rem;
+		font-weight: 600;
+		margin: 4px 0 10px;
+	}
+	.meta-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin: 0 0 22px;
+	}
+	.typebadge {
+		display: inline-block;
+		background: var(--pl-raised);
+		border: 1px solid var(--pl-line);
+		border-radius: 6px;
+		padding: 3px 10px;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		color: var(--pl-ink);
+	}
+	.difftext {
+		font-size: 0.85rem;
+		color: var(--pl-ink-soft);
+	}
+	.topics {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		flex-wrap: wrap;
+		margin: 0 0 8px;
+	}
+	.topics-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		border: none;
+		background: none;
+		padding: 4px 2px;
+		min-height: 0;
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: var(--pl-ink-soft);
+		cursor: pointer;
+	}
+	.topics-label svg {
+		width: 15px;
+		height: 15px;
+	}
+	.topics-label:hover {
+		color: var(--pl-ink);
+	}
+	.topics-label[aria-expanded='true'] {
+		color: var(--pl-seal);
+	}
+	.tchip {
+		display: inline-block;
 		background: var(--pl-surface);
 		border: 1px solid var(--pl-line);
-		border-radius: var(--pl-radius-md);
-		padding: 24px;
-		max-width: 75ch;
+		border-radius: 6px;
+		padding: 3px 10px;
+		font-size: 0.8rem;
+		color: var(--pl-ink);
+		max-width: 100%;
 	}
-	.pane h2 {
-		font-size: 1.3rem;
-		margin-bottom: 2px;
+	.morebtn {
+		border: none;
+		background: none;
+		padding: 4px 2px;
+		min-height: 0;
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: var(--pl-seal);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.morebtn:hover {
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+	.allchips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		flex-basis: 100%;
+	}
+	.allchips .tchip {
+		overflow-wrap: anywhere;
+	}
+	.statement {
+		font-size: 17.5px;
+		line-height: 1.7;
+		max-width: 1000px;
+	}
+	.statement :global(.md p) {
+		margin: 0.75em 0;
+	}
+	.compiled {
+		max-width: 100%;
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-sm);
+		margin: 8px 0;
+	}
+	.row {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+		margin: 12px 0 4px;
 	}
 	.solution {
 		border-top: 1px solid var(--pl-line);
-		padding-top: 14px;
-	}
-	.pane .pl-btn {
-		margin-top: 8px;
+		padding-top: 12px;
 	}
 	@media (max-width: 760px) {
 		.desk {
