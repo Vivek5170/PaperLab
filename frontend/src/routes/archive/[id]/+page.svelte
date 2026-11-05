@@ -236,7 +236,7 @@
 	}
 	.desk {
 		display: grid;
-		grid-template-columns: 240px 1fr;
+		grid-template-columns: 168px 1fr;
 		gap: 16px;
 		margin-top: 20px;
 		align-items: start;
@@ -254,8 +254,9 @@
 	}
 	.qbtn {
 		display: flex;
-		gap: 10px;
-		align-items: baseline;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0;
 		text-align: left;
 		border: none;
 		border-left: 3px solid transparent;
@@ -263,6 +264,7 @@
 		border-radius: 8px;
 		padding: 8px 10px;
 		min-height: 44px;
+		width: 100%;
 	}
 	.qbtn:hover {
 		background: var(--pl-raised);
@@ -271,6 +273,10 @@
 		background: var(--pl-raised);
 		border-left-color: var(--pl-seal);
 		font-weight: 600;
+	}
+	.qbtn .pl-mono {
+		overflow-wrap: anywhere;
+		line-height: 1.35;
 	}
 	.qtype {
 		color: var(--pl-ink-soft);
