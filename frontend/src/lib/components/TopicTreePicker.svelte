@@ -10,7 +10,7 @@
 	let open = $state(false);
 	let q = $state('');
 	let panel = $state(null);
-	const expanded = $state(new Set());
+	let expanded = $state([]);
 
 	const inSel = (code) => selected.includes(code);
 
@@ -76,9 +76,12 @@
 	}
 
 	function toggleExpand(code) {
-		if (expanded.has(code)) expanded.delete(code);
-		else expanded.add(code);
+		expanded = expanded.includes(code)
+			? expanded.filter((c) => c !== code)
+			: [...expanded, code];
 	}
+
+	const isOpen = (code) => expanded.includes(code);
 
 	const matches = $derived(
 		!q.trim()
@@ -163,31 +166,50 @@
 {#snippet branch(node, depth)}
 	{@const kids = byParent.get(node.code) ?? []}
 	{@const st = stateOf(node)}
-	{@const isOpen = expanded.has(node.code)}
+	{@const open = isOpen(node.code)}
 	<li>
 		<div class="row" style={`--d: ${depth}`}>
 			{#if kids.length}
 				<button
 					type="button"
 					class="chev"
-					aria-expanded={isOpen}
-					aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${node.name}`}
+					aria-expanded={open}
+					aria-label={`${open ? 'Collapse' : 'Expand'} ${node.name}`}
 					onclick={() => toggleExpand(node.code)}
 				>
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d={isOpen ? 'm6 9 6 6 6-6' : 'm9 6 6 6-6 6'} /></svg>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d={open ? 'm6 9 6 6 6-6' : 'm9 6 6 6-6 6'} /></svg>
 				</button>
-			{:else}
-				<span class="chev-sp"></span>
-			{/if}
-			<label class="lbl">
-				<input type="checkbox" checked={st === 'on'} use:indet={st === 'part'} onchange={() => toggle(node)} />
-				<span class="nm">{node.name}</span>
+				<input
+					type="checkbox"
+					class="box"
+					checked={st === 'on'}
+					use:indet={st === 'part'}
+					aria-label={`Select ${node.name} and all its subtopics`}
+					onchange={() => toggle(node)}
+				/>
+				<button
+					type="button"
+					class="nm-btn"
+					aria-expanded={open}
+					onclick={() => toggleExpand(node.code)}
+				>
+					<span class="nm">{node.name}</span>
+				</button>
 				{#if aggCount(node) > 0}
 					<span class="ct pl-mono">{aggCount(node)}</span>
 				{/if}
-			</label>
+			{:else}
+				<span class="chev-sp"></span>
+				<label class="lbl">
+					<input type="checkbox" checked={inSel(node.code)} onchange={() => toggle(node)} />
+					<span class="nm">{node.name}</span>
+					{#if aggCount(node) > 0}
+						<span class="ct pl-mono">{aggCount(node)}</span>
+					{/if}
+				</label>
+			{/if}
 		</div>
-		{#if kids.length && isOpen}
+		{#if kids.length && open}
 			<ul>
 				{#each kids as k (k.code)}
 					{@render branch(k, depth + 1)}
@@ -283,18 +305,45 @@
 		border: none;
 		background: none;
 		padding: 6px;
-		min-height: 0;
+		min-height: 44px;
+		min-width: 44px;
 		color: var(--pl-ink-soft);
 		display: grid;
 		place-items: center;
+		flex-shrink: 0;
 	}
 	.chev svg {
-		width: 14px;
-		height: 14px;
+		width: 16px;
+		height: 16px;
 	}
 	.chev-sp {
-		width: 26px;
+		width: 44px;
 		flex-shrink: 0;
+	}
+	.box {
+		accent-color: var(--pl-seal);
+		width: 20px;
+		height: 20px;
+		flex-shrink: 0;
+		min-height: 0;
+		margin: 0;
+	}
+	.nm-btn {
+		flex: 1;
+		min-width: 0;
+		border: none;
+		background: none;
+		text-align: left;
+		padding: 10px 4px;
+		min-height: 44px;
+		font-size: 0.85rem;
+		overflow: hidden;
+	}
+	.nm-btn .nm {
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.lbl {
 		display: flex;
@@ -353,7 +402,7 @@
 		font-weight: 600;
 		font-size: 0.82rem;
 		padding: 8px 10px;
-		min-height: 36px;
+		min-height: 44px;
 	}
 	.dd-clear:disabled {
 		color: var(--pl-ink-soft);

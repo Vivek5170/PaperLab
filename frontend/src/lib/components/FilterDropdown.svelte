@@ -145,7 +145,7 @@
 		border-radius: var(--pl-radius-sm);
 		font-size: 0.85rem;
 		text-align: left;
-		min-height: 40px;
+		min-height: 44px;
 	}
 	.dd-opt:hover {
 		background: var(--pl-raised);
@@ -193,7 +193,7 @@
 		font-weight: 600;
 		font-size: 0.82rem;
 		padding: 8px 10px;
-		min-height: 36px;
+		min-height: 44px;
 	}
 	.dd-clear:disabled {
 		color: var(--pl-ink-soft);
