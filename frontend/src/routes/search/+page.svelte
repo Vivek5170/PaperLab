@@ -153,7 +153,7 @@
 	<FilterDropdown label="Source" options={facetOpts.institute} bind:selected={filters.institute} />
 	<FilterDropdown label="Exam" options={facetOpts.exam} bind:selected={filters.exam} />
 	<FilterDropdown label="Year" options={facetOpts.year} bind:selected={filters.year} />
-	<TopicTreePicker {topics} counts={topicCounts} bind:selected={filters.topic} />
+	<TopicTreePicker nodes={topics} counts={topicCounts} bind:selected={filters.topic} />
 	{#if activeCount > 0}
 		<button type="button" class="clear-all" onclick={clearAll}>
 			Clear all · {activeCount}
