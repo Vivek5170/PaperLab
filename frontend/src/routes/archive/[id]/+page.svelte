@@ -89,7 +89,7 @@
 					onchange={(e) => pick(e.currentTarget.value)}
 				>
 					{#each questions as q (q.number)}
-						<option value={q.number}>{q.number} - {q.qtype}</option>
+						<option value={q.number}>{q.number}</option>
 					{/each}
 				</select>
 			{:else}
@@ -100,9 +100,9 @@
 						class:active={q.number === current}
 						aria-current={q.number === current ? 'true' : undefined}
 						onclick={() => pick(q.number)}
+						title={`Question ${q.number}`}
 					>
 						<span class="pl-mono">{q.number}</span>
-						<span class="qtype">{q.qtype}</span>
 					</button>
 				{/each}
 			{/if}
@@ -277,10 +277,6 @@
 	.qbtn .pl-mono {
 		overflow-wrap: anywhere;
 		line-height: 1.35;
-	}
-	.qtype {
-		color: var(--pl-ink-soft);
-		font-size: 0.8rem;
 	}
 	.pane {
 		max-width: 1000px;
