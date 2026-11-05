@@ -184,7 +184,7 @@
 			{#each items as item (`${item.paperId}/${item.number}`)}
 				<a
 					class="card pl-card"
-					href={`/archive/${item.paperId}?q=${encodeURIComponent(item.number)}&from=search`}
+					href={`/search/${item.paperId}/${encodeURIComponent(item.number)}`}
 					onclick={rememberScroll}
 					aria-label={`Paper ${item.paperId}, question ${item.number}`}
 				>
