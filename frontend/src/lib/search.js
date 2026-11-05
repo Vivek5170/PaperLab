@@ -6,7 +6,7 @@
  */
 import { browser } from '$app/environment';
 
-export const SEARCH_KEY = 'pl-search-v1';
+export const SEARCH_KEY = 'pl-search-v2';
 export const PAGE_SIZE = 15;
 
 export const FILTER_KEYS = ['qtype', 'difficulty', 'exam', 'institute', 'year', 'topic'];
