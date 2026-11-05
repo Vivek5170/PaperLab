@@ -164,6 +164,14 @@ with st.sidebar:
                  type="primary" if _nav_choice == "📖 Library" else "secondary"):
         st.session_state["page"] = "📖 Library"
         st.rerun()
+    if st.button("🏷️  Needs topics", key="nav_nt", width="stretch",
+                 type="primary" if _nav_choice == "🏷️ Needs topics" else "secondary"):
+        st.session_state["page"] = "🏷️ Needs topics"
+        st.rerun()
+    if st.button("🌳  Topic tree", key="nav_tree", width="stretch",
+                 type="primary" if _nav_choice == "🌳 Topic tree" else "secondary"):
+        st.session_state["page"] = "🌳 Topic tree"
+        st.rerun()
     _adm_label = "🛠  Admin" + ("  🔓" if is_admin() else "")
     if st.button(_adm_label, key="nav_admin", width="stretch",
                  type="primary" if _nav_choice == "🛠 Admin" else "secondary"):
@@ -663,6 +671,62 @@ def _paper_page() -> None:
     _reader()
 
 
+def _classification_form(pid: int, qn: str, cur_qt: str) -> None:
+    """Per-question Edit panel: type, difficulty, topics, suggestion.
+
+    Available without admin mode; figure management stays admin-gated.
+    One Save writes everything through the validated database helpers.
+    """
+    try:
+        qid = database.get_question_id(pid, qn)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    conn = database.get_connection()
+    try:
+        qrow = conn.execute(
+            "SELECT difficulty, topic_suggestion FROM questions WHERE id = ?",
+            (qid,)).fetchone()
+    finally:
+        conn.close()
+    cur_diff = qrow["difficulty"] if qrow else None
+    cur_sugg = qrow["topic_suggestion"] or "" if qrow else ""
+    cur_links = [c for c, _, _ in database.get_question_links(qid)]
+    options = database.topic_options()
+    path_of = {code: path for code, path, _ in options}
+
+    with st.form(key=f"cls_{pid}_{qn}"):
+        st.caption("First topic = primary.")
+        qt_opts = list(database.QTYPE_VALUES)
+        new_qt = st.selectbox(
+            "Question type", qt_opts,
+            index=qt_opts.index(cur_qt) if cur_qt in qt_opts else len(qt_opts) - 1)
+        diff_opts = ["Not graded", *database.DIFFICULTY_VALUES]
+        new_diff = st.selectbox(
+            "Difficulty", diff_opts,
+            index=diff_opts.index(cur_diff) if cur_diff in diff_opts else 0)
+        new_codes = st.multiselect(
+            "Topics (search by path)", [c for c, _, _ in options],
+            default=[c for c in cur_links if c in path_of],
+            format_func=lambda c: path_of.get(c, c))
+        new_sugg = st.text_area(
+            "Suggestion (why nothing fit / proposed new topic)", value=cur_sugg)
+        if st.form_submit_button("Save"):
+            try:
+                if new_qt != cur_qt:
+                    database.set_question_qtype(pid, qn, new_qt)
+                database.set_question_difficulty(
+                    pid, qn,
+                    None if new_diff == "Not graded" else new_diff,
+                    topic_suggestion=new_sugg.strip())
+                if new_codes != cur_links:
+                    database.set_question_topics(qid, new_codes, src="human")
+                st.toast(f"Saved {qn}")
+            except ValueError as exc:
+                st.error(str(exc))
+            st.rerun()
+
+
 def _reader() -> None:
     pid = st.session_state.get("paper")
     if pid is None:
@@ -710,22 +774,40 @@ def _reader() -> None:
         sec_name, sec_basis = _sec_of.get(qn, ("", ""))
         st.subheader(f"Question {qn}")
         st.caption(f"🏷️ {cur_qt}" + (f" · {sec_name}" if sec_name else ""))
+        _mconn = database.get_connection()
+        try:
+            _mrow = _mconn.execute(
+                "SELECT id, difficulty FROM questions"
+                " WHERE paper_id = ? AND question_number = ?",
+                (pid, qn)).fetchone()
+        finally:
+            _mconn.close()
+        st.caption(f"🎯 {_mrow['difficulty']}"
+                   if _mrow and _mrow["difficulty"] else "🎯 not graded")
+        _links = database.get_question_links(_mrow["id"]) if _mrow else []
+        if _links:
+            for _i, (_code, _rank, _src) in enumerate(_links):
+                try:
+                    _path = database.topic_path(_code)
+                except ValueError:
+                    _path = _code
+                st.caption(("★ " if _i == 0 else "+ ") + _path
+                           + ("" if _src == "human" else " (auto)"))
+        else:
+            st.caption("📚 no topics yet")
         if sec_basis:
             with st.expander("Why this type (section basis)", expanded=False):
                 st.caption(sec_basis)
-        if editable:
-            _opts = list(database.QTYPE_VALUES)
-            _sel = st.selectbox(
-                "Correct question type", _opts,
-                index=_opts.index(cur_qt) if cur_qt in _opts else len(_opts) - 1,
-                key=f"qt_{pid}_{qn}")
-            if _sel != cur_qt:
-                try:
-                    database.set_question_qtype(pid, qn, _sel)
-                    st.toast(f"qtype {qn}: {cur_qt} → {_sel}")
-                except ValueError as exc:
-                    st.error(str(exc))
-                st.rerun()
+        # Classification editing is per-question via its own Edit button:
+        # no admin needed, and admin's figure powers are not involved.
+        edit_key = f"edit_{pid}_{qn}"
+        editing = st.session_state.get(edit_key, False)
+        if st.button("Done" if editing else "✏️ Edit classification",
+                      key=f"{edit_key}_btn"):
+            st.session_state[edit_key] = not editing
+            st.rerun()
+        if editing:
+            _classification_form(pid, qn, cur_qt)
         with st.container():
             qtex = (qdir / "question.tex").read_text(encoding="utf-8") \
                 if (qdir / "question.tex").is_file() else "*missing*"
@@ -901,8 +983,8 @@ def _admin_statistics() -> None:
                                     step=0.5, key="fx")
     sym = "\u20b9" if currency.startswith("INR") else "$"
 
-    rows, totals = [], {"turns": 0, "in": 0, "fresh": 0, "cached": 0,
-                        "out": 0, "rsn": 0, "cost": 0.0}
+    rows, totals = [], {"turns": 0, "in": 0, "cached": 0,
+                        "out": 0, "rsn": 0, "cost": 0.0, "tagging": 0.0}
     for r in _all_papers():
         s = summarize_tokens(r["id"])
         t = s["total"]
@@ -910,41 +992,84 @@ def _admin_statistics() -> None:
             continue
         totals["turns"] += t["turns"]
         totals["in"] += t["input"]
-        totals["fresh"] += t["fresh_input"]
         totals["cached"] += t["cache_read"]
         totals["out"] += t["output"]
         totals["rsn"] += t["reasoning"]
         totals["cost"] += s["cost_usd"]
+        tp = s["per_phase"].get("topics", {})
+        topics_cost_usd = (
+            (tp.get("input", 0) - tp.get("cache_read", 0)) / 1e6 * pricing["input_per_mtok"]
+            + tp.get("cache_read", 0) / 1e6 * pricing["cache_read_per_mtok"]
+            + tp.get("output", 0) / 1e6 * pricing["output_per_mtok"]
+        ) if tp else 0.0
+        totals["tagging"] += topics_cost_usd
         rows.append({
             "paper": f"#{r['id']} {display_name(r)[:40]}",
             "status": r["status"] or "uploaded",
             "turns": t["turns"],
             "input": t["input"],
-            "fresh": t["fresh_input"],
             "cached": t["cache_read"],
             "output": t["output"],
             "reasoning": t["reasoning"],
             "wall": (f"{r['elapsed_sec']:.0f}s" if r["elapsed_sec"] else "\u2014"),
-            "cost": round(s["cost_usd"] * rate, 4),
+            "extraction": round((s["cost_usd"] - topics_cost_usd) * rate, 4),
+            "tagging": round(topics_cost_usd * rate, 4),
+            "total": round(s["cost_usd"] * rate, 4),
         })
     if not rows:
         st.info("No token usage recorded yet \u2014 run a pipeline first.")
         return
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total cost", f"{sym}{totals['cost'] * rate:,.2f}")
-    m2.metric("Fresh input (billed)", f"{totals['fresh']:,}")
-    m3.metric("Cache read", f"{totals['cached']:,}")
+    m2.metric("Extraction", f"{sym}{(totals['cost'] - totals['tagging']) * rate:,.2f}")
+    m3.metric("Tagging", f"{sym}{totals['tagging'] * rate:,.2f}")
     m4.metric("Turns", f"{totals['turns']:,}")
     st.caption(
         f"Pricing $/Mtok \u2014 in: {pricing['input_per_mtok']}, "
         f"cached: {pricing['cache_read_per_mtok']}, out: {pricing['output_per_mtok']}"
         + (f" \u00b7 1 USD = \u20b9{rate:g}" if currency.startswith("INR") else "")
     )
-    cost_label = "cost (\u20b9)" if currency.startswith("INR") else "cost ($)"
+    cur = "(\u20b9)" if currency.startswith("INR") else "($)"
     st.dataframe(rows, width="stretch", hide_index=True,
-                 column_order=["paper", "status", "turns", "input", "fresh",
-                               "cached", "output", "reasoning", "wall", "cost"],
-                 column_config={"cost": st.column_config.NumberColumn(cost_label)})
+                 column_order=["paper", "status", "turns", "input",
+                               "cached", "output", "reasoning", "wall",
+                               "extraction", "tagging", "total"],
+                 column_config={
+                     "extraction": st.column_config.NumberColumn(f"extraction {cur}"),
+                     "tagging": st.column_config.NumberColumn(f"tagging {cur}"),
+                     "total": st.column_config.NumberColumn(f"total {cur}")})
+    with st.expander("Breakdown by phase (indexer / extractor / topics)",
+                      expanded=False):
+        phase_totals: dict = {}
+        for r in _all_papers():
+            for ph, p in summarize_tokens(r["id"])["per_phase"].items():
+                s = phase_totals.setdefault(
+                    ph, {"turns": 0, "in": 0, "cached": 0, "out": 0})
+                s["turns"] += p["turns"]
+                s["in"] += p["input"]
+                s["cached"] += p["cache_read"]
+                s["out"] += p["output"]
+        if not phase_totals:
+            st.caption("No phases recorded yet.")
+        else:
+            phase_rows = []
+            for ph, s in sorted(phase_totals.items()):
+                fresh = s["in"] - s["cached"]
+                phase_rows.append({
+                    "phase": ph,
+                    "turns": s["turns"],
+                    "fresh": fresh,
+                    "cached": s["cached"],
+                    "output": s["out"],
+                    "cost": round((fresh / 1e6 * pricing["input_per_mtok"]
+                                    + s["cached"] / 1e6 * pricing["cache_read_per_mtok"]
+                                    + s["out"] / 1e6 * pricing["output_per_mtok"]) * rate, 4),
+                })
+            st.dataframe(phase_rows, width="stretch", hide_index=True,
+                         column_order=["phase", "turns", "fresh", "cached",
+                                       "output", "cost"],
+                         column_config={"cost": st.column_config.NumberColumn(
+                             f"cost {cur}")})
     for r in _all_papers():
         if r["error"]:
             st.warning(f"#{r['id']}: {r['error']}")
@@ -969,7 +1094,295 @@ def _admin_statistics() -> None:
                 st.rerun()
 
 
+def _untagged_queue() -> list:
+    """Questions with zero topic rows (the Needs-topics queue)."""
+    conn = database.get_connection()
+    try:
+        return conn.execute(
+            "SELECT q.paper_id, q.question_number, q.qtype, q.difficulty,"
+            " q.topic_suggestion FROM questions q"
+            " LEFT JOIN question_topics t ON t.question_id = q.id"
+            " WHERE t.question_id IS NULL"
+            " ORDER BY q.paper_id, q.id").fetchall()
+    finally:
+        conn.close()
+
+
+def stage_needs_topics() -> None:
+    st.header("🏷️ Needs topics")
+    queue = _untagged_queue()
+    conn = database.get_connection()
+    try:
+        total = conn.execute("SELECT COUNT(*) AS c FROM questions").fetchone()["c"]
+    finally:
+        conn.close()
+    st.caption(f"{total - len(queue)} of {total} questions tagged.")
+    if not queue:
+        st.success("Fully tagged — nothing left in the queue.")
+        return
+    pids = sorted({r["paper_id"] for r in queue})
+    pick = st.selectbox("Paper", ["All"] + [f"#{p}" for p in pids], key="nt_paper")
+    items = [r for r in queue
+             if pick == "All" or r["paper_id"] == int(pick[1:])]
+    if not items:
+        st.info("Nothing untagged under this filter.")
+        return
+    idx_key = f"nt_idx_{pick}"
+    idx = min(st.session_state.get(idx_key, 0), len(items) - 1)
+    cur = items[idx]
+    pid, qn = cur["paper_id"], cur["question_number"]
+    n1, n2, n3 = st.columns([1, 3, 1])
+    with n1:
+        if st.button("← Prev", key=f"nt_prev_{pick}",
+                      disabled=(idx == 0), width="stretch"):
+            st.session_state[idx_key] = idx - 1
+            st.rerun()
+    with n2:
+        st.subheader(f"Paper #{pid} · Question {qn}")
+        st.caption(f"{idx + 1} of {len(items)} here")
+    with n3:
+        if st.button("Next →", key=f"nt_next_{pick}",
+                      disabled=(idx == len(items) - 1), width="stretch"):
+            st.session_state[idx_key] = idx + 1
+            st.rerun()
+    if cur["topic_suggestion"]:
+        st.info(f"Agent suggestion: {cur['topic_suggestion']}")
+    qdir = directory_manager.get_question_dir(pid, qn)
+    with st.container():
+        qtex = (qdir / "question.tex").read_text(encoding="utf-8") \
+            if (qdir / "question.tex").is_file() else "*missing*"
+        _render_tex_block(qtex, qdir, f"nt_{pid}_{qn}_q", "question",
+                          allow_render=False)
+    with st.expander("Solution (for tagging context)", expanded=False):
+        stex = (qdir / "solution.tex").read_text(encoding="utf-8") \
+            if (qdir / "solution.tex").is_file() else "*missing*"
+        _render_tex_block(stex, qdir, f"nt_{pid}_{qn}_s", "solution",
+                          allow_render=False)
+    _classification_form(pid, qn, cur["qtype"] or "unknown")
+
+
+def _all_topics() -> list:
+    """All topic rows in seed order (413 rows, one query)."""
+    conn = database.get_connection()
+    try:
+        return conn.execute(
+            "SELECT code, parent, level, name, descr, rev FROM topics "
+            "ORDER BY rowid").fetchall()
+    finally:
+        conn.close()
+
+
+def stage_tree() -> None:
+    if not is_admin():
+        st.header("🌳 Topic tree")
+        st.warning("This area needs admin mode — use the 🔒 Admin button at the top right.")
+        return
+    st.header("🌳 Topic tree")
+    rows = _all_topics()
+    if not rows:
+        st.info("Tree is empty — seed it with database.init_topics().")
+        return
+    by_code = {r["code"]: r for r in rows}
+    kids: dict = {}
+    for r in rows:
+        kids.setdefault(r["parent"], []).append(r["code"])
+    def _label(code: str) -> str:
+        r = by_code[code]
+        n = len(kids.get(code, []))
+        suffix = f" ({n})" if n and r["level"] != "subtopic" else ""
+        return f"{code} · {r['name']}{suffix}"
+
+    st.caption("Drill in and out. Only one level is shown at a time. "
+               "Saves are revision-guarded: concurrent edits fail loudly.")
+    query = st.text_input("Search (code, name, or description)",
+                          placeholder="e.g. doppler, PH24, rolling…", key="tree_q")
+    if query and query.strip():
+        q = query.strip().lower()
+        hits = [r["code"] for r in rows
+                if q in r["code"].lower() or q in (r["name"] or "").lower()
+                or q in (r["descr"] or "").lower()][:30]
+        if not hits:
+            st.info("No matches.")
+        else:
+            pick = st.selectbox("Matches", hits, format_func=_label, key="tree_hit")
+            if st.button("Open", key="tree_open"):
+                anc, _c = [], pick
+                while _c is not None and _c in by_code:
+                    anc.append(_c)
+                    _c = by_code[_c]["parent"]
+                st.session_state["tree_path"] = list(reversed(anc))
+                st.rerun()
+    mods = [r["code"] for r in rows if r["level"] == "module"]
+    # Drill-down path: [] = modules, [M1] = its chapters, ...
+    path = list(st.session_state.get("tree_path", []))
+    _valid, _parent = [], None
+    for _c in path:
+        _n = by_code.get(_c)
+        if _n is None or _n["parent"] != _parent:
+            _valid = []
+            break
+        _valid.append(_c)
+        _parent = _c
+    path = _valid
+    st.caption(" › ".join(["All modules"]
+                           + [f"{c} · {by_code[c]['name']}" for c in path]))
+    if path and st.button("← Back", key="tree_back"):
+        st.session_state["tree_path"] = path[:-1]
+        st.rerun()
+
+    def _del_button(code: str) -> None:
+        if st.button("🗑", key=f"tree_rowdel_{code}"):
+            try:
+                database.delete_topic(code)
+                st.toast(f"Deleted {code}")
+                st.session_state["tree_path"] = [
+                    c for c in st.session_state.get("tree_path", [])
+                    if c != code]
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+
+    if not path:
+        # ROOT: modules only, with add.
+        st.subheader(f"Modules ({len(mods)})")
+        for mod in mods:
+            r1, r2, r3 = st.columns([10, 1, 1])
+            r1.caption(f"{mod} · {by_code[mod]['name']} "
+                       f"({len(kids.get(mod, []))} chapters)")
+            if r2.button("Open →", key=f"tree_in_{mod}"):
+                st.session_state["tree_path"] = [mod]
+                st.rerun()
+            with r3:
+                _del_button(mod)
+        a1, a2 = st.columns([9, 3])
+        mn = a1.text_input("New module name", key="tree_add_mod_n",
+                           placeholder="Type new module name…")
+        if a2.button("＋ Add", key="tree_add_mod"):
+            try:
+                code = database.add_module(mn)
+                st.toast(f"Added {code}")
+                st.session_state["tree_path"] = [code]
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+        return
+
+    focus = path[-1]
+    node = by_code[focus]
+    if node is not None:
+        st.divider()
+        h1, h2, h3 = st.columns([9, 2, 1])
+        h1.subheader(f"{node['code']} · {node['name']}")
+        h1.caption(f"{node['level']} · rev {node['rev']}")
+        if node["level"] == "subtopic" and node["descr"]:
+            h1.caption(node["descr"])
+        if h2.button("← Up", key=f"tree_up_{focus}"):
+            st.session_state["tree_path"] = path[:-1]
+            st.rerun()
+        with h3:
+            _del_button(focus)
+        with st.form(key=f"tree_edit_{focus}"):
+            new_name = st.text_input("Name", value=node["name"])
+            # Description exists only on subtopics (agent's guide).
+            new_descr = st.text_area("Description (classifying guide)",
+                                     value=node["descr"] or "") \
+                if node["level"] == "subtopic" else ""
+            saved = st.form_submit_button("Save")
+        if saved:
+            try:
+                new_rev = database.update_topic(
+                    focus, new_name, new_descr, int(node["rev"]))
+                st.toast(f"Saved {focus} (rev {new_rev})")
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+        # Drill-down: children as selectable rows + inline add, same
+        # shape at module / chapter / week level.
+        child_level = {"module": "chapter", "chapter": "week",
+                       "week": "subtopic"}.get(node["level"])
+        st.divider()
+        if child_level is None:
+            st.caption("Subtopics have no children.")
+        else:
+            st.subheader(f"{child_level.title()}s "
+                         f"({len(kids.get(focus, []))})")
+            for ch in kids.get(focus, []):
+                r1, r2, r3 = st.columns([9, 2, 1])
+                extra = ""
+                if child_level != "subtopic":
+                    extra = f" ({len(kids.get(ch, []))})"
+                r1.caption(f"{ch} · {by_code[ch]['name']}{extra}")
+                if r2.button("Open →", key=f"tree_drill_{focus}_{ch}"):
+                    st.session_state["tree_path"] = path + [ch]
+                    st.rerun()
+                with r3:
+                    _del_button(ch)
+            a1, a2 = st.columns([9, 3])
+            cn = a1.text_input(f"New {child_level} name",
+                               key=f"tree_add_n_{focus}",
+                               placeholder=f"Type new {child_level} name…")
+            cd = st.text_area("Description (optional)",
+                              key=f"tree_add_d_{focus}") \
+                if child_level == "subtopic" else ""
+            if a2.button(f"＋ Add", key=f"tree_add_{focus}"):
+                try:
+                    code = database.add_topic(focus, child_level, cn, cd)
+                    st.toast(f"Added {code}")
+                    st.session_state["tree_path"] = path + [code]
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        # Move this level elsewhere (codes never change, so existing
+        # question tags keep working; rename is always safe too).
+        st.divider()
+        st.subheader("Move this level")
+        if node["level"] == "subtopic":
+            chap = focus.split(".")[0]
+            dests = [x for x in rows
+                     if x["level"] == "week" and x["code"].startswith(chap + "-")
+                     and x["code"] != node["parent"]]
+            dest = st.selectbox("New parent week", [d["code"] for d in dests],
+                                format_func=_label, key=f"tree_mv_{focus}") \
+                if dests else None
+            if dest and st.button("Move", key=f"tree_mvgo_{focus}"):
+                try:
+                    database.move_topic(focus, dest)
+                    st.toast(f"Moved to {dest}")
+                    st.session_state["tree_path"] = path[:-1] + [dest, focus]
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        elif node["level"] == "chapter":
+            dest = st.selectbox("New parent module", mods,
+                                format_func=_label, key=f"tree_mv_{focus}")
+            if st.button("Move", key=f"tree_mvgo_{focus}"):
+                try:
+                    database.move_topic(focus, dest)
+                    st.toast(f"Moved to {dest}")
+                    st.session_state["tree_path"] = [dest, focus]
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        else:
+            st.caption("Weeks stay in their chapter; modules can't move.")
+        _tconn = database.get_connection()
+        try:
+            nlinks = _tconn.execute(
+                "SELECT COUNT(*) AS c FROM question_topics WHERE topic_code = ?",
+                (focus,)).fetchone()["c"]
+        finally:
+            _tconn.close()
+        st.caption(f"Used by {nlinks} question tag(s), "
+                   f"{len(kids.get(focus, []))} children. "
+                   "Delete is the 🗑 on its row (refused while tags "
+                   "or children exist — retag/move them first).")
+
+
 if page == "🛠 Admin":
     stage_admin()
+elif page == "🏷️ Needs topics":
+    stage_needs_topics()
+elif page == "🌳 Topic tree":
+    stage_tree()
 else:
     stage_library()

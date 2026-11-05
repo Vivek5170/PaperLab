@@ -105,8 +105,13 @@ def summarize_tokens(paper_id: int) -> dict:
     return {"per_phase": phases, "total": total, "cost_usd": cost}
 
 
-def run_pipeline(paper_id: int, force: bool = False) -> dict:
+def run_pipeline(paper_id: int, force: bool = False,
+                 classify_topics: bool = True) -> dict:
     """Run indexer then extractor for a registered paper.
+
+    On success Node 3 auto-tags the fresh questions (text-only,
+    fail-open: a topics failure never fails the paper). Pass
+    classify_topics=False (--no-topics) to skip it.
 
     Returns {"paper_id", "status", "summary", "elapsed_sec"}.
     Raises ValueError if the paper is unknown or already done (without force).
@@ -194,6 +199,32 @@ def run_pipeline(paper_id: int, force: bool = False) -> dict:
             status = "done"
             # Lifecycle: finished papers rest in data/archive/.
             relocate_managed_files(paper_id, directory_manager.ARCHIVE_DIR)
+            if classify_topics:
+                # Node 3: auto-tag fresh questions (no human picks yet).
+                # Fail-open by design -- a topics error never fails the paper;
+                # legacy papers are tagged separately via run_topics.py.
+                try:
+                    from run_topics import (PACE_SEC, build_topic_list,
+                                            classify_question, targets)
+
+                    todo = targets(paper_id)
+                    if todo:
+                        lines = [f"Topic {n} — {p}"
+                                 for n, p in build_topic_list()]
+                        last_call = 0.0
+                        for p, q in todo:
+                            gap = PACE_SEC - (time.time() - last_call)
+                            if gap > 0:
+                                time.sleep(gap)
+                            try:
+                                classify_question(p, q, lines)
+                            except Exception as exc:
+                                print(f"topics: [{p}/{q}] skipped: "
+                                      f"{type(exc).__name__}: {exc}")
+                            last_call = time.time()
+                        print(f"topics: classified {len(todo)} question(s)")
+                except Exception as exc:
+                    print(f"topics phase skipped: {type(exc).__name__}: {exc}")
         return {
             "paper_id": paper_id,
             "status": status,
@@ -210,10 +241,11 @@ def run_pipeline(paper_id: int, force: bool = False) -> dict:
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     force = "--force" in args
-    args = [a for a in args if a != "--force"]
+    no_topics = "--no-topics" in args
+    args = [a for a in args if a not in ("--force", "--no-topics")]
     if not (1 <= len(args) <= 2):
         print(f"Usage: {sys.argv[0] if argv is None else 'run_pipeline.py'} "
-              "<question_pdf> [<solution_pdf>] [--force]")
+              "<question_pdf> [<solution_pdf>] [--force] [--no-topics]")
         return 1
     question_pdf, solution_pdf = args[0], (args[1] if len(args) == 2 else None)
 
@@ -231,7 +263,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        result = run_pipeline(paper_id, force=force)
+        result = run_pipeline(paper_id, force=force,
+                              classify_topics=not no_topics)
     except ValueError as exc:
         print(exc)
         return 1

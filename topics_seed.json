@@ -1,0 +1,2896 @@
+{
+ "generated_from": "EJEE_Physics_Tagging_Codes.pdf",
+ "nodes": [
+  {
+   "code": "M1",
+   "parent": null,
+   "level": "module",
+   "name": "MECHANICS",
+   "descr": ""
+  },
+  {
+   "code": "PH01",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Vectors",
+   "descr": ""
+  },
+  {
+   "code": "PH01-W1",
+   "parent": "PH01",
+   "level": "week",
+   "name": "VECTOR BASICS, ADDITION & RESOLUTION",
+   "descr": ""
+  },
+  {
+   "code": "PH01.01",
+   "parent": "PH01-W1",
+   "level": "subtopic",
+   "name": "Scalars & vectors: types of vectors, representation, unit vectors",
+   "descr": "Scalars & vectors: types of vectors, representation, unit vectors"
+  },
+  {
+   "code": "PH01.02",
+   "parent": "PH01-W1",
+   "level": "subtopic",
+   "name": "Addition & subtraction: triangle, parallelogram & polygon laws, resultant",
+   "descr": "Addition & subtraction: triangle, parallelogram & polygon laws, resultant"
+  },
+  {
+   "code": "PH01.03",
+   "parent": "PH01-W1",
+   "level": "subtopic",
+   "name": "Resolution of vectors: rectangular components in 2D & 3D, direction cosines",
+   "descr": "Resolution of vectors: rectangular components in 2D & 3D, direction cosines"
+  },
+  {
+   "code": "PH01-W2",
+   "parent": "PH01",
+   "level": "week",
+   "name": "PRODUCTS OF VECTORS & CALCULUS FOR PHYSICS",
+   "descr": ""
+  },
+  {
+   "code": "PH01.04",
+   "parent": "PH01-W2",
+   "level": "subtopic",
+   "name": "Scalar (dot) product: angle between vectors, projection",
+   "descr": "Scalar (dot) product: angle between vectors, projection"
+  },
+  {
+   "code": "PH01.05",
+   "parent": "PH01-W2",
+   "level": "subtopic",
+   "name": "Vector (cross) product: area of triangle & parallelogram, right-hand rule",
+   "descr": "Vector (cross) product: area of triangle & parallelogram, right-hand rule"
+  },
+  {
+   "code": "PH01.06",
+   "parent": "PH01-W2",
+   "level": "subtopic",
+   "name": "Scalar & vector triple products, coplanarity",
+   "descr": "Scalar & vector triple products, coplanarity"
+  },
+  {
+   "code": "PH01.07",
+   "parent": "PH01-W2",
+   "level": "subtopic",
+   "name": "Basic calculus for physics: differentiation, integration, maxima & minima, graphs",
+   "descr": "Basic calculus for physics: differentiation, integration, maxima & minima, graphs"
+  },
+  {
+   "code": "PH02",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Kinematics 1D",
+   "descr": ""
+  },
+  {
+   "code": "PH02-W1",
+   "parent": "PH02",
+   "level": "week",
+   "name": "MOTION IN A STRAIGHT LINE",
+   "descr": ""
+  },
+  {
+   "code": "PH02.01",
+   "parent": "PH02-W1",
+   "level": "subtopic",
+   "name": "Distance & displacement, average speed & velocity, motion with constant velocity",
+   "descr": "Distance & displacement, average speed & velocity, motion with constant velocity"
+  },
+  {
+   "code": "PH02.02",
+   "parent": "PH02-W1",
+   "level": "subtopic",
+   "name": "1D motion with constant acceleration, sequential accelerating & decelerating motion, graphs",
+   "descr": "1D motion with constant acceleration, sequential accelerating & decelerating motion, graphs"
+  },
+  {
+   "code": "PH02.03",
+   "parent": "PH02-W1",
+   "level": "subtopic",
+   "name": "Vertical motion: freely falling & vertically projected bodies, graphs",
+   "descr": "Vertical motion: freely falling & vertically projected bodies, graphs"
+  },
+  {
+   "code": "PH02.04",
+   "parent": "PH02-W1",
+   "level": "subtopic",
+   "name": "Variable acceleration: 1D motion with variable acceleration, graphs",
+   "descr": "Variable acceleration: 1D motion with variable acceleration, graphs"
+  },
+  {
+   "code": "PH02.05",
+   "parent": "PH02-W1",
+   "level": "subtopic",
+   "name": "Relative motion (1D): chasing, overtaking conditions, graphs",
+   "descr": "Relative motion (1D): chasing, overtaking conditions, graphs"
+  },
+  {
+   "code": "PH03",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Kinematics 2D",
+   "descr": ""
+  },
+  {
+   "code": "PH03-W1",
+   "parent": "PH03",
+   "level": "week",
+   "name": "MOTION IN A PLANE & PROJECTILES",
+   "descr": ""
+  },
+  {
+   "code": "PH03.01",
+   "parent": "PH03-W1",
+   "level": "subtopic",
+   "name": "Motion in a plane: 2D acceleration & trajectory equations",
+   "descr": "Motion in a plane: 2D acceleration & trajectory equations"
+  },
+  {
+   "code": "PH03.02",
+   "parent": "PH03-W1",
+   "level": "subtopic",
+   "name": "Projectile motion: oblique projectile from ground, from a height, from a moving frame; 3D projectiles",
+   "descr": "Projectile motion: oblique projectile from ground, from a height, from a moving frame; 3D projectiles"
+  },
+  {
+   "code": "PH03.03",
+   "parent": "PH03-W1",
+   "level": "subtopic",
+   "name": "Projectile motion on an inclined plane",
+   "descr": "Projectile motion on an inclined plane"
+  },
+  {
+   "code": "PH03-W2",
+   "parent": "PH03",
+   "level": "week",
+   "name": "RELATIVE MOTION IN 2D",
+   "descr": ""
+  },
+  {
+   "code": "PH03.04",
+   "parent": "PH03-W2",
+   "level": "subtopic",
+   "name": "Relative motion (2D): closest approach, collision conditions, aiming & changing, graphs",
+   "descr": "Relative motion (2D): closest approach, collision conditions, aiming & changing, graphs"
+  },
+  {
+   "code": "PH03.05",
+   "parent": "PH03-W2",
+   "level": "subtopic",
+   "name": "Relative velocity applications: river-boat, wind-aeroplane, rain-man problems",
+   "descr": "Relative velocity applications: river-boat, wind-aeroplane, rain-man problems"
+  },
+  {
+   "code": "PH04",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Newton's Laws of Motion",
+   "descr": ""
+  },
+  {
+   "code": "PH04-W1",
+   "parent": "PH04",
+   "level": "week",
+   "name": "LAWS OF MOTION & FREE BODY DIAGRAMS",
+   "descr": ""
+  },
+  {
+   "code": "PH04.01",
+   "parent": "PH04-W1",
+   "level": "subtopic",
+   "name": "Newton's laws: F_inst, F_avg, F_thrust, impulse, F-t graph",
+   "descr": "Newton's laws: F_inst, F_avg, F_thrust, impulse, F-t graph"
+  },
+  {
+   "code": "PH04.02",
+   "parent": "PH04-W1",
+   "level": "subtopic",
+   "name": "Motion under constant & variable forces",
+   "descr": "Motion under constant & variable forces"
+  },
+  {
+   "code": "PH04.03",
+   "parent": "PH04-W1",
+   "level": "subtopic",
+   "name": "Contact & non-contact forces: free body diagrams, equilibrium of bodies",
+   "descr": "Contact & non-contact forces: free body diagrams, equilibrium of bodies"
+  },
+  {
+   "code": "PH04-W2",
+   "parent": "PH04",
+   "level": "week",
+   "name": "CONSTRAINTS, CONNECTED SYSTEMS & PSEUDO FORCE",
+   "descr": ""
+  },
+  {
+   "code": "PH04.04",
+   "parent": "PH04-W2",
+   "level": "subtopic",
+   "name": "Constraints (rope, wedge, geometrical): relations among v and a",
+   "descr": "Constraints (rope, wedge, geometrical): relations among v and a"
+  },
+  {
+   "code": "PH04.05",
+   "parent": "PH04-W2",
+   "level": "subtopic",
+   "name": "Dynamics of systems: connected bodies, contact bodies, connected & contact bodies",
+   "descr": "Dynamics of systems: connected bodies, contact bodies, connected & contact bodies"
+  },
+  {
+   "code": "PH04.06",
+   "parent": "PH04-W2",
+   "level": "subtopic",
+   "name": "Inertial & non-inertial frames: pseudo force",
+   "descr": "Inertial & non-inertial frames: pseudo force"
+  },
+  {
+   "code": "PH04.07",
+   "parent": "PH04-W2",
+   "level": "subtopic",
+   "name": "Springs",
+   "descr": "Springs"
+  },
+  {
+   "code": "PH05",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Friction",
+   "descr": ""
+  },
+  {
+   "code": "PH05-W1",
+   "parent": "PH05",
+   "level": "week",
+   "name": "LAWS OF FRICTION & SINGLE-BODY MOTION",
+   "descr": ""
+  },
+  {
+   "code": "PH05.01",
+   "parent": "PH05-W1",
+   "level": "subtopic",
+   "name": "Static, limiting & kinetic friction, angle of friction, net contact force",
+   "descr": "Static, limiting & kinetic friction, angle of friction, net contact force"
+  },
+  {
+   "code": "PH05.02",
+   "parent": "PH05-W1",
+   "level": "subtopic",
+   "name": "Motion on a rough horizontal surface: pulling, pushing, projecting",
+   "descr": "Motion on a rough horizontal surface: pulling, pushing, projecting"
+  },
+  {
+   "code": "PH05.03",
+   "parent": "PH05-W1",
+   "level": "subtopic",
+   "name": "Motion on a rough inclined plane",
+   "descr": "Motion on a rough inclined plane"
+  },
+  {
+   "code": "PH05-W2",
+   "parent": "PH05",
+   "level": "week",
+   "name": "FRICTION IN MULTI-BODY SYSTEMS",
+   "descr": ""
+  },
+  {
+   "code": "PH05.04",
+   "parent": "PH05-W2",
+   "level": "subtopic",
+   "name": "Relative motion between rough contacts: block on block(s), truck, belt, rough incline",
+   "descr": "Relative motion between rough contacts: block on block(s), truck, belt, rough incline"
+  },
+  {
+   "code": "PH05.05",
+   "parent": "PH05-W2",
+   "level": "subtopic",
+   "name": "Block(s) against a rough vertical surface",
+   "descr": "Block(s) against a rough vertical surface"
+  },
+  {
+   "code": "PH05.06",
+   "parent": "PH05-W2",
+   "level": "subtopic",
+   "name": "Equilibrium of connected & contact bodies",
+   "descr": "Equilibrium of connected & contact bodies"
+  },
+  {
+   "code": "PH05.07",
+   "parent": "PH05-W2",
+   "level": "subtopic",
+   "name": "Constrained motion involving friction",
+   "descr": "Constrained motion involving friction"
+  },
+  {
+   "code": "PH06",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Horizontal Circular Motion",
+   "descr": ""
+  },
+  {
+   "code": "PH06-W1",
+   "parent": "PH06",
+   "level": "week",
+   "name": "UNIFORM & NON-UNIFORM CIRCULAR MOTION",
+   "descr": ""
+  },
+  {
+   "code": "PH06.01",
+   "parent": "PH06-W1",
+   "level": "subtopic",
+   "name": "Kinematics of uniform circular motion",
+   "descr": "Kinematics of uniform circular motion"
+  },
+  {
+   "code": "PH06.02",
+   "parent": "PH06-W1",
+   "level": "subtopic",
+   "name": "Dynamics of uniform circular motion: centripetal force from T, N, f, spring, electric, gravitational & magnetic forces",
+   "descr": "Dynamics of uniform circular motion: centripetal force from T, N, f, spring, electric, gravitational & magnetic forces"
+  },
+  {
+   "code": "PH06.03",
+   "parent": "PH06-W1",
+   "level": "subtopic",
+   "name": "Kinematics of non-uniform circular motion",
+   "descr": "Kinematics of non-uniform circular motion"
+  },
+  {
+   "code": "PH06.04",
+   "parent": "PH06-W1",
+   "level": "subtopic",
+   "name": "Dynamics of non-uniform circular motion",
+   "descr": "Dynamics of non-uniform circular motion"
+  },
+  {
+   "code": "PH06.05",
+   "parent": "PH06-W1",
+   "level": "subtopic",
+   "name": "Rotating frame of reference: centrifugal & Coriolis force",
+   "descr": "Rotating frame of reference: centrifugal & Coriolis force"
+  },
+  {
+   "code": "PH07",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Work Power Energy",
+   "descr": ""
+  },
+  {
+   "code": "PH07-W1",
+   "parent": "PH07",
+   "level": "week",
+   "name": "WORK & ENERGY THEOREMS",
+   "descr": ""
+  },
+  {
+   "code": "PH07.01",
+   "parent": "PH07-W1",
+   "level": "subtopic",
+   "name": "Work done by constant forces: contact (T, N, f, spring) & non-contact (electric, gravity, magnetic)",
+   "descr": "Work done by constant forces: contact (T, N, f, spring) & non-contact (electric, gravity, magnetic)"
+  },
+  {
+   "code": "PH07.02",
+   "parent": "PH07-W1",
+   "level": "subtopic",
+   "name": "Work done by variable forces, F-s graphs",
+   "descr": "Work done by variable forces, F-s graphs"
+  },
+  {
+   "code": "PH07.03",
+   "parent": "PH07-W1",
+   "level": "subtopic",
+   "name": "Conservative & non-conservative forces, PE, KE & ME",
+   "descr": "Conservative & non-conservative forces, PE, KE & ME"
+  },
+  {
+   "code": "PH07.04",
+   "parent": "PH07-W1",
+   "level": "subtopic",
+   "name": "Work-energy theorem & law of conservation of energy: applications",
+   "descr": "Work-energy theorem & law of conservation of energy: applications"
+  },
+  {
+   "code": "PH07-W2",
+   "parent": "PH07",
+   "level": "week",
+   "name": "EQUILIBRIUM, POWER & VERTICAL CIRCULAR MOTION",
+   "descr": ""
+  },
+  {
+   "code": "PH07.05",
+   "parent": "PH07-W2",
+   "level": "subtopic",
+   "name": "Types of equilibrium: stable, unstable, neutral & conditions",
+   "descr": "Types of equilibrium: stable, unstable, neutral & conditions"
+  },
+  {
+   "code": "PH07.06",
+   "parent": "PH07-W2",
+   "level": "subtopic",
+   "name": "Power, related graphs",
+   "descr": "Power, related graphs"
+  },
+  {
+   "code": "PH07.07",
+   "parent": "PH07-W2",
+   "level": "subtopic",
+   "name": "Vertical circular motion",
+   "descr": "Vertical circular motion"
+  },
+  {
+   "code": "PH08",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Centre of Mass",
+   "descr": ""
+  },
+  {
+   "code": "PH08-W1",
+   "parent": "PH08",
+   "level": "week",
+   "name": "CENTRE OF MASS & ITS MOTION",
+   "descr": ""
+  },
+  {
+   "code": "PH08.01",
+   "parent": "PH08-W1",
+   "level": "subtopic",
+   "name": "Centre of mass of a system of discrete particles",
+   "descr": "Centre of mass of a system of discrete particles"
+  },
+  {
+   "code": "PH08.02",
+   "parent": "PH08-W1",
+   "level": "subtopic",
+   "name": "Centre of mass of continuous bodies: rod, arc, lamina, semicircular ring & disc, hemisphere, cone",
+   "descr": "Centre of mass of continuous bodies: rod, arc, lamina, semicircular ring & disc, hemisphere, cone"
+  },
+  {
+   "code": "PH08.03",
+   "parent": "PH08-W1",
+   "level": "subtopic",
+   "name": "Centre of mass of composite bodies & bodies with cavities",
+   "descr": "Centre of mass of composite bodies & bodies with cavities"
+  },
+  {
+   "code": "PH08.04",
+   "parent": "PH08-W1",
+   "level": "subtopic",
+   "name": "Motion of COM: velocity & acceleration of COM, Newton's second law for a system",
+   "descr": "Motion of COM: velocity & acceleration of COM, Newton's second law for a system"
+  },
+  {
+   "code": "PH08.05",
+   "parent": "PH08-W1",
+   "level": "subtopic",
+   "name": "Shift of COM, effect of internal forces on motion of COM",
+   "descr": "Shift of COM, effect of internal forces on motion of COM"
+  },
+  {
+   "code": "PH09",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Conservation of Linear Momentum",
+   "descr": ""
+  },
+  {
+   "code": "PH09-W1",
+   "parent": "PH09",
+   "level": "week",
+   "name": "LINEAR MOMENTUM & ITS CONSERVATION",
+   "descr": ""
+  },
+  {
+   "code": "PH09.01",
+   "parent": "PH09-W1",
+   "level": "subtopic",
+   "name": "Linear momentum, impulse & impulse-momentum theorem",
+   "descr": "Linear momentum, impulse & impulse-momentum theorem"
+  },
+  {
+   "code": "PH09.02",
+   "parent": "PH09-W1",
+   "level": "subtopic",
+   "name": "Conservation of linear momentum: explosions, recoil, man on plank or boat",
+   "descr": "Conservation of linear momentum: explosions, recoil, man on plank or boat"
+  },
+  {
+   "code": "PH09.03",
+   "parent": "PH09-W1",
+   "level": "subtopic",
+   "name": "Interacting systems: spring-block & wedge-block systems, COM frame",
+   "descr": "Interacting systems: spring-block & wedge-block systems, COM frame"
+  },
+  {
+   "code": "PH09.04",
+   "parent": "PH09-W1",
+   "level": "subtopic",
+   "name": "Variable mass systems: rocket propulsion, falling chain, conveyor belt",
+   "descr": "Variable mass systems: rocket propulsion, falling chain, conveyor belt"
+  },
+  {
+   "code": "PH10",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Collisions",
+   "descr": ""
+  },
+  {
+   "code": "PH10-W1",
+   "parent": "PH10",
+   "level": "week",
+   "name": "COLLISIONS & COEFFICIENT OF RESTITUTION",
+   "descr": ""
+  },
+  {
+   "code": "PH10.01",
+   "parent": "PH10-W1",
+   "level": "subtopic",
+   "name": "Types of collisions: elastic, inelastic, perfectly inelastic, coefficient of restitution",
+   "descr": "Types of collisions: elastic, inelastic, perfectly inelastic, coefficient of restitution"
+  },
+  {
+   "code": "PH10.02",
+   "parent": "PH10-W1",
+   "level": "subtopic",
+   "name": "Head-on (1D) collisions: final velocities, loss of kinetic energy",
+   "descr": "Head-on (1D) collisions: final velocities, loss of kinetic energy"
+  },
+  {
+   "code": "PH10.03",
+   "parent": "PH10-W1",
+   "level": "subtopic",
+   "name": "Oblique (2D) collisions: collision of spheres, collision with a wall or surface",
+   "descr": "Oblique (2D) collisions: collision of spheres, collision with a wall or surface"
+  },
+  {
+   "code": "PH10.04",
+   "parent": "PH10-W1",
+   "level": "subtopic",
+   "name": "Multiple & successive collisions, bouncing ball",
+   "descr": "Multiple & successive collisions, bouncing ball"
+  },
+  {
+   "code": "PH10.05",
+   "parent": "PH10-W1",
+   "level": "subtopic",
+   "name": "Collisions involving springs & strings, collisions in the COM frame",
+   "descr": "Collisions involving springs & strings, collisions in the COM frame"
+  },
+  {
+   "code": "PH11",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Rotatory Motion",
+   "descr": ""
+  },
+  {
+   "code": "PH11-W1",
+   "parent": "PH11",
+   "level": "week",
+   "name": "RIGID BODY KINEMATICS, TORQUE & MOMENT OF INERTIA",
+   "descr": ""
+  },
+  {
+   "code": "PH11.01",
+   "parent": "PH11-W1",
+   "level": "subtopic",
+   "name": "Rigid body properties & constraint, measuring ω and α",
+   "descr": "Rigid body properties & constraint, measuring ω and α"
+  },
+  {
+   "code": "PH11.02",
+   "parent": "PH11-W1",
+   "level": "subtopic",
+   "name": "Kinematics of rigid body (α = 0, α = const, α variable)",
+   "descr": "Kinematics of rigid body (α = 0, α = const, α variable)"
+  },
+  {
+   "code": "PH11.03",
+   "parent": "PH11-W1",
+   "level": "subtopic",
+   "name": "Torque about a point & an axis, equilibrium of rigid bodies, toppling",
+   "descr": "Torque about a point & an axis, equilibrium of rigid bodies, toppling"
+  },
+  {
+   "code": "PH11.04",
+   "parent": "PH11-W1",
+   "level": "subtopic",
+   "name": "Moment of inertia, rotational KE",
+   "descr": "Moment of inertia, rotational KE"
+  },
+  {
+   "code": "PH11.05",
+   "parent": "PH11-W1",
+   "level": "subtopic",
+   "name": "τ = Iα: pure rotation (centroidal & non-centroidal axes)",
+   "descr": "τ = Iα: pure rotation (centroidal & non-centroidal axes)"
+  },
+  {
+   "code": "PH11-W2",
+   "parent": "PH11",
+   "level": "week",
+   "name": "COMBINED MOTION & ROLLING",
+   "descr": ""
+  },
+  {
+   "code": "PH11.06",
+   "parent": "PH11-W2",
+   "level": "subtopic",
+   "name": "Systems with translating & rotating objects (pulleys + blocks)",
+   "descr": "Systems with translating & rotating objects (pulleys + blocks)"
+  },
+  {
+   "code": "PH11.07",
+   "parent": "PH11-W2",
+   "level": "subtopic",
+   "name": "Combined translation + rotation, instantaneous centre/axis of rotation",
+   "descr": "Combined translation + rotation, instantaneous centre/axis of rotation"
+  },
+  {
+   "code": "PH11.08",
+   "parent": "PH11-W2",
+   "level": "subtopic",
+   "name": "Pure rolling: s, v, a & radius of curvature of a point, KE of rolling, rolling as pure rotation",
+   "descr": "Pure rolling: s, v, a & radius of curvature of a point, KE of rolling, rolling as pure rotation"
+  },
+  {
+   "code": "PH11.09",
+   "parent": "PH11-W2",
+   "level": "subtopic",
+   "name": "Rolling on a rough horizontal surface",
+   "descr": "Rolling on a rough horizontal surface"
+  },
+  {
+   "code": "PH11.10",
+   "parent": "PH11-W2",
+   "level": "subtopic",
+   "name": "Rolling on rough inclined & curved surfaces",
+   "descr": "Rolling on rough inclined & curved surfaces"
+  },
+  {
+   "code": "PH11.11",
+   "parent": "PH11-W2",
+   "level": "subtopic",
+   "name": "Dynamics of rigid bodies with rope, wedge & rolling constraints",
+   "descr": "Dynamics of rigid bodies with rope, wedge & rolling constraints"
+  },
+  {
+   "code": "PH11-W3",
+   "parent": "PH11",
+   "level": "week",
+   "name": "ENERGY, ANGULAR MOMENTUM & COLLISIONS",
+   "descr": ""
+  },
+  {
+   "code": "PH11.12",
+   "parent": "PH11-W3",
+   "level": "subtopic",
+   "name": "Work done by torque, work-energy theorem, energy conservation",
+   "descr": "Work done by torque, work-energy theorem, energy conservation"
+  },
+  {
+   "code": "PH11.13",
+   "parent": "PH11-W3",
+   "level": "subtopic",
+   "name": "Angular momentum: LCAM, LCM + LCAM, LCAM + LCE applications",
+   "descr": "Angular momentum: LCAM, LCM + LCAM, LCAM + LCE applications"
+  },
+  {
+   "code": "PH11.14",
+   "parent": "PH11-W3",
+   "level": "subtopic",
+   "name": "Angular impulse, collisions: particle-rigid body, surface-rigid body, rigid body-rigid body",
+   "descr": "Angular impulse, collisions: particle-rigid body, surface-rigid body, rigid body-rigid body"
+  },
+  {
+   "code": "PH11.15",
+   "parent": "PH11-W3",
+   "level": "subtopic",
+   "name": "Gyroscopic motion, miscellaneous",
+   "descr": "Gyroscopic motion, miscellaneous"
+  },
+  {
+   "code": "PH12",
+   "parent": "M1",
+   "level": "chapter",
+   "name": "Gravitation",
+   "descr": ""
+  },
+  {
+   "code": "PH12-W1",
+   "parent": "PH12",
+   "level": "week",
+   "name": "GRAVITATIONAL FIELD & POTENTIAL",
+   "descr": ""
+  },
+  {
+   "code": "PH12.01",
+   "parent": "PH12-W1",
+   "level": "subtopic",
+   "name": "Newton's law of gravitation (scalar & vector form)",
+   "descr": "Newton's law of gravitation (scalar & vector form)"
+  },
+  {
+   "code": "PH12.02",
+   "parent": "PH12-W1",
+   "level": "subtopic",
+   "name": "Gravitational field intensity: point masses & distributed mass",
+   "descr": "Gravitational field intensity: point masses & distributed mass"
+  },
+  {
+   "code": "PH12.03",
+   "parent": "PH12-W1",
+   "level": "subtopic",
+   "name": "Gravitational PE & potential: point masses & extended masses",
+   "descr": "Gravitational PE & potential: point masses & extended masses"
+  },
+  {
+   "code": "PH12.04",
+   "parent": "PH12-W1",
+   "level": "subtopic",
+   "name": "Relation between intensity & potential, equipotential surfaces",
+   "descr": "Relation between intensity & potential, equipotential surfaces"
+  },
+  {
+   "code": "PH12-W2",
+   "parent": "PH12",
+   "level": "week",
+   "name": "VARIATION OF G, ENERGY & SATELLITES",
+   "descr": ""
+  },
+  {
+   "code": "PH12.05",
+   "parent": "PH12-W2",
+   "level": "subtopic",
+   "name": "Acceleration due to gravity & variation of g",
+   "descr": "Acceleration due to gravity & variation of g"
+  },
+  {
+   "code": "PH12.06",
+   "parent": "PH12-W2",
+   "level": "subtopic",
+   "name": "Self-energy, gravitational pressure",
+   "descr": "Self-energy, gravitational pressure"
+  },
+  {
+   "code": "PH12.07",
+   "parent": "PH12-W2",
+   "level": "subtopic",
+   "name": "Work done by gravity, LCE, LCM & LCAM in long-range projectiles",
+   "descr": "Work done by gravity, LCE, LCM & LCAM in long-range projectiles"
+  },
+  {
+   "code": "PH12.08",
+   "parent": "PH12-W2",
+   "level": "subtopic",
+   "name": "Orbital velocity & satellite motion",
+   "descr": "Orbital velocity & satellite motion"
+  },
+  {
+   "code": "PH12.09",
+   "parent": "PH12-W2",
+   "level": "subtopic",
+   "name": "Kepler's laws of planetary motion",
+   "descr": "Kepler's laws of planetary motion"
+  },
+  {
+   "code": "M2",
+   "parent": null,
+   "level": "module",
+   "name": "ELECTRICITY AND MAGNETISM",
+   "descr": ""
+  },
+  {
+   "code": "PH13",
+   "parent": "M2",
+   "level": "chapter",
+   "name": "Electrostatics",
+   "descr": ""
+  },
+  {
+   "code": "PH13-W1",
+   "parent": "PH13",
+   "level": "week",
+   "name": "CHARGE, COULOMB'S LAW & ELECTRIC FIELD",
+   "descr": ""
+  },
+  {
+   "code": "PH13.01",
+   "parent": "PH13-W1",
+   "level": "subtopic",
+   "name": "Charge and its properties, methods of charging",
+   "descr": "Charge and its properties, methods of charging"
+  },
+  {
+   "code": "PH13.02",
+   "parent": "PH13-W1",
+   "level": "subtopic",
+   "name": "Coulomb's law (scalar & vector form), force in dielectric medium",
+   "descr": "Coulomb's law (scalar & vector form), force in dielectric medium"
+  },
+  {
+   "code": "PH13.03",
+   "parent": "PH13-W1",
+   "level": "subtopic",
+   "name": "Superposition: force due to multiple point & distributed charges",
+   "descr": "Superposition: force due to multiple point & distributed charges"
+  },
+  {
+   "code": "PH13.04",
+   "parent": "PH13-W1",
+   "level": "subtopic",
+   "name": "Equilibrium of charges, nature of equilibrium, charge oscillations",
+   "descr": "Equilibrium of charges, nature of equilibrium, charge oscillations"
+  },
+  {
+   "code": "PH13.05",
+   "parent": "PH13-W1",
+   "level": "subtopic",
+   "name": "Electric field, field lines, motion of charge in uniform & non-uniform E.F",
+   "descr": "Electric field, field lines, motion of charge in uniform & non-uniform E.F"
+  },
+  {
+   "code": "PH13.06",
+   "parent": "PH13-W1",
+   "level": "subtopic",
+   "name": "E due to distributed charges",
+   "descr": "E due to distributed charges"
+  },
+  {
+   "code": "PH13-W2",
+   "parent": "PH13",
+   "level": "week",
+   "name": "POTENTIAL, ENERGY & DIPOLE",
+   "descr": ""
+  },
+  {
+   "code": "PH13.07",
+   "parent": "PH13-W2",
+   "level": "subtopic",
+   "name": "Electrostatic potential energy, P.E of system of charges",
+   "descr": "Electrostatic potential energy, P.E of system of charges"
+  },
+  {
+   "code": "PH13.08",
+   "parent": "PH13-W2",
+   "level": "subtopic",
+   "name": "Electric potential: system of charges & distributed charges",
+   "descr": "Electric potential: system of charges & distributed charges"
+  },
+  {
+   "code": "PH13.09",
+   "parent": "PH13-W2",
+   "level": "subtopic",
+   "name": "Relation between E and V",
+   "descr": "Relation between E and V"
+  },
+  {
+   "code": "PH13.10",
+   "parent": "PH13-W2",
+   "level": "subtopic",
+   "name": "Work-energy and conservation laws applications",
+   "descr": "Work-energy and conservation laws applications"
+  },
+  {
+   "code": "PH13.11",
+   "parent": "PH13-W2",
+   "level": "subtopic",
+   "name": "Equipotential surfaces",
+   "descr": "Equipotential surfaces"
+  },
+  {
+   "code": "PH13.12",
+   "parent": "PH13-W2",
+   "level": "subtopic",
+   "name": "Electric dipole",
+   "descr": "Electric dipole"
+  },
+  {
+   "code": "PH13-W3",
+   "parent": "PH13",
+   "level": "week",
+   "name": "GAUSS'S LAW, CONDUCTORS & ELECTROSTATIC ENERGY",
+   "descr": ""
+  },
+  {
+   "code": "PH13.13",
+   "parent": "PH13-W3",
+   "level": "subtopic",
+   "name": "Electric flux",
+   "descr": "Electric flux"
+  },
+  {
+   "code": "PH13.14",
+   "parent": "PH13-W3",
+   "level": "subtopic",
+   "name": "Gauss's law and its applications",
+   "descr": "Gauss's law and its applications"
+  },
+  {
+   "code": "PH13.15",
+   "parent": "PH13-W3",
+   "level": "subtopic",
+   "name": "Electrostatic induction, conductors & dielectrics in external field",
+   "descr": "Electrostatic induction, conductors & dielectrics in external field"
+  },
+  {
+   "code": "PH13.16",
+   "parent": "PH13-W3",
+   "level": "subtopic",
+   "name": "System of parallel charged plates, concentric charged shells",
+   "descr": "System of parallel charged plates, concentric charged shells"
+  },
+  {
+   "code": "PH13.17",
+   "parent": "PH13-W3",
+   "level": "subtopic",
+   "name": "Earthing and short-circuiting the conductor(s)",
+   "descr": "Earthing and short-circuiting the conductor(s)"
+  },
+  {
+   "code": "PH13.18",
+   "parent": "PH13-W3",
+   "level": "subtopic",
+   "name": "Electrostatic pressure, field energy density, self energy and total energy",
+   "descr": "Electrostatic pressure, field energy density, self energy and total energy"
+  },
+  {
+   "code": "PH14",
+   "parent": "M2",
+   "level": "chapter",
+   "name": "Current Electricity",
+   "descr": ""
+  },
+  {
+   "code": "PH14-W1",
+   "parent": "PH14",
+   "level": "week",
+   "name": "CURRENT, RESISTANCE & KIRCHHOFF'S LAWS",
+   "descr": ""
+  },
+  {
+   "code": "PH14.01",
+   "parent": "PH14-W1",
+   "level": "subtopic",
+   "name": "Electric current: instantaneous & average current, i-t graphs, drift velocity",
+   "descr": "Electric current: instantaneous & average current, i-t graphs, drift velocity"
+  },
+  {
+   "code": "PH14.02",
+   "parent": "PH14-W1",
+   "level": "subtopic",
+   "name": "Ohm's law: ohmic & non-ohmic elements, current density, microscopic form, relaxation time, mobility, resistivity, temperature dependence",
+   "descr": "Ohm's law: ohmic & non-ohmic elements, current density, microscopic form, relaxation time, mobility, resistivity, temperature dependence"
+  },
+  {
+   "code": "PH14.03",
+   "parent": "PH14-W1",
+   "level": "subtopic",
+   "name": "Electrical resistance: uniform & non-uniform conductors",
+   "descr": "Electrical resistance: uniform & non-uniform conductors"
+  },
+  {
+   "code": "PH14.04",
+   "parent": "PH14-W1",
+   "level": "subtopic",
+   "name": "Kirchhoff's laws: series & parallel resistors, simple circuits",
+   "descr": "Kirchhoff's laws: series & parallel resistors, simple circuits"
+  },
+  {
+   "code": "PH14.05",
+   "parent": "PH14-W1",
+   "level": "subtopic",
+   "name": "Equivalent resistance: series-parallel reduction, symmetry, bridge, star-delta",
+   "descr": "Equivalent resistance: series-parallel reduction, symmetry, bridge, star-delta"
+  },
+  {
+   "code": "PH14-W2",
+   "parent": "PH14",
+   "level": "week",
+   "name": "COMPLEX CIRCUITS, CELLS & INSTRUMENTS",
+   "descr": ""
+  },
+  {
+   "code": "PH14.06",
+   "parent": "PH14-W2",
+   "level": "subtopic",
+   "name": "Complex circuits: nodal method, Thevenin & Norton, superposition, symmetry & reverse symmetry",
+   "descr": "Complex circuits: nodal method, Thevenin & Norton, superposition, symmetry & reverse symmetry"
+  },
+  {
+   "code": "PH14.07",
+   "parent": "PH14-W2",
+   "level": "subtopic",
+   "name": "Electrical energy: Joule's heating, power dissipation, maximum power theorem",
+   "descr": "Electrical energy: Joule's heating, power dissipation, maximum power theorem"
+  },
+  {
+   "code": "PH14.08",
+   "parent": "PH14-W2",
+   "level": "subtopic",
+   "name": "Cells: EMF, internal resistance, terminal voltage, series/parallel/mixed grouping",
+   "descr": "Cells: EMF, internal resistance, terminal voltage, series/parallel/mixed grouping"
+  },
+  {
+   "code": "PH14.09",
+   "parent": "PH14-W2",
+   "level": "subtopic",
+   "name": "Instruments: meter bridge, potentiometer, post office box",
+   "descr": "Instruments: meter bridge, potentiometer, post office box"
+  },
+  {
+   "code": "PH15",
+   "parent": "M2",
+   "level": "chapter",
+   "name": "Capacitors",
+   "descr": ""
+  },
+  {
+   "code": "PH15-W1",
+   "parent": "PH15",
+   "level": "week",
+   "name": "CAPACITANCE & COMBINATIONS",
+   "descr": ""
+  },
+  {
+   "code": "PH15.01",
+   "parent": "PH15-W1",
+   "level": "subtopic",
+   "name": "Capacitance: concept, capacitance of an isolated spherical conductor",
+   "descr": "Capacitance: concept, capacitance of an isolated spherical conductor"
+  },
+  {
+   "code": "PH15.02",
+   "parent": "PH15-W1",
+   "level": "subtopic",
+   "name": "Parallel plate, spherical & cylindrical capacitors",
+   "descr": "Parallel plate, spherical & cylindrical capacitors"
+  },
+  {
+   "code": "PH15.03",
+   "parent": "PH15-W1",
+   "level": "subtopic",
+   "name": "Combination of capacitors: series, parallel, mixed, bridge & symmetry",
+   "descr": "Combination of capacitors: series, parallel, mixed, bridge & symmetry"
+  },
+  {
+   "code": "PH15.04",
+   "parent": "PH15-W1",
+   "level": "subtopic",
+   "name": "Capacitor circuits: charge distribution, Kirchhoff's laws, node potential method",
+   "descr": "Capacitor circuits: charge distribution, Kirchhoff's laws, node potential method"
+  },
+  {
+   "code": "PH15-W2",
+   "parent": "PH15",
+   "level": "week",
+   "name": "DIELECTRICS, ENERGY & FORCE",
+   "descr": ""
+  },
+  {
+   "code": "PH15.05",
+   "parent": "PH15-W2",
+   "level": "subtopic",
+   "name": "Dielectrics: polarization, dielectric constant, partial & multiple dielectric slabs",
+   "descr": "Dielectrics: polarization, dielectric constant, partial & multiple dielectric slabs"
+  },
+  {
+   "code": "PH15.06",
+   "parent": "PH15-W2",
+   "level": "subtopic",
+   "name": "Energy stored, energy density, heat loss on redistribution of charge",
+   "descr": "Energy stored, energy density, heat loss on redistribution of charge"
+  },
+  {
+   "code": "PH15.07",
+   "parent": "PH15-W2",
+   "level": "subtopic",
+   "name": "Force between plates, work done in inserting a dielectric or moving plates",
+   "descr": "Force between plates, work done in inserting a dielectric or moving plates"
+  },
+  {
+   "code": "PH15.08",
+   "parent": "PH15-W2",
+   "level": "subtopic",
+   "name": "Sharing of charges, capacitor with battery connected & disconnected",
+   "descr": "Sharing of charges, capacitor with battery connected & disconnected"
+  },
+  {
+   "code": "PH16",
+   "parent": "M2",
+   "level": "chapter",
+   "name": "RC Circuits",
+   "descr": ""
+  },
+  {
+   "code": "PH16-W1",
+   "parent": "PH16",
+   "level": "week",
+   "name": "RC CIRCUITS",
+   "descr": ""
+  },
+  {
+   "code": "PH16.01",
+   "parent": "PH16-W1",
+   "level": "subtopic",
+   "name": "Initial & steady-state circuits",
+   "descr": "Initial & steady-state circuits"
+  },
+  {
+   "code": "PH16.02",
+   "parent": "PH16-W1",
+   "level": "subtopic",
+   "name": "Growth & decay circuits",
+   "descr": "Growth & decay circuits"
+  },
+  {
+   "code": "PH16.03",
+   "parent": "PH16-W1",
+   "level": "subtopic",
+   "name": "Complex circuits, finding effective time constant",
+   "descr": "Complex circuits, finding effective time constant"
+  },
+  {
+   "code": "PH17",
+   "parent": "M2",
+   "level": "chapter",
+   "name": "Moving Charges and Magnetism",
+   "descr": ""
+  },
+  {
+   "code": "PH17-W1",
+   "parent": "PH17",
+   "level": "week",
+   "name": "MAGNETIC FORCE ON CHARGES & CURRENTS",
+   "descr": ""
+  },
+  {
+   "code": "PH17.01",
+   "parent": "PH17-W1",
+   "level": "subtopic",
+   "name": "Magnetic force on a moving charge: Lorentz force & its properties",
+   "descr": "Magnetic force on a moving charge: Lorentz force & its properties"
+  },
+  {
+   "code": "PH17.02",
+   "parent": "PH17-W1",
+   "level": "subtopic",
+   "name": "Motion of a charge in uniform B: circular & helical paths, pitch",
+   "descr": "Motion of a charge in uniform B: circular & helical paths, pitch"
+  },
+  {
+   "code": "PH17.03",
+   "parent": "PH17-W1",
+   "level": "subtopic",
+   "name": "Motion in combined E & B fields: velocity selector, cyclotron, crossed fields",
+   "descr": "Motion in combined E & B fields: velocity selector, cyclotron, crossed fields"
+  },
+  {
+   "code": "PH17.04",
+   "parent": "PH17-W1",
+   "level": "subtopic",
+   "name": "Magnetic force on current-carrying conductors, force between parallel currents",
+   "descr": "Magnetic force on current-carrying conductors, force between parallel currents"
+  },
+  {
+   "code": "PH17.05",
+   "parent": "PH17-W1",
+   "level": "subtopic",
+   "name": "Current loop in uniform B: magnetic moment, torque, potential energy",
+   "descr": "Current loop in uniform B: magnetic moment, torque, potential energy"
+  },
+  {
+   "code": "PH17.06",
+   "parent": "PH17-W1",
+   "level": "subtopic",
+   "name": "Moving coil galvanometer, conversion into ammeter & voltmeter",
+   "descr": "Moving coil galvanometer, conversion into ammeter & voltmeter"
+  },
+  {
+   "code": "PH18",
+   "parent": "M2",
+   "level": "chapter",
+   "name": "Magnetic Effects of Current",
+   "descr": ""
+  },
+  {
+   "code": "PH18-W1",
+   "parent": "PH18",
+   "level": "week",
+   "name": "BIOT-SAVART LAW",
+   "descr": ""
+  },
+  {
+   "code": "PH18.01",
+   "parent": "PH18-W1",
+   "level": "subtopic",
+   "name": "Biot-Savart law: field due to a current element",
+   "descr": "Biot-Savart law: field due to a current element"
+  },
+  {
+   "code": "PH18.02",
+   "parent": "PH18-W1",
+   "level": "subtopic",
+   "name": "Field due to straight wires (finite & infinite), arcs, circular loop (centre & axis)",
+   "descr": "Field due to straight wires (finite & infinite), arcs, circular loop (centre & axis)"
+  },
+  {
+   "code": "PH18.03",
+   "parent": "PH18-W1",
+   "level": "subtopic",
+   "name": "Field due to combinations of wires & loops",
+   "descr": "Field due to combinations of wires & loops"
+  },
+  {
+   "code": "PH18-W2",
+   "parent": "PH18",
+   "level": "week",
+   "name": "AMPÈRE'S LAW & APPLICATIONS",
+   "descr": ""
+  },
+  {
+   "code": "PH18.04",
+   "parent": "PH18-W2",
+   "level": "subtopic",
+   "name": "Ampère's circuital law: long wire, cylinder, solenoid, toroid",
+   "descr": "Ampère's circuital law: long wire, cylinder, solenoid, toroid"
+  },
+  {
+   "code": "PH18.05",
+   "parent": "PH18-W2",
+   "level": "subtopic",
+   "name": "Field due to current sheets & slabs, cavity problems",
+   "descr": "Field due to current sheets & slabs, cavity problems"
+  },
+  {
+   "code": "PH18.06",
+   "parent": "PH18-W2",
+   "level": "subtopic",
+   "name": "Magnetic moment of current loops & rotating charged bodies",
+   "descr": "Magnetic moment of current loops & rotating charged bodies"
+  },
+  {
+   "code": "PH19",
+   "parent": "M2",
+   "level": "chapter",
+   "name": "Electromagnetic Induction",
+   "descr": ""
+  },
+  {
+   "code": "PH19-W1",
+   "parent": "PH19",
+   "level": "week",
+   "name": "FARADAY'S LAW & MOTIONAL EMF",
+   "descr": ""
+  },
+  {
+   "code": "PH19.01",
+   "parent": "PH19-W1",
+   "level": "subtopic",
+   "name": "Magnetic flux, Faraday's law, Lenz's law",
+   "descr": "Magnetic flux, Faraday's law, Lenz's law"
+  },
+  {
+   "code": "PH19.02",
+   "parent": "PH19-W1",
+   "level": "subtopic",
+   "name": "Motional EMF: rod, loop, rotating rod & disc in B",
+   "descr": "Motional EMF: rod, loop, rotating rod & disc in B"
+  },
+  {
+   "code": "PH19.03",
+   "parent": "PH19-W1",
+   "level": "subtopic",
+   "name": "Motional EMF in circuits: forces, energy, terminal velocity",
+   "descr": "Motional EMF in circuits: forces, energy, terminal velocity"
+  },
+  {
+   "code": "PH19.04",
+   "parent": "PH19-W1",
+   "level": "subtopic",
+   "name": "Induced electric field due to time-varying B, eddy currents",
+   "descr": "Induced electric field due to time-varying B, eddy currents"
+  },
+  {
+   "code": "PH19-W2",
+   "parent": "PH19",
+   "level": "week",
+   "name": "INDUCTANCE, LR & LC CIRCUITS",
+   "descr": ""
+  },
+  {
+   "code": "PH19.05",
+   "parent": "PH19-W2",
+   "level": "subtopic",
+   "name": "Self-inductance: solenoid, energy stored in an inductor, magnetic energy density",
+   "descr": "Self-inductance: solenoid, energy stored in an inductor, magnetic energy density"
+  },
+  {
+   "code": "PH19.06",
+   "parent": "PH19-W2",
+   "level": "subtopic",
+   "name": "Mutual inductance, coupled coils",
+   "descr": "Mutual inductance, coupled coils"
+  },
+  {
+   "code": "PH19.07",
+   "parent": "PH19-W2",
+   "level": "subtopic",
+   "name": "LR circuits: growth & decay of current, time constant",
+   "descr": "LR circuits: growth & decay of current, time constant"
+  },
+  {
+   "code": "PH19.08",
+   "parent": "PH19-W2",
+   "level": "subtopic",
+   "name": "LC oscillations",
+   "descr": "LC oscillations"
+  },
+  {
+   "code": "PH20",
+   "parent": "M2",
+   "level": "chapter",
+   "name": "A.C (Alternating Current)",
+   "descr": ""
+  },
+  {
+   "code": "PH20-W1",
+   "parent": "PH20",
+   "level": "week",
+   "name": "AC FUNDAMENTALS & CIRCUITS",
+   "descr": ""
+  },
+  {
+   "code": "PH20.01",
+   "parent": "PH20-W1",
+   "level": "subtopic",
+   "name": "AC quantities: peak, average & RMS values, phasors",
+   "descr": "AC quantities: peak, average & RMS values, phasors"
+  },
+  {
+   "code": "PH20.02",
+   "parent": "PH20-W1",
+   "level": "subtopic",
+   "name": "Purely resistive, inductive & capacitive circuits: reactance, phase relations",
+   "descr": "Purely resistive, inductive & capacitive circuits: reactance, phase relations"
+  },
+  {
+   "code": "PH20.03",
+   "parent": "PH20-W1",
+   "level": "subtopic",
+   "name": "Series LR, RC & LCR circuits: impedance, phase angle",
+   "descr": "Series LR, RC & LCR circuits: impedance, phase angle"
+  },
+  {
+   "code": "PH20.04",
+   "parent": "PH20-W1",
+   "level": "subtopic",
+   "name": "Resonance: series resonance, Q-factor, bandwidth, parallel resonance",
+   "descr": "Resonance: series resonance, Q-factor, bandwidth, parallel resonance"
+  },
+  {
+   "code": "PH20.05",
+   "parent": "PH20-W1",
+   "level": "subtopic",
+   "name": "Power in AC circuits: average power, power factor, wattless current",
+   "descr": "Power in AC circuits: average power, power factor, wattless current"
+  },
+  {
+   "code": "PH20.06",
+   "parent": "PH20-W1",
+   "level": "subtopic",
+   "name": "Transformer & AC generator",
+   "descr": "Transformer & AC generator"
+  },
+  {
+   "code": "PH21",
+   "parent": "M2",
+   "level": "chapter",
+   "name": "Magnetism and Matter",
+   "descr": ""
+  },
+  {
+   "code": "PH21-W1",
+   "parent": "PH21",
+   "level": "week",
+   "name": "BAR MAGNET AS A MAGNETIC DIPOLE",
+   "descr": ""
+  },
+  {
+   "code": "PH21.01",
+   "parent": "PH21-W1",
+   "level": "subtopic",
+   "name": "Magnetic moment, net magnetic moment",
+   "descr": "Magnetic moment, net magnetic moment"
+  },
+  {
+   "code": "PH21.02",
+   "parent": "PH21-W1",
+   "level": "subtopic",
+   "name": "Magnetic field of a bar magnet: axial line, equatorial line, general point",
+   "descr": "Magnetic field of a bar magnet: axial line, equatorial line, general point"
+  },
+  {
+   "code": "PH21.03",
+   "parent": "PH21-W1",
+   "level": "subtopic",
+   "name": "Bar magnet in uniform & non-uniform fields: torque & potential energy",
+   "descr": "Bar magnet in uniform & non-uniform fields: torque & potential energy"
+  },
+  {
+   "code": "PH21.04",
+   "parent": "PH21-W1",
+   "level": "subtopic",
+   "name": "Tangent law & Earth's field, oscillation of a bar magnet, vibration magnetometer",
+   "descr": "Tangent law & Earth's field, oscillation of a bar magnet, vibration magnetometer"
+  },
+  {
+   "code": "PH21.05",
+   "parent": "PH21-W1",
+   "level": "subtopic",
+   "name": "Dipole-dipole interaction",
+   "descr": "Dipole-dipole interaction"
+  },
+  {
+   "code": "PH21-W2",
+   "parent": "PH21",
+   "level": "week",
+   "name": "FIELD LINES, EARTH'S MAGNETISM & MAGNETIC MATERIALS",
+   "descr": ""
+  },
+  {
+   "code": "PH21.06",
+   "parent": "PH21-W2",
+   "level": "subtopic",
+   "name": "Magnetic field lines & flux, null points, Gauss law for magnetism",
+   "descr": "Magnetic field lines & flux, null points, Gauss law for magnetism"
+  },
+  {
+   "code": "PH21.07",
+   "parent": "PH21-W2",
+   "level": "subtopic",
+   "name": "Earth's magnetism: magnetic elements, declination, inclination",
+   "descr": "Earth's magnetism: magnetic elements, declination, inclination"
+  },
+  {
+   "code": "PH21.08",
+   "parent": "PH21-W2",
+   "level": "subtopic",
+   "name": "Magnetic materials: magnetisation, susceptibility, Curie law, hysteresis",
+   "descr": "Magnetic materials: magnetisation, susceptibility, Curie law, hysteresis"
+  },
+  {
+   "code": "PH22",
+   "parent": "M2",
+   "level": "chapter",
+   "name": "Electromagnetic Waves",
+   "descr": ""
+  },
+  {
+   "code": "PH22-W1",
+   "parent": "PH22",
+   "level": "week",
+   "name": "MAXWELL'S EQUATIONS & EM WAVES",
+   "descr": ""
+  },
+  {
+   "code": "PH22.01",
+   "parent": "PH22-W1",
+   "level": "subtopic",
+   "name": "Displacement current & Maxwell's equations",
+   "descr": "Displacement current & Maxwell's equations"
+  },
+  {
+   "code": "PH22.02",
+   "parent": "PH22-W1",
+   "level": "subtopic",
+   "name": "Nature of EM waves: transverse nature, speed in vacuum & media, E0/B0 = c",
+   "descr": "Nature of EM waves: transverse nature, speed in vacuum & media, E0/B0 = c"
+  },
+  {
+   "code": "PH22.03",
+   "parent": "PH22-W1",
+   "level": "subtopic",
+   "name": "EM wave equations for E and B",
+   "descr": "EM wave equations for E and B"
+  },
+  {
+   "code": "PH22.04",
+   "parent": "PH22-W1",
+   "level": "subtopic",
+   "name": "Energy & momentum: energy density, Poynting vector, intensity",
+   "descr": "Energy & momentum: energy density, Poynting vector, intensity"
+  },
+  {
+   "code": "PH22.05",
+   "parent": "PH22-W1",
+   "level": "subtopic",
+   "name": "Electromagnetic spectrum: classification, ranges, properties & applications",
+   "descr": "Electromagnetic spectrum: classification, ranges, properties & applications"
+  },
+  {
+   "code": "M3",
+   "parent": null,
+   "level": "module",
+   "name": "OSCILLATTIONS - WAVES AND THERMODYNAMICS",
+   "descr": ""
+  },
+  {
+   "code": "PH23",
+   "parent": "M3",
+   "level": "chapter",
+   "name": "SHM",
+   "descr": ""
+  },
+  {
+   "code": "PH23-W1",
+   "parent": "PH23",
+   "level": "week",
+   "name": "FUNDAMENTALS OF SHM",
+   "descr": ""
+  },
+  {
+   "code": "PH23.01",
+   "parent": "PH23-W1",
+   "level": "subtopic",
+   "name": "Condition for SHM: differential & standard equation, identifying SHM",
+   "descr": "Condition for SHM: differential & standard equation, identifying SHM"
+  },
+  {
+   "code": "PH23.02",
+   "parent": "PH23-W1",
+   "level": "subtopic",
+   "name": "Kinematics of simple harmonic oscillators",
+   "descr": "Kinematics of simple harmonic oscillators"
+  },
+  {
+   "code": "PH23.03",
+   "parent": "PH23-W1",
+   "level": "subtopic",
+   "name": "Reference circle & phasor applications",
+   "descr": "Reference circle & phasor applications"
+  },
+  {
+   "code": "PH23.04",
+   "parent": "PH23-W1",
+   "level": "subtopic",
+   "name": "Energy of a simple harmonic oscillator",
+   "descr": "Energy of a simple harmonic oscillator"
+  },
+  {
+   "code": "PH23.05",
+   "parent": "PH23-W1",
+   "level": "subtopic",
+   "name": "Graphs: y, v, a vs t, KE & PE",
+   "descr": "Graphs: y, v, a vs t, KE & PE"
+  },
+  {
+   "code": "PH23-W2",
+   "parent": "PH23",
+   "level": "week",
+   "name": "SIMPLE HARMONIC OSCILLATORS",
+   "descr": ""
+  },
+  {
+   "code": "PH23.06",
+   "parent": "PH23-W2",
+   "level": "subtopic",
+   "name": "Spring-mass system",
+   "descr": "Spring-mass system"
+  },
+  {
+   "code": "PH23.07",
+   "parent": "PH23-W2",
+   "level": "subtopic",
+   "name": "Simple pendulum",
+   "descr": "Simple pendulum"
+  },
+  {
+   "code": "PH23.08",
+   "parent": "PH23-W2",
+   "level": "subtopic",
+   "name": "Angular SHM",
+   "descr": "Angular SHM"
+  },
+  {
+   "code": "PH23.09",
+   "parent": "PH23-W2",
+   "level": "subtopic",
+   "name": "Physical pendulum (rigid body oscillations)",
+   "descr": "Physical pendulum (rigid body oscillations)"
+  },
+  {
+   "code": "PH23.10",
+   "parent": "PH23-W2",
+   "level": "subtopic",
+   "name": "Various types of simple harmonic oscillators",
+   "descr": "Various types of simple harmonic oscillators"
+  },
+  {
+   "code": "PH23-W3",
+   "parent": "PH23",
+   "level": "week",
+   "name": "ENERGY METHODS, COMBINED SHM & DAMPING",
+   "descr": ""
+  },
+  {
+   "code": "PH23.11",
+   "parent": "PH23-W3",
+   "level": "subtopic",
+   "name": "Energy conservation method for time period",
+   "descr": "Energy conservation method for time period"
+  },
+  {
+   "code": "PH23.12",
+   "parent": "PH23-W3",
+   "level": "subtopic",
+   "name": "Constrained & combined SHM, two-body oscillations",
+   "descr": "Constrained & combined SHM, two-body oscillations"
+  },
+  {
+   "code": "PH23.13",
+   "parent": "PH23-W3",
+   "level": "subtopic",
+   "name": "Superposition of SHMs",
+   "descr": "Superposition of SHMs"
+  },
+  {
+   "code": "PH23.14",
+   "parent": "PH23-W3",
+   "level": "subtopic",
+   "name": "Damped & forced oscillations",
+   "descr": "Damped & forced oscillations"
+  },
+  {
+   "code": "PH24",
+   "parent": "M3",
+   "level": "chapter",
+   "name": "Wave Motion (incl. Sound)",
+   "descr": ""
+  },
+  {
+   "code": "PH24-W1",
+   "parent": "PH24",
+   "level": "week",
+   "name": "WAVE FUNDAMENTALS & WAVES ON STRINGS",
+   "descr": ""
+  },
+  {
+   "code": "PH24.01",
+   "parent": "PH24-W1",
+   "level": "subtopic",
+   "name": "Wave motion: types, wave equation y(x, t), phase, particle velocity & acceleration",
+   "descr": "Wave motion: types, wave equation y(x, t), phase, particle velocity & acceleration"
+  },
+  {
+   "code": "PH24.02",
+   "parent": "PH24-W1",
+   "level": "subtopic",
+   "name": "Speed of transverse waves on a string, energy, power & intensity",
+   "descr": "Speed of transverse waves on a string, energy, power & intensity"
+  },
+  {
+   "code": "PH24.03",
+   "parent": "PH24-W1",
+   "level": "subtopic",
+   "name": "Superposition & interference, reflection & transmission at boundaries",
+   "descr": "Superposition & interference, reflection & transmission at boundaries"
+  },
+  {
+   "code": "PH24.04",
+   "parent": "PH24-W1",
+   "level": "subtopic",
+   "name": "Standing waves: strings fixed at one & both ends, harmonics, sonometer",
+   "descr": "Standing waves: strings fixed at one & both ends, harmonics, sonometer"
+  },
+  {
+   "code": "PH24-W2",
+   "parent": "PH24",
+   "level": "week",
+   "name": "SOUND WAVES",
+   "descr": ""
+  },
+  {
+   "code": "PH24.05",
+   "parent": "PH24-W2",
+   "level": "subtopic",
+   "name": "Sound waves: pressure & displacement waves, speed of sound, intensity, decibels",
+   "descr": "Sound waves: pressure & displacement waves, speed of sound, intensity, decibels"
+  },
+  {
+   "code": "PH24.06",
+   "parent": "PH24-W2",
+   "level": "subtopic",
+   "name": "Organ pipes: open & closed pipes, end correction, resonance tube",
+   "descr": "Organ pipes: open & closed pipes, end correction, resonance tube"
+  },
+  {
+   "code": "PH24.07",
+   "parent": "PH24-W2",
+   "level": "subtopic",
+   "name": "Beats",
+   "descr": "Beats"
+  },
+  {
+   "code": "PH24.08",
+   "parent": "PH24-W2",
+   "level": "subtopic",
+   "name": "Doppler effect: moving source & observer, reflection, moving medium",
+   "descr": "Doppler effect: moving source & observer, reflection, moving medium"
+  },
+  {
+   "code": "PH25",
+   "parent": "M3",
+   "level": "chapter",
+   "name": "Thermal Expansion",
+   "descr": ""
+  },
+  {
+   "code": "PH25-W1",
+   "parent": "PH25",
+   "level": "week",
+   "name": "THERMOMETRY & THERMAL EXPANSION",
+   "descr": ""
+  },
+  {
+   "code": "PH25.01",
+   "parent": "PH25-W1",
+   "level": "subtopic",
+   "name": "Temperature & thermometry: temperature scales, thermometers",
+   "descr": "Temperature & thermometry: temperature scales, thermometers"
+  },
+  {
+   "code": "PH25.02",
+   "parent": "PH25-W1",
+   "level": "subtopic",
+   "name": "Linear, areal & volume expansion, relation between α, β & γ",
+   "descr": "Linear, areal & volume expansion, relation between α, β & γ"
+  },
+  {
+   "code": "PH25.03",
+   "parent": "PH25-W1",
+   "level": "subtopic",
+   "name": "Applications: bimetallic strip, pendulum clocks, measurement errors in scales",
+   "descr": "Applications: bimetallic strip, pendulum clocks, measurement errors in scales"
+  },
+  {
+   "code": "PH25.04",
+   "parent": "PH25-W1",
+   "level": "subtopic",
+   "name": "Thermal stress & strain",
+   "descr": "Thermal stress & strain"
+  },
+  {
+   "code": "PH25.05",
+   "parent": "PH25-W1",
+   "level": "subtopic",
+   "name": "Expansion of liquids: real & apparent expansion, anomalous expansion of water",
+   "descr": "Expansion of liquids: real & apparent expansion, anomalous expansion of water"
+  },
+  {
+   "code": "PH26",
+   "parent": "M3",
+   "level": "chapter",
+   "name": "KTG and Calorimetry",
+   "descr": ""
+  },
+  {
+   "code": "PH26-W1",
+   "parent": "PH26",
+   "level": "week",
+   "name": "KINETIC THEORY OF GASES",
+   "descr": ""
+  },
+  {
+   "code": "PH26.01",
+   "parent": "PH26-W1",
+   "level": "subtopic",
+   "name": "Ideal gas equation, gas laws, mixture of gases",
+   "descr": "Ideal gas equation, gas laws, mixture of gases"
+  },
+  {
+   "code": "PH26.02",
+   "parent": "PH26-W1",
+   "level": "subtopic",
+   "name": "Kinetic theory: pressure of a gas, kinetic interpretation of temperature",
+   "descr": "Kinetic theory: pressure of a gas, kinetic interpretation of temperature"
+  },
+  {
+   "code": "PH26.03",
+   "parent": "PH26-W1",
+   "level": "subtopic",
+   "name": "Molecular speeds: rms, average & most probable, Maxwell distribution",
+   "descr": "Molecular speeds: rms, average & most probable, Maxwell distribution"
+  },
+  {
+   "code": "PH26.04",
+   "parent": "PH26-W1",
+   "level": "subtopic",
+   "name": "Degrees of freedom, law of equipartition of energy, specific heats of gases",
+   "descr": "Degrees of freedom, law of equipartition of energy, specific heats of gases"
+  },
+  {
+   "code": "PH26.05",
+   "parent": "PH26-W1",
+   "level": "subtopic",
+   "name": "Mean free path, real gases (van der Waals equation)",
+   "descr": "Mean free path, real gases (van der Waals equation)"
+  },
+  {
+   "code": "PH26-W2",
+   "parent": "PH26",
+   "level": "week",
+   "name": "CALORIMETRY",
+   "descr": ""
+  },
+  {
+   "code": "PH26.06",
+   "parent": "PH26-W2",
+   "level": "subtopic",
+   "name": "Specific heat, heat capacity, water equivalent",
+   "descr": "Specific heat, heat capacity, water equivalent"
+  },
+  {
+   "code": "PH26.07",
+   "parent": "PH26-W2",
+   "level": "subtopic",
+   "name": "Latent heat, phase changes, heating curves",
+   "descr": "Latent heat, phase changes, heating curves"
+  },
+  {
+   "code": "PH26.08",
+   "parent": "PH26-W2",
+   "level": "subtopic",
+   "name": "Principle of calorimetry: mixtures with & without phase change",
+   "descr": "Principle of calorimetry: mixtures with & without phase change"
+  },
+  {
+   "code": "PH27",
+   "parent": "M3",
+   "level": "chapter",
+   "name": "Thermodynamics",
+   "descr": ""
+  },
+  {
+   "code": "PH27-W1",
+   "parent": "PH27",
+   "level": "week",
+   "name": "FIRST LAW & THERMODYNAMIC PROCESSES",
+   "descr": ""
+  },
+  {
+   "code": "PH27.01",
+   "parent": "PH27-W1",
+   "level": "subtopic",
+   "name": "Thermodynamic systems, zeroth law, internal energy, work done by a gas",
+   "descr": "Thermodynamic systems, zeroth law, internal energy, work done by a gas"
+  },
+  {
+   "code": "PH27.02",
+   "parent": "PH27-W1",
+   "level": "subtopic",
+   "name": "First law of thermodynamics",
+   "descr": "First law of thermodynamics"
+  },
+  {
+   "code": "PH27.03",
+   "parent": "PH27-W1",
+   "level": "subtopic",
+   "name": "Isothermal, adiabatic, isobaric & isochoric processes, free expansion",
+   "descr": "Isothermal, adiabatic, isobaric & isochoric processes, free expansion"
+  },
+  {
+   "code": "PH27.04",
+   "parent": "PH27-W1",
+   "level": "subtopic",
+   "name": "Polytropic processes, molar heat capacity of a process",
+   "descr": "Polytropic processes, molar heat capacity of a process"
+  },
+  {
+   "code": "PH27.05",
+   "parent": "PH27-W1",
+   "level": "subtopic",
+   "name": "Cyclic processes, graph conversions (P-V, P-T, V-T)",
+   "descr": "Cyclic processes, graph conversions (P-V, P-T, V-T)"
+  },
+  {
+   "code": "PH27-W2",
+   "parent": "PH27",
+   "level": "week",
+   "name": "HEAT ENGINES & SECOND LAW",
+   "descr": ""
+  },
+  {
+   "code": "PH27.06",
+   "parent": "PH27-W2",
+   "level": "subtopic",
+   "name": "Heat engines, efficiency, Carnot cycle",
+   "descr": "Heat engines, efficiency, Carnot cycle"
+  },
+  {
+   "code": "PH27.07",
+   "parent": "PH27-W2",
+   "level": "subtopic",
+   "name": "Refrigerators & heat pumps, coefficient of performance",
+   "descr": "Refrigerators & heat pumps, coefficient of performance"
+  },
+  {
+   "code": "PH27.08",
+   "parent": "PH27-W2",
+   "level": "subtopic",
+   "name": "Second law of thermodynamics, entropy",
+   "descr": "Second law of thermodynamics, entropy"
+  },
+  {
+   "code": "PH28",
+   "parent": "M3",
+   "level": "chapter",
+   "name": "Heat Transfer",
+   "descr": ""
+  },
+  {
+   "code": "PH28-W1",
+   "parent": "PH28",
+   "level": "week",
+   "name": "CONDUCTION, CONVECTION & RADIATION",
+   "descr": ""
+  },
+  {
+   "code": "PH28.01",
+   "parent": "PH28-W1",
+   "level": "subtopic",
+   "name": "Conduction: Fourier's law, thermal conductivity, thermal resistance",
+   "descr": "Conduction: Fourier's law, thermal conductivity, thermal resistance"
+  },
+  {
+   "code": "PH28.02",
+   "parent": "PH28-W1",
+   "level": "subtopic",
+   "name": "Series & parallel combination of conductors, steady-state problems",
+   "descr": "Series & parallel combination of conductors, steady-state problems"
+  },
+  {
+   "code": "PH28.03",
+   "parent": "PH28-W1",
+   "level": "subtopic",
+   "name": "Variable-state conduction: growth of ice layer, radial heat flow",
+   "descr": "Variable-state conduction: growth of ice layer, radial heat flow"
+  },
+  {
+   "code": "PH28.04",
+   "parent": "PH28-W1",
+   "level": "subtopic",
+   "name": "Convection",
+   "descr": "Convection"
+  },
+  {
+   "code": "PH28.05",
+   "parent": "PH28-W1",
+   "level": "subtopic",
+   "name": "Radiation: black body, Kirchhoff's law, Stefan-Boltzmann law",
+   "descr": "Radiation: black body, Kirchhoff's law, Stefan-Boltzmann law"
+  },
+  {
+   "code": "PH28.06",
+   "parent": "PH28-W1",
+   "level": "subtopic",
+   "name": "Wien's displacement law, Newton's law of cooling",
+   "descr": "Wien's displacement law, Newton's law of cooling"
+  },
+  {
+   "code": "M4",
+   "parent": null,
+   "level": "module",
+   "name": "OPTICS AND MODERN PHYSICS",
+   "descr": ""
+  },
+  {
+   "code": "PH29",
+   "parent": "M4",
+   "level": "chapter",
+   "name": "Ray Optics",
+   "descr": ""
+  },
+  {
+   "code": "PH29-W1",
+   "parent": "PH29",
+   "level": "week",
+   "name": "REFLECTION",
+   "descr": ""
+  },
+  {
+   "code": "PH29.01",
+   "parent": "PH29-W1",
+   "level": "subtopic",
+   "name": "Reflection at plane mirrors",
+   "descr": "Reflection at plane mirrors"
+  },
+  {
+   "code": "PH29.02",
+   "parent": "PH29-W1",
+   "level": "subtopic",
+   "name": "Reflection at spherical mirrors",
+   "descr": "Reflection at spherical mirrors"
+  },
+  {
+   "code": "PH29.03",
+   "parent": "PH29-W1",
+   "level": "subtopic",
+   "name": "Combination of plane & spherical mirrors",
+   "descr": "Combination of plane & spherical mirrors"
+  },
+  {
+   "code": "PH29-W2",
+   "parent": "PH29",
+   "level": "week",
+   "name": "REFRACTION AT PLANE SURFACES & PRISM",
+   "descr": ""
+  },
+  {
+   "code": "PH29.04",
+   "parent": "PH29-W2",
+   "level": "subtopic",
+   "name": "Refraction through plane surfaces",
+   "descr": "Refraction through plane surfaces"
+  },
+  {
+   "code": "PH29.05",
+   "parent": "PH29-W2",
+   "level": "subtopic",
+   "name": "Total internal reflection",
+   "descr": "Total internal reflection"
+  },
+  {
+   "code": "PH29.06",
+   "parent": "PH29-W2",
+   "level": "subtopic",
+   "name": "Refraction + reflection at plane surfaces",
+   "descr": "Refraction + reflection at plane surfaces"
+  },
+  {
+   "code": "PH29.07",
+   "parent": "PH29-W2",
+   "level": "subtopic",
+   "name": "Prism, dispersion",
+   "descr": "Prism, dispersion"
+  },
+  {
+   "code": "PH29-W3",
+   "parent": "PH29",
+   "level": "week",
+   "name": "CURVED SURFACES, LENSES & INSTRUMENTS",
+   "descr": ""
+  },
+  {
+   "code": "PH29.08",
+   "parent": "PH29-W3",
+   "level": "subtopic",
+   "name": "Refraction at curved surface(s)",
+   "descr": "Refraction at curved surface(s)"
+  },
+  {
+   "code": "PH29.09",
+   "parent": "PH29-W3",
+   "level": "subtopic",
+   "name": "Thin lenses: lens maker's formula, power, image formation",
+   "descr": "Thin lenses: lens maker's formula, power, image formation"
+  },
+  {
+   "code": "PH29.10",
+   "parent": "PH29-W3",
+   "level": "subtopic",
+   "name": "Combination of optical elements (mirrors, lenses, slabs, prisms)",
+   "descr": "Combination of optical elements (mirrors, lenses, slabs, prisms)"
+  },
+  {
+   "code": "PH29.11",
+   "parent": "PH29-W3",
+   "level": "subtopic",
+   "name": "Optical instruments",
+   "descr": "Optical instruments"
+  },
+  {
+   "code": "PH30",
+   "parent": "M4",
+   "level": "chapter",
+   "name": "Wave Optics",
+   "descr": ""
+  },
+  {
+   "code": "PH30-W1",
+   "parent": "PH30",
+   "level": "week",
+   "name": "HUYGENS' PRINCIPLE, INTERFERENCE & YDSE",
+   "descr": ""
+  },
+  {
+   "code": "PH30.01",
+   "parent": "PH30-W1",
+   "level": "subtopic",
+   "name": "Basic theories: corpuscular theory, wavefronts, Huygens' principle, reflection & refraction",
+   "descr": "Basic theories: corpuscular theory, wavefronts, Huygens' principle, reflection & refraction"
+  },
+  {
+   "code": "PH30.02",
+   "parent": "PH30-W1",
+   "level": "subtopic",
+   "name": "Interference: coherent sources, phase & path difference, maxima/minima, resultant intensity",
+   "descr": "Interference: coherent sources, phase & path difference, maxima/minima, resultant intensity"
+  },
+  {
+   "code": "PH30.03",
+   "parent": "PH30-W1",
+   "level": "subtopic",
+   "name": "Young's double slit experiment: results & applications",
+   "descr": "Young's double slit experiment: results & applications"
+  },
+  {
+   "code": "PH30-W2",
+   "parent": "PH30",
+   "level": "week",
+   "name": "YDSE VARIANTS, DIFFRACTION & POLARIZATION",
+   "descr": ""
+  },
+  {
+   "code": "PH30.04",
+   "parent": "PH30-W2",
+   "level": "subtopic",
+   "name": "YDSE variants: white light, multiple slits, phasors, Fresnel's biprism, Lloyd's mirror",
+   "descr": "YDSE variants: white light, multiple slits, phasors, Fresnel's biprism, Lloyd's mirror"
+  },
+  {
+   "code": "PH30.05",
+   "parent": "PH30-W2",
+   "level": "subtopic",
+   "name": "Diffraction: single slit, circular aperture, resolving power, Fresnel distance & zones",
+   "descr": "Diffraction: single slit, circular aperture, resolving power, Fresnel distance & zones"
+  },
+  {
+   "code": "PH30.06",
+   "parent": "PH30-W2",
+   "level": "subtopic",
+   "name": "Polarization: methods (reflection, absorption, scattering), Malus' law",
+   "descr": "Polarization: methods (reflection, absorption, scattering), Malus' law"
+  },
+  {
+   "code": "PH31",
+   "parent": "M4",
+   "level": "chapter",
+   "name": "Atomic Physics",
+   "descr": ""
+  },
+  {
+   "code": "PH31-W1",
+   "parent": "PH31",
+   "level": "week",
+   "name": "DUAL NATURE OF MATTER & RADIATION",
+   "descr": ""
+  },
+  {
+   "code": "PH31.01",
+   "parent": "PH31-W1",
+   "level": "subtopic",
+   "name": "Photon theory: energy, momentum, radiation pressure, intensity",
+   "descr": "Photon theory: energy, momentum, radiation pressure, intensity"
+  },
+  {
+   "code": "PH31.02",
+   "parent": "PH31-W1",
+   "level": "subtopic",
+   "name": "Photoelectric effect: Einstein's equation, laws of photoelectric effect",
+   "descr": "Photoelectric effect: Einstein's equation, laws of photoelectric effect"
+  },
+  {
+   "code": "PH31.03",
+   "parent": "PH31-W1",
+   "level": "subtopic",
+   "name": "Matter waves: de Broglie wavelength, electron diffraction",
+   "descr": "Matter waves: de Broglie wavelength, electron diffraction"
+  },
+  {
+   "code": "PH31-W2",
+   "parent": "PH31",
+   "level": "week",
+   "name": "ATOMIC MODELS & BOHR'S THEORY",
+   "descr": ""
+  },
+  {
+   "code": "PH31.04",
+   "parent": "PH31-W2",
+   "level": "subtopic",
+   "name": "Early models of the atom & their limitations",
+   "descr": "Early models of the atom & their limitations"
+  },
+  {
+   "code": "PH31.05",
+   "parent": "PH31-W2",
+   "level": "subtopic",
+   "name": "Bohr's model: quantities & their dependence on Z, n, e, m",
+   "descr": "Bohr's model: quantities & their dependence on Z, n, e, m"
+  },
+  {
+   "code": "PH31.06",
+   "parent": "PH31-W2",
+   "level": "subtopic",
+   "name": "Applications of Bohr's model: hypothetical atoms, other atomic systems",
+   "descr": "Applications of Bohr's model: hypothetical atoms, other atomic systems"
+  },
+  {
+   "code": "PH31-W3",
+   "parent": "PH31",
+   "level": "week",
+   "name": "EXCITATION, SPECTRA & X-RAYS",
+   "descr": ""
+  },
+  {
+   "code": "PH31.07",
+   "parent": "PH31-W3",
+   "level": "subtopic",
+   "name": "Atomic excitation: excitation & ionization energy, reduced mass, atomic collisions",
+   "descr": "Atomic excitation: excitation & ionization energy, reduced mass, atomic collisions"
+  },
+  {
+   "code": "PH31.08",
+   "parent": "PH31-W3",
+   "level": "subtopic",
+   "name": "Hydrogen spectrum: H & H-like ions, emission & absorption spectra",
+   "descr": "Hydrogen spectrum: H & H-like ions, emission & absorption spectra"
+  },
+  {
+   "code": "PH31.09",
+   "parent": "PH31-W3",
+   "level": "subtopic",
+   "name": "Production of X-rays: Coolidge tube",
+   "descr": "Production of X-rays: Coolidge tube"
+  },
+  {
+   "code": "PH31.10",
+   "parent": "PH31-W3",
+   "level": "subtopic",
+   "name": "X-ray spectra: continuous & characteristic",
+   "descr": "X-ray spectra: continuous & characteristic"
+  },
+  {
+   "code": "PH31.11",
+   "parent": "PH31-W3",
+   "level": "subtopic",
+   "name": "Moseley's law",
+   "descr": "Moseley's law"
+  },
+  {
+   "code": "PH32",
+   "parent": "M4",
+   "level": "chapter",
+   "name": "Nuclear Physics",
+   "descr": ""
+  },
+  {
+   "code": "PH32-W1",
+   "parent": "PH32",
+   "level": "week",
+   "name": "NUCLEUS, BINDING ENERGY & RADIOACTIVE DECAYS",
+   "descr": ""
+  },
+  {
+   "code": "PH32.01",
+   "parent": "PH32-W1",
+   "level": "subtopic",
+   "name": "Nucleus & nuclear forces: size, charge, density, properties of nuclear force",
+   "descr": "Nucleus & nuclear forces: size, charge, density, properties of nuclear force"
+  },
+  {
+   "code": "PH32.02",
+   "parent": "PH32-W1",
+   "level": "subtopic",
+   "name": "Mass defect & binding energy: BE per nucleon, BE curve, nuclear stability",
+   "descr": "Mass defect & binding energy: BE per nucleon, BE curve, nuclear stability"
+  },
+  {
+   "code": "PH32.03",
+   "parent": "PH32-W1",
+   "level": "subtopic",
+   "name": "Radioactive decays: α, β, γ decay, Q-value, α & β spectra",
+   "descr": "Radioactive decays: α, β, γ decay, Q-value, α & β spectra"
+  },
+  {
+   "code": "PH32-W2",
+   "parent": "PH32",
+   "level": "week",
+   "name": "RADIOACTIVITY LAW, NUCLEAR REACTIONS, FISSION & FUSION",
+   "descr": ""
+  },
+  {
+   "code": "PH32.04",
+   "parent": "PH32-W2",
+   "level": "subtopic",
+   "name": "Law of radioactivity: decay constant, half-life, mean life",
+   "descr": "Law of radioactivity: decay constant, half-life, mean life"
+  },
+  {
+   "code": "PH32.05",
+   "parent": "PH32-W2",
+   "level": "subtopic",
+   "name": "Nuclear reactions: types, Q-value, threshold energy",
+   "descr": "Nuclear reactions: types, Q-value, threshold energy"
+  },
+  {
+   "code": "PH32.06",
+   "parent": "PH32-W2",
+   "level": "subtopic",
+   "name": "Nuclear fission & fusion: energy release, chain reaction, applications",
+   "descr": "Nuclear fission & fusion: energy release, chain reaction, applications"
+  },
+  {
+   "code": "PH33",
+   "parent": "M4",
+   "level": "chapter",
+   "name": "Semiconductor Devices",
+   "descr": ""
+  },
+  {
+   "code": "PH33-W1",
+   "parent": "PH33",
+   "level": "week",
+   "name": "SEMICONDUCTORS & P-N JUNCTION",
+   "descr": ""
+  },
+  {
+   "code": "PH33.01",
+   "parent": "PH33-W1",
+   "level": "subtopic",
+   "name": "Energy bands, band gap, intrinsic & extrinsic (n-type, p-type) semiconductors",
+   "descr": "Energy bands, band gap, intrinsic & extrinsic (n-type, p-type) semiconductors"
+  },
+  {
+   "code": "PH33.02",
+   "parent": "PH33-W1",
+   "level": "subtopic",
+   "name": "Current conduction: mobility, conductivity, carrier density",
+   "descr": "Current conduction: mobility, conductivity, carrier density"
+  },
+  {
+   "code": "PH33.03",
+   "parent": "PH33-W1",
+   "level": "subtopic",
+   "name": "p-n junction diode: depletion region, forward & reverse bias, drift & diffusion currents, characteristics",
+   "descr": "p-n junction diode: depletion region, forward & reverse bias, drift & diffusion currents, characteristics"
+  },
+  {
+   "code": "PH33-W2",
+   "parent": "PH33",
+   "level": "week",
+   "name": "DIODE APPLICATIONS & LOGIC GATES",
+   "descr": ""
+  },
+  {
+   "code": "PH33.04",
+   "parent": "PH33-W2",
+   "level": "subtopic",
+   "name": "Rectifiers: half-wave & full-wave",
+   "descr": "Rectifiers: half-wave & full-wave"
+  },
+  {
+   "code": "PH33.05",
+   "parent": "PH33-W2",
+   "level": "subtopic",
+   "name": "Zener diode & voltage regulation",
+   "descr": "Zener diode & voltage regulation"
+  },
+  {
+   "code": "PH33.06",
+   "parent": "PH33-W2",
+   "level": "subtopic",
+   "name": "Optoelectronic devices: LEDs, photodiodes, solar cells",
+   "descr": "Optoelectronic devices: LEDs, photodiodes, solar cells"
+  },
+  {
+   "code": "PH33.07",
+   "parent": "PH33-W2",
+   "level": "subtopic",
+   "name": "Logic gates: basic (AND, OR, NOT), universal (NAND, NOR), special (XOR, XNOR)",
+   "descr": "Logic gates: basic (AND, OR, NOT), universal (NAND, NOR), special (XOR, XNOR)"
+  },
+  {
+   "code": "PH33.08",
+   "parent": "PH33-W2",
+   "level": "subtopic",
+   "name": "Truth tables & Boolean algebra: laws & simplification",
+   "descr": "Truth tables & Boolean algebra: laws & simplification"
+  },
+  {
+   "code": "PH34",
+   "parent": "M4",
+   "level": "chapter",
+   "name": "Communication Systems",
+   "descr": ""
+  },
+  {
+   "code": "PH34-W1",
+   "parent": "PH34",
+   "level": "week",
+   "name": "COMMUNICATION SYSTEMS",
+   "descr": ""
+  },
+  {
+   "code": "PH34.01",
+   "parent": "PH34-W1",
+   "level": "subtopic",
+   "name": "Elements of a communication system, basic terminology",
+   "descr": "Elements of a communication system, basic terminology"
+  },
+  {
+   "code": "PH34.02",
+   "parent": "PH34-W1",
+   "level": "subtopic",
+   "name": "Bandwidth of signals & transmission media",
+   "descr": "Bandwidth of signals & transmission media"
+  },
+  {
+   "code": "PH34.03",
+   "parent": "PH34-W1",
+   "level": "subtopic",
+   "name": "Propagation of EM waves: ground, sky & space wave, range of an antenna",
+   "descr": "Propagation of EM waves: ground, sky & space wave, range of an antenna"
+  },
+  {
+   "code": "PH34.04",
+   "parent": "PH34-W1",
+   "level": "subtopic",
+   "name": "Modulation: need, amplitude modulation, modulation index, sidebands",
+   "descr": "Modulation: need, amplitude modulation, modulation index, sidebands"
+  },
+  {
+   "code": "PH34.05",
+   "parent": "PH34-W1",
+   "level": "subtopic",
+   "name": "Production & detection of AM, frequency modulation (basic)",
+   "descr": "Production & detection of AM, frequency modulation (basic)"
+  },
+  {
+   "code": "M5",
+   "parent": null,
+   "level": "module",
+   "name": "SOLIDS AND FLUIDS- EXPERIMENTS",
+   "descr": ""
+  },
+  {
+   "code": "PH35",
+   "parent": "M5",
+   "level": "chapter",
+   "name": "Fluid Statics",
+   "descr": ""
+  },
+  {
+   "code": "PH35-W1",
+   "parent": "PH35",
+   "level": "week",
+   "name": "PRESSURE, LIQUID COLUMNS & THRUST",
+   "descr": ""
+  },
+  {
+   "code": "PH35.01",
+   "parent": "PH35-W1",
+   "level": "subtopic",
+   "name": "Pressure & density: gauge/absolute/atmospheric pressure, pressure gradient, relative density",
+   "descr": "Pressure & density: gauge/absolute/atmospheric pressure, pressure gradient, relative density"
+  },
+  {
+   "code": "PH35.02",
+   "parent": "PH35-W1",
+   "level": "subtopic",
+   "name": "Liquid columns: manometer, U-tube, barometer",
+   "descr": "Liquid columns: manometer, U-tube, barometer"
+  },
+  {
+   "code": "PH35.03",
+   "parent": "PH35-W1",
+   "level": "subtopic",
+   "name": "Thrust on container walls & immersed surfaces",
+   "descr": "Thrust on container walls & immersed surfaces"
+  },
+  {
+   "code": "PH35-W2",
+   "parent": "PH35",
+   "level": "week",
+   "name": "ACCELERATING FLUIDS, BUOYANCY & STABILITY",
+   "descr": ""
+  },
+  {
+   "code": "PH35.04",
+   "parent": "PH35-W2",
+   "level": "subtopic",
+   "name": "Liquids in accelerating containers & tubes",
+   "descr": "Liquids in accelerating containers & tubes"
+  },
+  {
+   "code": "PH35.05",
+   "parent": "PH35-W2",
+   "level": "subtopic",
+   "name": "Archimedes' principle: floating & immersed objects, kinematics of sinking objects",
+   "descr": "Archimedes' principle: floating & immersed objects, kinematics of sinking objects"
+  },
+  {
+   "code": "PH35.06",
+   "parent": "PH35-W2",
+   "level": "subtopic",
+   "name": "Equilibrium & stability of floating bodies",
+   "descr": "Equilibrium & stability of floating bodies"
+  },
+  {
+   "code": "PH36",
+   "parent": "M5",
+   "level": "chapter",
+   "name": "Fluid Dynamics",
+   "descr": ""
+  },
+  {
+   "code": "PH36-W1",
+   "parent": "PH36",
+   "level": "week",
+   "name": "FLUID FLOW, CONTINUITY & BERNOULLI",
+   "descr": ""
+  },
+  {
+   "code": "PH36.01",
+   "parent": "PH36-W1",
+   "level": "subtopic",
+   "name": "Fluid flow: ideal vs real, steady vs unsteady, streamlines, laminar vs turbulent",
+   "descr": "Fluid flow: ideal vs real, steady vs unsteady, streamlines, laminar vs turbulent"
+  },
+  {
+   "code": "PH36.02",
+   "parent": "PH36-W1",
+   "level": "subtopic",
+   "name": "Equation of continuity: flow speed vs cross-section",
+   "descr": "Equation of continuity: flow speed vs cross-section"
+  },
+  {
+   "code": "PH36.03",
+   "parent": "PH36-W1",
+   "level": "subtopic",
+   "name": "Bernoulli's theorem & applications: venturimeter, pitot tube, atomizer, aerodynamic lift",
+   "descr": "Bernoulli's theorem & applications: venturimeter, pitot tube, atomizer, aerodynamic lift"
+  },
+  {
+   "code": "PH36.04",
+   "parent": "PH36-W1",
+   "level": "subtopic",
+   "name": "Efflux of liquid: Torricelli's theorem",
+   "descr": "Efflux of liquid: Torricelli's theorem"
+  },
+  {
+   "code": "PH37",
+   "parent": "M5",
+   "level": "chapter",
+   "name": "Viscosity",
+   "descr": ""
+  },
+  {
+   "code": "PH37-W1",
+   "parent": "PH37",
+   "level": "week",
+   "name": "VISCOUS FLOW",
+   "descr": ""
+  },
+  {
+   "code": "PH37.01",
+   "parent": "PH37-W1",
+   "level": "subtopic",
+   "name": "Viscous force, Newton's law of viscosity, coefficient of viscosity",
+   "descr": "Viscous force, Newton's law of viscosity, coefficient of viscosity"
+  },
+  {
+   "code": "PH37.02",
+   "parent": "PH37-W1",
+   "level": "subtopic",
+   "name": "Stokes' law, terminal velocity",
+   "descr": "Stokes' law, terminal velocity"
+  },
+  {
+   "code": "PH37.03",
+   "parent": "PH37-W1",
+   "level": "subtopic",
+   "name": "Poiseuille's equation, flow through tubes in series & parallel",
+   "descr": "Poiseuille's equation, flow through tubes in series & parallel"
+  },
+  {
+   "code": "PH37.04",
+   "parent": "PH37-W1",
+   "level": "subtopic",
+   "name": "Reynolds number, critical velocity, effect of temperature on viscosity",
+   "descr": "Reynolds number, critical velocity, effect of temperature on viscosity"
+  },
+  {
+   "code": "PH38",
+   "parent": "M5",
+   "level": "chapter",
+   "name": "Elasticity",
+   "descr": ""
+  },
+  {
+   "code": "PH38-W1",
+   "parent": "PH38",
+   "level": "week",
+   "name": "STRESS, STRAIN & ELASTIC MODULI",
+   "descr": ""
+  },
+  {
+   "code": "PH38.01",
+   "parent": "PH38-W1",
+   "level": "subtopic",
+   "name": "Stress, strain, Hooke's law, stress-strain curve",
+   "descr": "Stress, strain, Hooke's law, stress-strain curve"
+  },
+  {
+   "code": "PH38.02",
+   "parent": "PH38-W1",
+   "level": "subtopic",
+   "name": "Young's modulus: loaded wires, rods under own weight, rotating rods",
+   "descr": "Young's modulus: loaded wires, rods under own weight, rotating rods"
+  },
+  {
+   "code": "PH38.03",
+   "parent": "PH38-W1",
+   "level": "subtopic",
+   "name": "Bulk & shear modulus, compressibility, Poisson's ratio",
+   "descr": "Bulk & shear modulus, compressibility, Poisson's ratio"
+  },
+  {
+   "code": "PH38.04",
+   "parent": "PH38-W1",
+   "level": "subtopic",
+   "name": "Elastic potential energy, energy density",
+   "descr": "Elastic potential energy, energy density"
+  },
+  {
+   "code": "PH38.05",
+   "parent": "PH38-W1",
+   "level": "subtopic",
+   "name": "Composite wires & rods: series & parallel combinations",
+   "descr": "Composite wires & rods: series & parallel combinations"
+  },
+  {
+   "code": "PH39",
+   "parent": "M5",
+   "level": "chapter",
+   "name": "Surface Tension",
+   "descr": ""
+  },
+  {
+   "code": "PH39-W1",
+   "parent": "PH39",
+   "level": "week",
+   "name": "SURFACE TENSION & CAPILLARITY",
+   "descr": ""
+  },
+  {
+   "code": "PH39.01",
+   "parent": "PH39-W1",
+   "level": "subtopic",
+   "name": "Surface tension: molecular theory, force due to surface tension",
+   "descr": "Surface tension: molecular theory, force due to surface tension"
+  },
+  {
+   "code": "PH39.02",
+   "parent": "PH39-W1",
+   "level": "subtopic",
+   "name": "Surface energy: forming drops & bubbles, merging & splitting drops",
+   "descr": "Surface energy: forming drops & bubbles, merging & splitting drops"
+  },
+  {
+   "code": "PH39.03",
+   "parent": "PH39-W1",
+   "level": "subtopic",
+   "name": "Excess pressure: drops, soap bubbles, air bubble in a liquid",
+   "descr": "Excess pressure: drops, soap bubbles, air bubble in a liquid"
+  },
+  {
+   "code": "PH39.04",
+   "parent": "PH39-W1",
+   "level": "subtopic",
+   "name": "Angle of contact, capillary rise, Jurin's law, tube of insufficient length",
+   "descr": "Angle of contact, capillary rise, Jurin's law, tube of insufficient length"
+  },
+  {
+   "code": "PH39.05",
+   "parent": "PH39-W1",
+   "level": "subtopic",
+   "name": "Force between plates with a liquid film, miscellaneous",
+   "descr": "Force between plates with a liquid film, miscellaneous"
+  },
+  {
+   "code": "PH40",
+   "parent": "M5",
+   "level": "chapter",
+   "name": "Units & Dimensions, Errors",
+   "descr": ""
+  },
+  {
+   "code": "PH40-W1",
+   "parent": "PH40",
+   "level": "week",
+   "name": "UNITS & DIMENSIONS",
+   "descr": ""
+  },
+  {
+   "code": "PH40.01",
+   "parent": "PH40-W1",
+   "level": "subtopic",
+   "name": "Physical quantities, SI units, fundamental & derived units",
+   "descr": "Physical quantities, SI units, fundamental & derived units"
+  },
+  {
+   "code": "PH40.02",
+   "parent": "PH40-W1",
+   "level": "subtopic",
+   "name": "Dimensional formulae, principle of homogeneity",
+   "descr": "Dimensional formulae, principle of homogeneity"
+  },
+  {
+   "code": "PH40.03",
+   "parent": "PH40-W1",
+   "level": "subtopic",
+   "name": "Applications of dimensional analysis: unit conversion, checking & deriving relations, limitations",
+   "descr": "Applications of dimensional analysis: unit conversion, checking & deriving relations, limitations"
+  },
+  {
+   "code": "PH40-W2",
+   "parent": "PH40",
+   "level": "week",
+   "name": "MEASUREMENT & ERRORS",
+   "descr": ""
+  },
+  {
+   "code": "PH40.04",
+   "parent": "PH40-W2",
+   "level": "subtopic",
+   "name": "Significant figures, rounding off",
+   "descr": "Significant figures, rounding off"
+  },
+  {
+   "code": "PH40.05",
+   "parent": "PH40-W2",
+   "level": "subtopic",
+   "name": "Errors: absolute, relative & percentage, propagation of errors",
+   "descr": "Errors: absolute, relative & percentage, propagation of errors"
+  },
+  {
+   "code": "PH40.06",
+   "parent": "PH40-W2",
+   "level": "subtopic",
+   "name": "Least count, zero error, systematic & random errors",
+   "descr": "Least count, zero error, systematic & random errors"
+  },
+  {
+   "code": "PH41",
+   "parent": "M5",
+   "level": "chapter",
+   "name": "Experimental Physics",
+   "descr": ""
+  },
+  {
+   "code": "PH41-W1",
+   "parent": "PH41",
+   "level": "week",
+   "name": "MECHANICS & PROPERTIES OF MATTER EXPERIMENTS",
+   "descr": ""
+  },
+  {
+   "code": "PH41.01",
+   "parent": "PH41-W1",
+   "level": "subtopic",
+   "name": "Vernier callipers & screw gauge",
+   "descr": "Vernier callipers & screw gauge"
+  },
+  {
+   "code": "PH41.02",
+   "parent": "PH41-W1",
+   "level": "subtopic",
+   "name": "Simple pendulum: determination of g",
+   "descr": "Simple pendulum: determination of g"
+  },
+  {
+   "code": "PH41.03",
+   "parent": "PH41-W1",
+   "level": "subtopic",
+   "name": "Young's modulus by Searle's method",
+   "descr": "Young's modulus by Searle's method"
+  },
+  {
+   "code": "PH41.04",
+   "parent": "PH41-W1",
+   "level": "subtopic",
+   "name": "Surface tension by capillary rise",
+   "descr": "Surface tension by capillary rise"
+  },
+  {
+   "code": "PH41.05",
+   "parent": "PH41-W1",
+   "level": "subtopic",
+   "name": "Coefficient of viscosity by terminal velocity",
+   "descr": "Coefficient of viscosity by terminal velocity"
+  },
+  {
+   "code": "PH41.06",
+   "parent": "PH41-W1",
+   "level": "subtopic",
+   "name": "Speed of sound using a resonance column",
+   "descr": "Speed of sound using a resonance column"
+  },
+  {
+   "code": "PH41-W2",
+   "parent": "PH41",
+   "level": "week",
+   "name": "HEAT, OPTICS & ELECTRICITY EXPERIMENTS",
+   "descr": ""
+  },
+  {
+   "code": "PH41.07",
+   "parent": "PH41-W2",
+   "level": "subtopic",
+   "name": "Specific heat of a liquid by the method of mixtures",
+   "descr": "Specific heat of a liquid by the method of mixtures"
+  },
+  {
+   "code": "PH41.08",
+   "parent": "PH41-W2",
+   "level": "subtopic",
+   "name": "Focal length of a concave mirror & convex lens (u-v method)",
+   "descr": "Focal length of a concave mirror & convex lens (u-v method)"
+  },
+  {
+   "code": "PH41.09",
+   "parent": "PH41-W2",
+   "level": "subtopic",
+   "name": "Refractive index of a glass slab using a travelling microscope",
+   "descr": "Refractive index of a glass slab using a travelling microscope"
+  },
+  {
+   "code": "PH41.10",
+   "parent": "PH41-W2",
+   "level": "subtopic",
+   "name": "Verification of Ohm's law, resistivity using a meter bridge",
+   "descr": "Verification of Ohm's law, resistivity using a meter bridge"
+  },
+  {
+   "code": "PH41.11",
+   "parent": "PH41-W2",
+   "level": "subtopic",
+   "name": "Unknown resistance using a post office box",
+   "descr": "Unknown resistance using a post office box"
+  },
+  {
+   "code": "PH41.12",
+   "parent": "PH41-W2",
+   "level": "subtopic",
+   "name": "Galvanometer: resistance & figure of merit",
+   "descr": "Galvanometer: resistance & figure of merit"
+  }
+ ]
+}

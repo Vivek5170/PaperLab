@@ -213,3 +213,89 @@ def test_migrate_old_db_gets_status_and_token_table(tmp_path, monkeypatch):
         conn.close()
     assert "status" in cols and "error" in cols
     assert "token_usage" in tables
+
+
+def _seeded_q(tmp_db, tmp_path):
+    """One paper + one question; returns its questions.id."""
+    import database as _db
+
+    q = tmp_path / "q.pdf"
+    q.write_bytes(b"qq")
+    pid = _db.register_paper(str(q))
+    conn = _db.get_connection()
+    try:
+        cur = conn.execute(
+            "INSERT INTO questions (paper_id, question_number) VALUES (?, '1')",
+            (pid,),
+        )
+        qid = cur.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+    return pid, qid
+
+
+def test_init_topics_seeds_full_tree_once(tmp_db):
+    import database as _db
+
+    assert _db.init_topics() == 5 + 41 + 71 + 296
+    assert _db.init_topics() == 5 + 41 + 71 + 296  # idempotent
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT parent, level, descr, rev FROM topics WHERE code = 'PH05.03'"
+        ).fetchone()
+        week = conn.execute(
+            "SELECT descr FROM topics WHERE code = 'PH05-W2'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row["parent"] == "PH05-W1" and row["level"] == "subtopic"
+    assert "inclined plane" in row["descr"]
+    assert row["rev"] == 1
+    assert week["descr"] == ""  # descr lives only on subtopics
+
+
+def test_resolve_topic_never_guesses(tmp_db):
+    import database as _db
+
+    _db.init_topics()
+    assert _db.resolve_topic("PH05.03") == "PH05.03"
+    assert _db.resolve_topic(
+        "MECHANICS › Friction › LAWS OF FRICTION & SINGLE-BODY MOTION "
+        "› Motion on a rough inclined plane") == "PH05.03"
+    assert "Friction" in _db.topic_path("PH05.03")
+    with pytest.raises(ValueError):
+        _db.resolve_topic("motion")  # ambiguous across dozens of nodes
+    with pytest.raises(ValueError):
+        _db.resolve_topic("no such topic anywhere")
+
+
+def test_question_topics_auto_never_clobbers_human(tmp_db, tmp_path):
+    import database as _db
+
+    _db.init_topics()
+    _, qid = _seeded_q(tmp_db, tmp_path)
+    assert _db.set_question_topics(qid, ["PH24.08", "PH24.05"], src="auto") == 2
+    assert _db.set_question_topics(qid, ["PH24.01"], src="human") == 1
+    conn = _db.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT topic_code, src FROM question_topics WHERE question_id = ?",
+            (qid,)).fetchall()
+    finally:
+        conn.close()
+    assert [(r["topic_code"], r["src"]) for r in rows] == [("PH24.01", "human")]
+    with pytest.raises(ValueError):
+        _db.set_question_topics(qid, ["NOPE"], src="human")
+
+
+def test_set_question_difficulty_validates(tmp_db, tmp_path):
+    import database as _db
+
+    pid, _ = _seeded_q(tmp_db, tmp_path)
+    assert _db.set_question_difficulty(pid, "1", "Hard", "looks like rotation") is True
+    with pytest.raises(ValueError):
+        _db.set_question_difficulty(pid, "1", "Extreme")
+    with pytest.raises(ValueError):
+        _db.set_question_difficulty(99999, "1", "Easy")

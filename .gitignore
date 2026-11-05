@@ -6,6 +6,9 @@ physics_archive.db
 data/
 Outputs/
 
+# Reference material (seed extracted to topics_seed.json; not needed to run)
+EJEE_Physics_Tagging_Codes.pdf
+
 # Python
 __pycache__/
 *.py[cod]

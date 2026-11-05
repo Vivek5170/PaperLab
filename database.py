@@ -76,6 +76,31 @@ CREATE TABLE IF NOT EXISTS papers (
 );
 """
 
+SCHEMA_TOPICS = """
+CREATE TABLE IF NOT EXISTS topics (
+    code TEXT PRIMARY KEY,
+    parent TEXT,
+    level TEXT NOT NULL CHECK (level IN ('module','chapter','week','subtopic')),
+    name TEXT NOT NULL,
+    descr TEXT NOT NULL DEFAULT '',
+    rev INTEGER NOT NULL DEFAULT 1
+);
+"""
+
+SCHEMA_QUESTION_TOPICS = """
+CREATE TABLE IF NOT EXISTS question_topics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question_id INTEGER NOT NULL,
+    topic_code TEXT NOT NULL,
+    rank INTEGER NOT NULL DEFAULT 0,
+    src TEXT NOT NULL DEFAULT 'human'
+        CHECK (src IN ('auto','human')),
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
+    FOREIGN KEY (topic_code) REFERENCES topics(code),
+    UNIQUE (question_id, topic_code)
+);
+"""
+
 SCHEMA_TOKEN_USAGE = """
 CREATE TABLE IF NOT EXISTS token_usage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,6 +125,10 @@ QTYPE_VALUES = (
     "unknown",
 )
 
+DIFFICULTY_VALUES = ("Easy", "Medium", "Hard")
+
+TOPIC_SEED_FILE = Path(__file__).parent / "topics_seed.json"
+
 SCHEMA_QUESTIONS = """
 CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,10 +145,14 @@ CREATE TABLE IF NOT EXISTS questions (
 
 
 def get_connection(db_path: str | Path | None = None) -> sqlite3.Connection:
-    """Return a SQLite connection with foreign keys enforced."""
+    """Return a SQLite connection with foreign keys enforced (WAL for readers)."""
     path = Path(db_path) if db_path is not None else DB_PATH
     conn = sqlite3.connect(str(path), timeout=30.0)
     conn.execute("PRAGMA foreign_keys = ON;")
+    try:
+        conn.execute("PRAGMA journal_mode = WAL;")
+    except sqlite3.Error:
+        pass
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -138,11 +171,35 @@ def init_db(db_path: str | Path | None = None) -> Path:
         conn.execute(SCHEMA_PAPERS)
         conn.execute(SCHEMA_QUESTIONS)
         conn.execute(SCHEMA_TOKEN_USAGE)
+        conn.execute(SCHEMA_TOPICS)
+        conn.execute(SCHEMA_QUESTION_TOPICS)
         qcols = {r["name"] for r in conn.execute("PRAGMA table_info(questions)")}
         if "qtype" not in qcols:
             conn.execute(
                 "ALTER TABLE questions ADD COLUMN qtype TEXT NOT NULL DEFAULT 'unknown'"
             )
+            qcols.add("qtype")
+        tcols = {r["name"] for r in conn.execute("PRAGMA table_info(topics)")}
+        if "rev" not in tcols:
+            conn.execute(
+                "ALTER TABLE topics ADD COLUMN rev INTEGER NOT NULL DEFAULT 1"
+            )
+            tcols.add("rev")
+        if "slug" in tcols:
+            # Slugs were dropped: agents answer by list index, humans by
+            # path. Raw codes stay internal IDs.
+            conn.execute("DROP INDEX IF EXISTS idx_topics_slug")
+            conn.execute("ALTER TABLE topics DROP COLUMN slug")
+            tcols.discard("slug")
+        if "difficulty" not in qcols:
+            conn.execute(
+                "ALTER TABLE questions ADD COLUMN difficulty TEXT "
+                "CHECK (difficulty IN ('Easy','Medium','Hard'))"
+            )
+            qcols.add("difficulty")
+        if "topic_suggestion" not in qcols:
+            conn.execute("ALTER TABLE questions ADD COLUMN topic_suggestion TEXT")
+            qcols.add("topic_suggestion")
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(papers)")}
         if "sections" not in cols:
             conn.execute("ALTER TABLE papers ADD COLUMN sections TEXT")
@@ -239,6 +296,449 @@ def get_paper(paper_id: int) -> sqlite3.Row | None:
         return conn.execute(
             "SELECT * FROM papers WHERE id = ?", (paper_id,)
         ).fetchone()
+    finally:
+        conn.close()
+
+
+def init_topics(db_path: str | Path | None = None) -> int:
+    """Seed the topics tree from topics_seed.json (once; no-op when filled).
+
+    Returns the number of topic rows present afterwards.
+    """
+    import json
+
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        n = conn.execute("SELECT COUNT(*) AS c FROM topics").fetchone()["c"]
+        if n == 0:
+            seed = json.loads(TOPIC_SEED_FILE.read_text(encoding="utf-8"))
+            for node in seed["nodes"]:
+                conn.execute(
+                    "INSERT INTO topics (code, parent, level, name, descr)"
+                    " VALUES (?, ?, ?, ?, ?)",
+                    (node["code"], node["parent"], node["level"],
+                     node["name"], node.get("descr", "")),
+                )
+            conn.commit()
+        n = conn.execute("SELECT COUNT(*) AS c FROM topics").fetchone()["c"]
+        return int(n)
+    finally:
+        conn.close()
+
+
+def topic_path(code: str, db_path: str | Path | None = None) -> str:
+    """Breadcrumb 'Module › Chapter › Week › Subtopic' for one topic code."""
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        by_code = {r["code"]: r for r in conn.execute(
+            "SELECT code, parent, name FROM topics").fetchall()}
+    finally:
+        conn.close()
+    if code not in by_code:
+        raise ValueError(f"unknown topic code {code!r}")
+    parts, cur = [], code
+    while cur is not None:
+        node = by_code.get(cur)
+        if node is None:
+            break
+        parts.append(node["name"])
+        cur = node["parent"]
+    return " › ".join(reversed(parts))
+
+
+def resolve_topic(ref: str, db_path: str | Path | None = None) -> str:
+    """Map a code, exact name, or full '›' path to one topic code.
+
+    Raw EJEE codes stay internal IDs; callers (agent list indices resolve
+    to these before calling) never need to invent one. Ambiguous or
+    unknown refs raise ValueError listing the candidates, so a guess is
+    never stored silently.
+    """
+    ref = str(ref or "").strip()
+    if not ref:
+        raise ValueError("empty topic reference")
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT code, parent, name FROM topics").fetchall()
+    finally:
+        conn.close()
+    by_code = {r["code"]: r for r in rows}
+    if ref in by_code:
+        return ref
+    low = ref.lower()
+    names = [r["code"] for r in rows if r["name"].lower() == low]
+    if len(names) == 1:
+        return names[0]
+    candidates = names
+    if len(candidates) != 1:
+        # Last resort: match against full breadcrumb paths.
+        paths = {}
+        for r in rows:
+            parts, cur = [], r["code"]
+            while cur is not None and cur in by_code:
+                parts.append(by_code[cur]["name"])
+                cur = by_code[cur]["parent"]
+            paths[r["code"]] = " › ".join(reversed(parts)).lower()
+        hits = [c for c, p in paths.items() if p == low]
+        candidates = hits or [c for c, p in paths.items() if low in p][:8]
+    if len(candidates) == 1:
+        return candidates[0]
+    raise ValueError(
+        f"ambiguous/unknown topic {ref!r}: candidates {candidates or 'none'}"
+    )
+
+
+def set_question_topics(
+    question_id: int, refs: list[str], src: str = "human"
+) -> int:
+    """Replace one question's topic links of the given source.
+
+    Refs may be codes, slugs, names, or full paths (resolved via
+    resolve_topic); raw codes are never required from callers.
+    src='auto' replaces only auto rows (human picks are never touched);
+    src='human' replaces everything. Bad refs raise ValueError.
+    Returns the number of links written.
+    """
+    if src not in ("auto", "human"):
+        raise ValueError(f"src must be 'auto' or 'human', got {src!r}")
+    codes = [resolve_topic(r) for r in refs]
+    init_db()
+    conn = get_connection()
+    try:
+        if conn.execute(
+            "SELECT id FROM questions WHERE id = ?", (question_id,)
+        ).fetchone() is None:
+            raise ValueError(f"question id {question_id} does not exist")
+        if src == "auto":
+            conn.execute(
+                "DELETE FROM question_topics WHERE question_id = ? AND src = 'auto'",
+                (question_id,),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM question_topics WHERE question_id = ?", (question_id,))
+        for rank, code in enumerate(codes):
+            conn.execute(
+                "INSERT INTO question_topics (question_id, topic_code, rank, src)"
+                " VALUES (?, ?, ?, ?)",
+                (question_id, code, rank, src),
+            )
+        conn.commit()
+        return len(codes)
+    finally:
+        conn.close()
+
+
+def set_question_difficulty(
+    paper_id: int,
+    question_number: str,
+    difficulty: str | None,
+    topic_suggestion: str | None = None,
+    only_fill: bool = False,
+) -> bool:
+    """Set difficulty (Easy/Medium/Hard or None to clear) + suggestion text.
+
+    An empty suggestion clears the column to NULL. With only_fill=True
+    (Node 3 auto), a parsed difficulty fills only a NULL column -- a
+    human grade is never overwritten -- and a NULL parse writes nothing.
+    Raises ValueError for a bad difficulty or unknown question.
+    """
+    if difficulty is not None and difficulty not in DIFFICULTY_VALUES:
+        raise ValueError(
+            f"bad difficulty {difficulty!r}: must be one of {', '.join(DIFFICULTY_VALUES)}"
+        )
+    init_db()
+    conn = get_connection()
+    try:
+        if only_fill:
+            cur_row = conn.execute(
+                "SELECT difficulty FROM questions"
+                " WHERE paper_id = ? AND question_number = ?",
+                (paper_id, str(question_number)),
+            ).fetchone()
+            if cur_row is None:
+                raise ValueError(
+                    f"no question {question_number!r} in paper_id {paper_id}"
+                )
+            if cur_row["difficulty"] is not None:
+                difficulty = cur_row["difficulty"]  # human grade wins
+            if difficulty is None and topic_suggestion is None:
+                return True  # parse produced nothing storable
+        if topic_suggestion is None:
+            cur = conn.execute(
+                "UPDATE questions SET difficulty = ?"
+                " WHERE paper_id = ? AND question_number = ?",
+                (difficulty, paper_id, str(question_number)),
+            )
+        else:
+            cur = conn.execute(
+                "UPDATE questions SET difficulty = ?, topic_suggestion = ?"
+                " WHERE paper_id = ? AND question_number = ?",
+                (difficulty, topic_suggestion or None,
+                 paper_id, str(question_number)),
+            )
+        conn.commit()
+        if cur.rowcount == 0:
+            raise ValueError(
+                f"no question {question_number!r} in paper_id {paper_id}"
+            )
+        return True
+    finally:
+        conn.close()
+
+
+def get_question_id(paper_id: int, question_number: str) -> int:
+    """questions.id for a (paper, number) pair; ValueError when absent."""
+    init_db()
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT id FROM questions WHERE paper_id = ? AND question_number = ?",
+            (paper_id, str(question_number)),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        raise ValueError(
+            f"no question {question_number!r} in paper_id {paper_id}"
+        )
+    return int(row["id"])
+
+
+def get_question_links(question_id: int) -> list[tuple]:
+    """[(topic_code, rank, src)] for one question, primary first."""
+    init_db()
+    conn = get_connection()
+    try:
+        return [(r["topic_code"], r["rank"], r["src"]) for r in conn.execute(
+            "SELECT topic_code, rank, src FROM question_topics "
+            "WHERE question_id = ? ORDER BY rank",
+            (question_id,)).fetchall()]
+    finally:
+        conn.close()
+
+
+def topic_options(levels: tuple = ("subtopic",)) -> list[tuple]:
+    """[(code, breadcrumb path, level)] for pickers (cached by caller).
+
+    Defaults to subtopics only: questions are tagged at subtopic level,
+    so modules/chapters/weeks must never be selectable as topics.
+    """
+    init_db()
+    conn = get_connection()
+    try:
+        all_rows = conn.execute(
+            "SELECT code, parent, level, name FROM topics").fetchall()
+    finally:
+        conn.close()
+    by_code = {r["code"]: r for r in all_rows}
+    out = []
+    for r in all_rows:
+        if r["level"] not in levels:
+            continue
+        parts, cur = [], r["code"]
+        while cur is not None and cur in by_code:
+            parts.append(by_code[cur]["name"])
+            cur = by_code[cur]["parent"]
+        out.append((r["code"], " › ".join(reversed(parts)), r["level"]))
+    return out
+
+
+def get_topic(code: str, db_path: str | Path | None = None):
+    """One topic row as a dict; None when absent."""
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        row = conn.execute(
+            "SELECT code, parent, level, name, descr, rev FROM topics "
+            "WHERE code = ?", (str(code),)).fetchone()
+        return dict(row) if row is not None else None
+    finally:
+        conn.close()
+
+
+def update_topic(code: str, name: str, descr: str, expected_rev: int) -> int:
+    """Rename/edit a topic; optimistic locking via expected_rev.
+
+    Returns the new rev. Raises ValueError on stale rev (someone saved
+    first) or unknown code. Name must be non-empty.
+    """
+    name = str(name or "").strip()
+    if not name:
+        raise ValueError("topic name must not be empty")
+    init_db()
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "UPDATE topics SET name = ?, descr = ?, rev = rev + 1"
+            " WHERE code = ? AND rev = ?",
+            (name, str(descr or ""), str(code), int(expected_rev)),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            if get_topic(code) is None:
+                raise ValueError(f"unknown topic code {code!r}")
+            raise ValueError(
+                f"{code} changed by someone else (rev moved) -- reload and retry"
+            )
+        return int(conn.execute(
+            "SELECT rev FROM topics WHERE code = ?", (str(code),)).fetchone()["rev"])
+    finally:
+        conn.close()
+
+
+def add_module(name: str) -> str:
+    """Add a top-level module (next free M number). Returns the new code."""
+    name = str(name or "").strip()
+    if not name:
+        raise ValueError("module name must not be empty")
+    import re as _re
+    init_db()
+    conn = get_connection()
+    try:
+        nums = [int(m.group(1)) for r in conn.execute(
+            "SELECT code FROM topics WHERE level = 'module'").fetchall()
+            for m in [_re.match(r"^M(\d+)$", r["code"])] if m]
+        code = f"M{max(nums, default=0) + 1}"
+        conn.execute(
+            "INSERT INTO topics (code, parent, level, name, descr)"
+            " VALUES (?, NULL, 'module', ?, '')",
+            (code, name),
+        )
+        conn.commit()
+        return code
+    finally:
+        conn.close()
+
+
+def add_topic(parent_code: str, level: str, name: str, descr: str = "") -> str:
+    """Add a child node; the code is generated, never typed.
+
+    Chapters go under modules (next free PH number), weeks under
+    chapters (next Wn), subtopics under weeks (next NN in chapter).
+    Returns the new code.
+    """
+    name = str(name or "").strip()
+    if not name:
+        raise ValueError("topic name must not be empty")
+    if level not in ("chapter", "week", "subtopic"):
+        raise ValueError(f"level must be chapter/week/subtopic, got {level!r}")
+    init_db()
+    conn = get_connection()
+    try:
+        parent = conn.execute(
+            "SELECT code, level FROM topics WHERE code = ?",
+            (str(parent_code),)).fetchone()
+        if parent is None:
+            raise ValueError(f"unknown parent {parent_code!r}")
+        import re as _re
+        if level == "chapter":
+            if parent["level"] != "module":
+                raise ValueError("chapters go under modules")
+            nums = [int(m.group(1)) for r in conn.execute(
+                "SELECT code FROM topics WHERE level = 'chapter'").fetchall()
+                for m in [_re.match(r"^PH(\d+)$", r["code"])] if m]
+            code = f"PH{max(nums, default=0) + 1:02d}"
+        elif level == "week":
+            if parent["level"] != "chapter":
+                raise ValueError("weeks go under chapters")
+            chap = parent["code"]
+            nums = [int(m.group(1)) for r in conn.execute(
+                "SELECT code FROM topics WHERE parent = ?", (chap,)).fetchall()
+                for m in [_re.match(r".*-W(\d+)$", r["code"])] if m]
+            code = f"{chap}-W{max(nums, default=0) + 1}"
+        else:
+            if parent["level"] != "week":
+                raise ValueError("subtopics go under weeks")
+            chap = parent["code"].split("-")[0]
+            nums = [int(m.group(1)) for r in conn.execute(
+                "SELECT code FROM topics WHERE code LIKE ?",
+                (f"{chap}.%",)).fetchall()
+                for m in [_re.match(r"^PH\d+\.(\d+)$", r["code"])] if m]
+            code = f"{chap}.{max(nums, default=0) + 1:02d}"
+        conn.execute(
+            "INSERT INTO topics (code, parent, level, name, descr)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (code, parent["code"], level, name, str(descr or "")),
+        )
+        conn.commit()
+        return code
+    finally:
+        conn.close()
+
+
+def move_topic(code: str, new_parent: str) -> bool:
+    """Reparent a node without breaking code semantics.
+
+    Subtopics stay within their chapter (week to week), weeks stay
+    within their chapter, chapters may move across modules. Anything
+    else raises ValueError.
+    """
+    init_db()
+    conn = get_connection()
+    try:
+        node = conn.execute(
+            "SELECT code, parent, level FROM topics WHERE code = ?",
+            (str(code),)).fetchone()
+        dest = conn.execute(
+            "SELECT code, level FROM topics WHERE code = ?",
+            (str(new_parent),)).fetchone()
+        if node is None:
+            raise ValueError(f"unknown topic {code!r}")
+        if dest is None:
+            raise ValueError(f"unknown destination {new_parent!r}")
+        lvl, want = node["level"], None
+        if lvl == "subtopic":
+            want = ("week", node["code"].split(".")[0])
+            if dest["level"] != "week" or not dest["code"].startswith(want[1] + "-"):
+                raise ValueError(
+                    "subtopics move week-to-week within their chapter only")
+        elif lvl == "week":
+            want_chap = node["code"].split("-")[0]
+            if dest["level"] != "chapter" or dest["code"] != want_chap:
+                raise ValueError("weeks stay within their chapter")
+        elif lvl == "chapter":
+            if dest["level"] != "module":
+                raise ValueError("chapters move module-to-module only")
+        else:
+            raise ValueError("modules cannot be moved")
+        conn.execute("UPDATE topics SET parent = ?, rev = rev + 1 WHERE code = ?",
+                     (dest["code"], node["code"]))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def delete_topic(code: str) -> bool:
+    """Delete a leaf topic with zero question links.
+
+    Refuses (ValueError) when children or question links exist -- reassign
+    them first. Returns True on success.
+    """
+    init_db()
+    conn = get_connection()
+    try:
+        if conn.execute("SELECT code FROM topics WHERE code = ?",
+                        (str(code),)).fetchone() is None:
+            raise ValueError(f"unknown topic {code!r}")
+        kids = conn.execute("SELECT COUNT(*) AS c FROM topics WHERE parent = ?",
+                            (str(code),)).fetchone()["c"]
+        if kids:
+            raise ValueError(f"{code} has {kids} child node(s) -- move them first")
+        used = conn.execute(
+            "SELECT COUNT(*) AS c FROM question_topics WHERE topic_code = ?",
+            (str(code),)).fetchone()["c"]
+        if used:
+            raise ValueError(
+                f"{code} tags {used} question(s) -- retag them first")
+        conn.execute("DELETE FROM topics WHERE code = ?", (str(code),))
+        conn.commit()
+        return True
     finally:
         conn.close()
 
