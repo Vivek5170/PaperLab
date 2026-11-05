@@ -18,6 +18,11 @@
 	let confirmDelete = $state(false);
 	let deleting = $state(false);
 	let dangerMsg = $state('');
+	let disk = $state(null);
+	let armRender = $state(false);
+	let armCleaned = $state(false);
+	let purging = $state('');
+	let purgeMsg = $state('');
 
 	const currencyTabs = [
 		{ id: 'USD', label: 'USD ($)' },
@@ -32,9 +37,14 @@
 		loading = true;
 		error = '';
 		try {
-			const [s, p] = await Promise.all([api.getStats(), api.listPapers()]);
+			const [s, p, d] = await Promise.all([
+				api.getStats(),
+				api.listPapers(),
+				api.getDiskUsage()
+			]);
 			stats = s;
 			papers = p;
+			disk = d;
 			currency = String(stats.currencyDefault || 'INR')
 				.toLowerCase()
 				.startsWith('in')
@@ -67,6 +77,41 @@
 
 	function onKeydown(event) {
 		if (event.key === 'Escape') configOpen = false;
+	}
+
+	function fmtBytes(n) {
+		if (n == null) return '–';
+		if (n >= 1048576) return `${(n / 1048576).toFixed(1)} MB`;
+		if (n >= 1024) return `${(n / 1024).toFixed(0)} KB`;
+		return `${n} B`;
+	}
+
+	async function purge(kind) {
+		const armed = kind === 'render' ? armRender : armCleaned;
+		if (!armed) {
+			if (kind === 'render') {
+				armRender = true;
+				armCleaned = false;
+			} else {
+				armCleaned = true;
+				armRender = false;
+			}
+			return;
+		}
+		if (kind === 'render') armRender = false;
+		else armCleaned = false;
+		purging = kind;
+		purgeMsg = '';
+		try {
+			const res =
+				kind === 'render' ? await api.purgeRenderCache() : await api.purgeCleanedPdfs();
+			purgeMsg = `Deleted ${res.deleted} file${res.deleted === 1 ? '' : 's'}, freed ${fmtBytes(res.bytes)}.`;
+			disk = await api.getDiskUsage();
+		} catch (e) {
+			purgeMsg = `Delete failed: ${e.message}`;
+		} finally {
+			purging = '';
+		}
 	}
 
 	onMount(async () => {
@@ -212,9 +257,46 @@
 			</table>
 		</div>
 
+		<h3 class="section-title">Reclaimable disk</h3>
+		<div class="reclaim">
+			<div class="pl-card">
+				<p class="rk-title">Render cache</p>
+				<p class="rk-size">{disk ? fmtBytes(disk.renderCache.bytes) : '–'}</p>
+				<p class="pl-sub rk-note">
+					{disk ? `${disk.renderCache.files} compiled figure${disk.renderCache.files === 1 ? '' : 's'}` : '…'}.
+					Regenerates on the next Render click. Safe to delete any time.
+				</p>
+				<button
+					type="button"
+					class="pl-btn"
+					disabled={purging !== '' || !disk?.renderCache.files}
+					onclick={() => purge('render')}
+				>
+					{purging === 'render' ? 'Deleting…' : armRender ? 'Click again to confirm' : 'Delete render cache'}
+				</button>
+			</div>
+			<div class="pl-card">
+				<p class="rk-title">Cleaned PDFs</p>
+				<p class="rk-size">{disk ? fmtBytes(disk.cleanedPdfs.bytes) : '–'}</p>
+				<p class="pl-sub rk-note">
+					{disk ? `${disk.cleanedPdfs.files} intermediate file${disk.cleanedPdfs.files === 1 ? '' : 's'}` : '…'}
+					{disk && disk.cleanedPdfs.protected ? ` · ${disk.cleanedPdfs.protected} DB-referenced kept` : ''}.
+					Rebuilds from the question PDF on the next run.
+				</p>
+				<button
+					type="button"
+					class="pl-btn"
+					disabled={purging !== '' || !disk?.cleanedPdfs.files}
+					onclick={() => purge('cleaned')}
+				>
+					{purging === 'cleaned' ? 'Deleting…' : armCleaned ? 'Click again to confirm' : 'Delete cleaned PDFs'}
+				</button>
+			</div>
+		</div>
+		{#if purgeMsg}<p class="pl-sub" role="status">{purgeMsg}</p>{/if}
+
 		<details class="danger">
-			<summary>Danger zone: delete a paper</summary>
-			<div class="danger-body">
+			<summary>Danger zone: delete a paper</summary>			<div class="danger-body">
 				<p class="pl-sub">Removes the DB row, its questions + token rows, its Outputs folder, and its managed source PDFs (data tree). Files outside data/ are never touched.</p>
 				<p class="field-label" id="victim-label">Paper to delete</p>
 				<div class="victim-list" role="radiogroup" aria-labelledby="victim-label">
@@ -333,6 +415,24 @@
 	.section-title {
 		font-size: 1rem;
 		margin: 24px 0 8px;
+	}
+	.reclaim {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 12px;
+	}
+	.rk-title {
+		font-weight: 600;
+		margin: 0;
+	}
+	.rk-size {
+		font-family: var(--pl-font-mono);
+		font-size: 1.4rem;
+		margin: 4px 0;
+	}
+	.rk-note {
+		font-size: 0.82rem;
+		margin: 0 0 12px;
 	}
 	.danger {
 		margin-top: 24px;

@@ -1,14 +1,74 @@
 """Usage Ledger: token accounting (admin). Same math as the Streamlit view."""
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from fastapi import APIRouter, Depends
 
 import config
 import database
+import directory_manager
 from backend.deps import require_admin
 from run_pipeline import summarize_tokens
 
 router = APIRouter()
+
+# Render-cache PNGs written by render_tex_to_png: Streamlit's _<label>.png
+# plus the web endpoint's web_<part>.png. Content-hash guarded (.src_hash),
+# so any deleted file recompiles on next Render click. Never match figure
+# files (qfig*/sfig*/fig*).
+RENDER_CACHE_NAMES = ("_question.png", "_solution.png")
+
+
+def _render_cache_files(outputs: Path) -> list[Path]:
+    out = []
+    if outputs.is_dir():
+        for p in outputs.rglob("*.png"):
+            if p.name in RENDER_CACHE_NAMES or p.name.startswith("web_"):
+                out.append(p)
+    return out
+
+
+def _protected_cleaned() -> set[str]:
+    """Absolute cleaned-dir paths referenced by papers (never purge these)."""
+    conn = database.get_connection()
+    try:
+        refs = {r[0] for r in conn.execute(
+            "SELECT question_pdf_path FROM papers").fetchall()}
+        refs |= {r[0] for r in conn.execute(
+            "SELECT solution_pdf_path FROM papers").fetchall()}
+    finally:
+        conn.close()
+    cleaned = str(directory_manager.CLEANED_DIR.resolve())
+    keep = set()
+    for r in refs:
+        if not r:
+            continue
+        try:
+            rp = str(Path(r).resolve())
+        except OSError:
+            continue
+        if rp == cleaned or rp.startswith(cleaned + os.sep):
+            keep.add(rp)
+    return keep
+
+
+def _purgeable_cleaned() -> tuple[list[Path], list[Path]]:
+    """(deletable, protected) cleaned-dir files."""
+    keep = _protected_cleaned()
+    cdir = directory_manager.CLEANED_DIR
+    deletable, protected = [], []
+    if cdir.is_dir():
+        for p in sorted(cdir.iterdir()):
+            if not p.is_file() or p.is_symlink():
+                continue
+            try:
+                rp = str(p.resolve())
+            except OSError:
+                continue
+            (protected if rp in keep else deletable).append(p)
+    return deletable, protected
 
 
 def _paper_dict(row) -> dict:
@@ -87,3 +147,58 @@ def get_stats():
         "errors": [{"paper": p["id"], "error": p["error"]}
                    for p in papers if p["error"]],
     }
+
+
+def _size(files: list[Path]) -> int:
+    total = 0
+    for p in files:
+        try:
+            total += p.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+@router.get("/disk", dependencies=[Depends(require_admin)])
+def disk_usage():
+    """Reclaimable disk: render-cache PNGs + unreferenced cleaned PDFs.
+
+    Render cache recompiles on demand; cleaned intermediates rebuild from
+    the question PDF on the next run. DB-referenced files are counted as
+    protected, never purgeable.
+    """
+    render = _render_cache_files(directory_manager.OUTPUT_BASE)
+    deletable, protected = _purgeable_cleaned()
+    return {
+        "renderCache": {"bytes": _size(render), "files": len(render)},
+        "cleanedPdfs": {"bytes": _size(deletable), "files": len(deletable),
+                        "protected": len(protected)},
+    }
+
+
+@router.delete("/disk/render", dependencies=[Depends(require_admin)])
+def purge_render_cache():
+    files = _render_cache_files(directory_manager.OUTPUT_BASE)
+    freed, gone = 0, 0
+    for p in files:
+        try:
+            freed += p.stat().st_size
+            p.unlink()
+            gone += 1
+        except OSError:
+            continue
+    return {"deleted": gone, "bytes": freed}
+
+
+@router.delete("/disk/cleaned", dependencies=[Depends(require_admin)])
+def purge_cleaned_pdfs():
+    deletable, _ = _purgeable_cleaned()
+    freed, gone = 0, 0
+    for p in deletable:
+        try:
+            freed += p.stat().st_size
+            p.unlink()
+            gone += 1
+        except OSError:
+            continue
+    return {"deleted": gone, "bytes": freed}

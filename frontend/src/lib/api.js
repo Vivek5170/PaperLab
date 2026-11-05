@@ -76,6 +76,9 @@ export const api = {
 	getTopicUsage: () => request('/topics/usage'),
 
 	getStats: () => request('/stats'),
+	getDiskUsage: () => request('/stats/disk'),
+	purgeRenderCache: () => request('/stats/disk/render', { method: 'DELETE' }),
+	purgeCleanedPdfs: () => request('/stats/disk/cleaned', { method: 'DELETE' }),
 
 	listUploads: () => request('/uploads'),
 	uploadFiles: (formData) =>
