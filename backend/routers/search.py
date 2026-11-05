@@ -36,7 +36,7 @@ from backend.search_norm import (
 
 router = APIRouter()
 
-PAGE_DEFAULT = 24
+PAGE_DEFAULT = 15
 PAGE_MAX = 100
 PREVIEW_CHARS = 200
 FACETS_TTL_SEC = 60.0
