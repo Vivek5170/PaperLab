@@ -29,5 +29,8 @@ export const loginOpen = writable(false);
 /** Global filter text shared by the sidebar search and list pages. */
 export const searchQuery = writable('');
 
+/** Mobile navigation drawer state. */
+export const sidebarOpen = writable(false);
+
 /** Tagging Inbox items, shared so layout badge and inbox page fetch once. */
 export const inboxItems = writable(null);

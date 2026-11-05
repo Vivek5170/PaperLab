@@ -19,17 +19,23 @@ Base URL: same-origin `/api` (dev proxy in `vite.config.js` forwards it to
 - `GET /api/papers/{id}` -> `{id, title, exam, date, institute, status}`
 - `GET /api/papers/{id}/questions` ->
   `[{number, qtype, difficulty, topics: [{code, path, auto}], question: [segments], solution: [segments]}]`
-  Segment shapes: `{kind: "text", markdown}` (KaTeX `$` math inside),
-  `{kind: "fig", url}`, `{kind: "table", header, rows}` with inline cells.
+  Segment shapes: `{kind: "text", html}` (Python-Markdown HTML with math
+  factored out; math pairing is the exact Streamlit `_split_math` rules),
+  `{kind: "fig", url}` (never upscaled client-side: capped at 400px),
+  `{kind: "table", header, rows}` with inline cells. Math arrives as
+  `<span class="pl-math[data-tex]" data-display>` placeholders for the
+  client to fill with KaTeX.
 - `PATCH /api/papers/{id}/questions/{qn}`
   `{qtype?, difficulty?, topicCodes?, suggestion?}` (archivist)
 - `DELETE /api/papers/{id}` -> `{paperId, deleted}` (archivist, hard-delete)
+- `GET /api/papers/{id}/questions/{qn}/figures/{name}` -> image bytes
+- `GET /api/papers/{id}/questions/{qn}/render?part=question|solution` -> compiled-TeX PNG (404 when the engine is unavailable)
 - `POST /api/papers/register` `{pairs: [{question, solution|null}]}` (archivist)
 
 ## Tagging Inbox (archivist)
 
 - `GET /api/inbox` ->
-  `[{paperId, number, qtype, difficulty, suggestion, topics: [{code, path, auto}], question: [segments]}]` (untagged only)
+  `[{paperId, number, qtype, difficulty, suggestion, topics: [{code, path, auto}], question: [segments], solution: [segments]}]` (untagged only)
 
 ## Topics (archivist for writes)
 
@@ -50,6 +56,22 @@ Base URL: same-origin `/api` (dev proxy in `vite.config.js` forwards it to
 - `DELETE /api/uploads/clear` -> `{deleted: [name]}`
 - `GET /api/jobs` -> `[{key, status, info}]`
 - `POST /api/jobs` `{ids, mode: "sequential"|"parallel", force}`
+
+## Figures (archivist; all reuse app/figures.py + verify_latex_syntax)
+
+Trash files live in `figures/` as `_trash_<ts>_<name>` (invisible to
+`list_figures`, which skips `_` prefixes). Crop/replace back up first;
+delete strips refs (LaTeX-validated) then moves to trash; restore refuses
+when the name is taken; only empty-trash unlinks.
+
+- `GET /api/papers/{id}/questions/{qn}/figures` -> `[{name, side, usedIn, mode, url, width, height}]`
+- `GET .../figures/trash` -> `[{name, original, keptAt}]`
+- `POST .../figures` multipart (`file`, `target=question|solution`, `filename?`) -> figure (validates image, attaches ref, rolls back on bad LaTeX)
+- `PATCH .../figures/{name}` `{left,top,right,bottom}` fractions -> figure (backs up first)
+- `PUT .../figures/{name}` multipart `file` -> figure (same name, refs untouched)
+- `DELETE .../figures/{name}` -> `{deleted, trash, wasUsedIn}`
+- `POST .../figures/{name}/restore` -> figure (409 when the name is taken)
+- `DELETE .../figures/trash/{name}` -> `{deleted}` (the only irreversible op)
 
 ## Mapping notes (from current Streamlit code)
 

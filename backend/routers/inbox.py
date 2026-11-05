@@ -32,6 +32,10 @@ def get_inbox():
         except OSError:
             qtex = "*missing*"
         try:
+            stex = (qdir / "solution.tex").read_text(encoding="utf-8")
+        except OSError:
+            stex = "*missing*"
+        try:
             qid = database.get_question_id(r["paper_id"], r["question_number"])
             links = []
             for code, _rank, src in database.get_question_links(qid):
@@ -39,7 +43,9 @@ def get_inbox():
                     path = database.topic_path(code)
                 except ValueError:
                     path = code
-                links.append({"code": code, "path": path, "auto": src != "human"})
+                leaf = path.split("›")[-1].strip() or path
+                links.append({"code": code, "path": path, "name": leaf,
+                              "auto": src != "human"})
         except ValueError:
             links = []
         items.append({
@@ -50,5 +56,6 @@ def get_inbox():
             "suggestion": r["topic_suggestion"],
             "topics": links,
             "question": tex_segments(qtex, qdir, r["paper_id"], r["question_number"]),
+            "solution": tex_segments(stex, qdir, r["paper_id"], r["question_number"]),
         })
     return items

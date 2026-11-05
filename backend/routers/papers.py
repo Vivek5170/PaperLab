@@ -102,7 +102,8 @@ def _question_detail(paper_id: int, qn: str) -> dict:
             path = database.topic_path(code)
         except ValueError:
             path = code
-        links.append({"code": code, "path": path, "auto": src != "human"})
+        leaf = path.split("\u203a")[-1].strip() or path
+        links.append({"code": code, "path": path, "name": leaf, "auto": src != "human"})
     return {
         "paperId": paper_id,
         "number": qn,
@@ -184,7 +185,6 @@ def get_questions(paper_id: int):
 
 @router.get("/{paper_id}/questions/{qn}/figures/{name}")
 def get_figure(paper_id: int, qn: str, name: str):
-    safe = Path(name).name
 
     safe = Path(name).name
     if safe != name or not safe:
@@ -198,6 +198,26 @@ def get_figure(paper_id: int, qn: str, name: str):
     if not fig.is_file():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "figure not found")
     return FileResponse(fig)
+
+
+@router.get("/{paper_id}/questions/{qn}/render")
+def render_question(paper_id: int, qn: str, part: str = "question"):
+    """Compiled-TeX PNG fallback (mirrors the Streamlit Render button)."""
+    from fastapi.responses import FileResponse
+
+    from app.render import render_tex_to_png
+
+    if part not in ("question", "solution"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "part must be question|solution")
+    qdir = directory_manager.get_question_dir(paper_id, qn)
+    texp = qdir / f"{part}.tex"
+    if not texp.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "tex not found")
+    out = render_tex_to_png(texp.read_text(encoding="utf-8"), qdir, f"web_{part}.png")
+    if out is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            "TeX engine unavailable or compile failed")
+    return FileResponse(out, media_type="image/png")
 
 
 class ClassifyBody(BaseModel):

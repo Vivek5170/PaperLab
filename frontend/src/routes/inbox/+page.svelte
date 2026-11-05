@@ -10,9 +10,18 @@
 	let index = $state(0);
 	let loading = $state(true);
 	let error = $state('');
+	let showSolution = $state(false);
+	let lastShown = $state('');
 
 	const items = $derived($inboxItems ?? []);
 	const current = $derived(items[index]);
+
+	$effect(() => {
+		if (current && lastShown !== current.number) {
+			lastShown = current.number;
+			showSolution = false;
+		}
+	});
 
 	async function load(force = false) {
 		loading = true;
@@ -69,7 +78,23 @@
 {:else if items.length === 0}
 	<div class="pl-card"><p>Fully tagged - nothing left in the queue.</p></div>
 {:else}
-	<p class="pl-sub">{index + 1} of {items.length} here</p>
+	<p class="pl-sub queue-pos">
+		<input
+			type="number"
+			min="1"
+			max={items.length}
+			value={index + 1}
+			aria-label="Go to question number in queue"
+			onchange={(e) => {
+				const n = Number(e.currentTarget.value);
+				if (Number.isFinite(n)) {
+					index = Math.min(Math.max(Math.floor(n), 1), items.length) - 1;
+				}
+				e.currentTarget.value = String(index + 1);
+			}}
+		/>
+		<span>of {items.length} here</span>
+	</p>
 	<div class="stepper">
 		<button
 			type="button"
@@ -96,6 +121,20 @@
 			{/if}
 			<svelte:boundary>
 				<Segments segments={current.question} />
+				<div class="row">
+					<button
+						type="button"
+						class="pl-btn"
+						onclick={() => (showSolution = !showSolution)}
+					>
+						{showSolution ? 'Hide solution' : 'Show solution'}
+					</button>
+				</div>
+				{#if showSolution}
+					<div class="solution">
+						<Segments segments={current.solution} />
+					</div>
+				{/if}
 				{#key current.paperId + current.number}
 					<ClassifyForm
 						paperId={current.paperId}
@@ -117,9 +156,21 @@
 		font-size: 2rem;
 		margin-bottom: 4px;
 	}
+	.queue-pos {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.queue-pos input {
+		width: 64px;
+		padding: 6px 8px;
+		min-height: 0;
+	}
 	.stepper {
 		display: flex;
 		gap: 8px;
+		align-items: center;
+		flex-wrap: wrap;
 		margin: 12px 0;
 	}
 	.pl-card h2 {
@@ -130,5 +181,15 @@
 		border-left: 3px solid var(--pl-ochre);
 		padding-left: 12px;
 		color: var(--pl-ink-soft);
+	}
+	.row {
+		display: flex;
+		gap: 8px;
+		margin: 12px 0 4px;
+	}
+	.solution {
+		border-top: 1px solid var(--pl-line);
+		padding-top: 12px;
+		margin-bottom: 4px;
 	}
 </style>

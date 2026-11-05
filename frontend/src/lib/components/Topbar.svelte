@@ -1,5 +1,5 @@
 <script>
-	import { role, searchQuery, theme, loginOpen } from '$lib/stores.js';
+	import { role, searchQuery, theme, loginOpen, sidebarOpen } from '$lib/stores.js';
 	import { api } from '$lib/api.js';
 
 	let { crumbs = [] } = $props();
@@ -26,6 +26,17 @@
 <svelte:window onkeydown={onKeydown} />
 
 <header class="topbar">
+	<button
+		type="button"
+		class="icon-btn hamburger"
+		aria-label="Open navigation"
+		aria-expanded={$sidebarOpen}
+		onclick={() => sidebarOpen.set(true)}
+	>
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+			<path d="M4 7h16M4 12h16M4 17h16" />
+		</svg>
+	</button>
 	<nav class="crumbs" aria-label="Breadcrumb">
 		{#each crumbs as crumb, i (crumb)}
 			{#if i > 0}<span class="sep" aria-hidden="true">/</span>{/if}
@@ -172,5 +183,19 @@
 	.icon-btn svg {
 		width: 22px;
 		height: 22px;
+	}
+	.hamburger {
+		display: none;
+	}
+	@media (max-width: 900px) {
+		.hamburger {
+			display: grid;
+		}
+		.crumbs {
+			display: none;
+		}
+		.search input {
+			width: 80px;
+		}
 	}
 </style>

@@ -1,9 +1,13 @@
 <script>
 	import { page } from '$app/stores';
-	import { role, loginOpen } from '$lib/stores.js';
+	import { role, loginOpen, sidebarOpen } from '$lib/stores.js';
 	import { api } from '$lib/api.js';
 
 	let props = $props();
+
+	function close() {
+		sidebarOpen.set(false);
+	}
 
 	async function toggleView() {
 		if ($role === 'archivist') {
@@ -35,8 +39,13 @@
 	};
 </script>
 
-<aside class="sidebar" aria-label="Primary">
-	<a class="brand" href="/archive">
+<svelte:window onkeydown={(e) => e.key === 'Escape' && sidebarOpen.set(false)} />
+
+{#if $sidebarOpen}
+	<div class="scrim" onclick={close} aria-hidden="true"></div>
+{/if}
+<aside class="sidebar" class:open={$sidebarOpen} aria-label="Primary">
+	<a class="brand" href="/archive" onclick={close}>
 		<span class="brand-mark" aria-hidden="true">P</span>
 		<span class="brand-text">
 			<span class="brand-name">PaperLab</span>
@@ -48,6 +57,7 @@
 		{#each items.filter((i) => !i.admin || isArchivist) as item (item.href)}
 			<a
 				href={item.href}
+				onclick={close}
 				class="nav-item"
 				class:active={section === item.href}
 				aria-current={section === item.href ? 'page' : undefined}
@@ -110,15 +120,21 @@
 	.sidebar {
 		width: 264px;
 		flex-shrink: 0;
-		min-height: 100dvh;
-		position: sticky;
+		height: 100dvh;
+		position: fixed;
 		top: 0;
+		left: 0;
+		z-index: 40;
+		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
 		padding: 20px 14px;
 		background: var(--pl-surface);
 		border-right: 1px solid var(--pl-line);
+	}
+	.scrim {
+		display: none;
 	}
 	.brand {
 		display: flex;
@@ -268,9 +284,19 @@
 	}
 	@media (max-width: 900px) {
 		.sidebar {
-			position: fixed;
-			z-index: 40;
 			transform: translateX(-100%);
+			transition: transform 160ms ease;
+		}
+		.sidebar.open {
+			transform: none;
+			box-shadow: var(--pl-shadow-md);
+		}
+		.scrim {
+			display: block;
+			position: fixed;
+			inset: 0;
+			z-index: 39;
+			background: rgb(0 0 0 / 0.35);
 		}
 	}
 </style>

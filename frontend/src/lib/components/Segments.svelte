@@ -1,54 +1,64 @@
 <script>
-	import { marked } from 'marked';
 	import katex from 'katex';
 	import 'katex/dist/katex.min.css';
 
 	/**
-	 * Renders backend TeX segments. Formulas are pre-split so each one gets
-	 * role="img" + aria-label with its TeX source (KaTeX ships MathML too).
+	 * Renders backend segments. Text/table cells arrive as HTML with math
+	 * placeholders (<span class="pl-math[data-tex]">) produced by the exact
+	 * Streamlit splitting rules; this component only fills them with KaTeX.
 	 */
-	let { segments = [] } = $props();
+	let { segments = [], bust = '', zoomable = false } = $props();
 
-	const MATH_RE = /\$\$([\s\S]+?)\$\$|(?<!\\)\$([^$\n]+?)\$/g;
+	/** Click-to-zoom lightbox. Opt-in (zoomable) so existing uses are unaffected. */
 
-	function renderMarkdown(md) {
-		const parts = [];
-		let last = 0;
-		let m;
-		MATH_RE.lastIndex = 0;
-		while ((m = MATH_RE.exec(md)) !== null) {
-			if (m.index > last) parts.push({ t: 'text', v: md.slice(last, m.index) });
-			const display = m[1] !== undefined;
-			parts.push({ t: 'math', v: (display ? m[1] : m[2]).trim(), display });
-			last = m.index + m[0].length;
-		}
-		if (last < md.length) parts.push({ t: 'text', v: md.slice(last) });
-		return parts
-			.map((p) => {
-				if (p.t === 'text') return marked.parse(p.v || '');
-				let html = '';
-				try {
-					html = katex.renderToString(p.v, {
-						displayMode: p.display,
-						throwOnError: false
-					});
-				} catch {
-					html = '';
-				}
-				const safe = p.v.replace(/"/g, '&quot;');
-				return `<span class="math" role="img" aria-label="${safe}">${html}</span>`;
-			})
-			.join('');
+	let el = $state(null);
+	let zoom = $state(null);
+
+	function withBust(url) {
+		return bust && url.startsWith('/api/') ? `${url}?v=${bust}` : url;
 	}
+
+	function closeZoom() {
+		zoom = null;
+	}
+
+	$effect(() => {
+		if (!el) return;
+		// Track segments so new content re-renders math.
+		void segments;
+		for (const node of el.querySelectorAll('.pl-math, .pl-math-block')) {
+			if (node.dataset.done) continue;
+			const tex = decodeURIComponent(node.dataset.tex || '');
+			let html = '';
+			try {
+				html = katex.renderToString(tex, {
+					displayMode: node.classList.contains('pl-math-block'),
+					throwOnError: false
+				});
+			} catch {
+				html = '';
+			}
+			node.innerHTML = html;
+			node.setAttribute('role', 'img');
+			node.setAttribute('aria-label', tex);
+			node.dataset.done = '1';
+		}
+	});
 </script>
 
-<div class="segs">
+<div class="segs" bind:this={el}>
 	{#each segments as seg, i (i)}
 		{#if seg.kind === 'text'}
-			<div class="md">{@html renderMarkdown(seg.markdown || '')}</div>
+			<div class="md">{@html seg.html || ''}</div>
 		{:else if seg.kind === 'fig' && seg.url}
 			<figure class="fig">
-				<img src={seg.url} alt="Question figure" loading="lazy" />
+				{#if zoomable}
+					<button type="button" class="figbtn" onclick={() => (zoom = withBust(seg.url))} aria-label="View figure larger">
+						<img src={withBust(seg.url)} alt="Question figure" loading="lazy" />
+					</button>
+				{:else}
+					<img src={withBust(seg.url)} alt="Question figure" loading="lazy" />
+				{/if}
 			</figure>
 		{:else if seg.kind === 'table'}
 			<div class="pl-table-wrap">
@@ -58,9 +68,9 @@
 							{#each seg.header as cell, hi (hi)}
 								<th>
 									{#if cell.kind === 'fig'}
-										<img src={cell.url} alt="Table figure" loading="lazy" />
+										<img src={withBust(cell.url)} alt="Table figure" loading="lazy" />
 									{:else}
-										{@html renderMarkdown(cell.markdown || '')}
+										{@html cell.html || ''}
 									{/if}
 								</th>
 							{/each}
@@ -72,9 +82,9 @@
 								{#each row as cell, c (c)}
 									<td>
 										{#if cell.kind === 'fig'}
-											<img src={cell.url} alt="Table figure" loading="lazy" />
+											<img src={withBust(cell.url)} alt="Table figure" loading="lazy" />
 										{:else}
-											{@html renderMarkdown(cell.markdown || '')}
+											{@html cell.html || ''}
 										{/if}
 									</td>
 								{/each}
@@ -87,6 +97,13 @@
 	{/each}
 </div>
 
+{#if zoomable && zoom}
+	<div class="lightbox" onclick={closeZoom} role="dialog" aria-modal="true" aria-label="Enlarged figure">
+		<img src={zoom} alt="Enlarged figure" />
+	</div>
+{/if}
+<svelte:window onkeydown={(e) => { if (zoomable && e.key === 'Escape') closeZoom(); }} />
+
 <style>
 	.segs {
 		min-width: 0;
@@ -97,18 +114,48 @@
 	.md :global(p:first-child) {
 		margin-top: 0;
 	}
-	.md :global(.math) {
-		white-space: normal;
+	.md :global(.pl-math-block) {
+		display: block;
+		text-align: center;
+		margin: 0.75em 0;
 	}
 	.fig {
-		margin: 12px 0;
+		margin: 18px 0 22px;
+		text-align: center;
 	}
 	.fig img,
 	.pl-table img {
-		max-width: 400px;
-		width: 100%;
+		width: auto;
+		max-width: min(400px, 100%);
 		height: auto;
+		object-fit: contain;
 		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-sm);
+		background: var(--pl-surface);
+	}
+	.figbtn {
+		border: none;
+		background: none;
+		padding: 0;
+		cursor: zoom-in;
+		min-height: 0;
+		display: inline-block;
+	}
+	.lightbox {
+		position: fixed;
+		inset: 0;
+		z-index: 60;
+		background: rgb(0 0 0 / 0.72);
+		display: grid;
+		place-items: center;
+		padding: 24px;
+		cursor: zoom-out;
+	}
+	.lightbox img {
+		max-width: min(1100px, 94vw);
+		max-height: 92dvh;
+		object-fit: contain;
+		background: #fff;
 		border-radius: var(--pl-radius-sm);
 	}
 </style>

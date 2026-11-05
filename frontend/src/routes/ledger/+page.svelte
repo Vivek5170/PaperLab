@@ -188,31 +188,29 @@
 			{/each}
 		{/if}
 
-		<details class="phases">
-			<summary>Breakdown by phase (indexer / extractor / topics)</summary>
-			<div class="pl-table-wrap">
-				<table class="pl-table">
-					<thead>
+		<h3 class="section-title">Breakdown by phase (indexer / extractor / topics)</h3>
+		<div class="pl-table-wrap">
+			<table class="pl-table">
+				<thead>
+					<tr>
+						<th>phase</th><th>turns</th><th>fresh</th>
+						<th>cached</th><th>output</th><th>cost ({sym})</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each stats.phases ?? [] as ph (ph.phase)}
 						<tr>
-							<th>phase</th><th>turns</th><th>fresh</th>
-							<th>cached</th><th>output</th><th>cost ({sym})</th>
+							<td>{ph.phase}</td>
+							<td class="pl-mono num">{ph.turns}</td>
+							<td class="pl-mono num">{ph.fresh}</td>
+							<td class="pl-mono num">{ph.cached}</td>
+							<td class="pl-mono num">{ph.output}</td>
+							<td class="pl-mono num">{convert(ph.cost).toFixed(4)}</td>
 						</tr>
-					</thead>
-					<tbody>
-						{#each stats.phases ?? [] as ph (ph.phase)}
-							<tr>
-								<td>{ph.phase}</td>
-								<td class="pl-mono num">{ph.turns}</td>
-								<td class="pl-mono num">{ph.fresh}</td>
-								<td class="pl-mono num">{ph.cached}</td>
-								<td class="pl-mono num">{ph.output}</td>
-								<td class="pl-mono num">{convert(ph.cost).toFixed(4)}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-		</details>
+					{/each}
+				</tbody>
+			</table>
+		</div>
 
 		<details class="danger">
 			<summary>Danger zone: delete a paper</summary>
@@ -332,18 +330,9 @@
 	.num {
 		text-align: right;
 	}
-	.phases {
-		margin-top: 16px;
-	}
-	.phases summary {
-		cursor: pointer;
-		font-weight: 600;
-		min-height: 44px;
-		display: inline-flex;
-		align-items: center;
-	}
-	.phases .pl-table-wrap {
-		margin-top: 8px;
+	.section-title {
+		font-size: 1rem;
+		margin: 24px 0 8px;
 	}
 	.danger {
 		margin-top: 24px;

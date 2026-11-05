@@ -11,6 +11,7 @@ streamlit>=1.30
 fastapi>=0.115
 uvicorn>=0.30
 python-multipart>=0.0.9
+mistune>=3.0
 
 # System binary (not pip): tectonic — probed at runtime by app/render.py.
 # Install via https://tectonic-typesetting.github.io (e.g. `brew install tectonic`).

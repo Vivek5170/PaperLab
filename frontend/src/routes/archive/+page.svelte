@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api.js';
 	import { searchQuery } from '$lib/stores.js';
+	import { fuzzyFilter } from '$lib/fuzzy.js';
 	import StatCard from '$lib/components/StatCard.svelte';
 	import PaperCard from '$lib/components/PaperCard.svelte';
 
@@ -12,12 +13,11 @@
 	let error = $state('');
 
 	const filtered = $derived(
-		papers.filter((p) => {
-			if (p.status !== 'done') return false;
-			const q = $searchQuery.trim().toLowerCase();
-			if (!q) return true;
-			return (p.title || `paper ${p.id}`).toLowerCase().includes(q);
-		})
+		fuzzyFilter(
+			papers.filter((p) => p.status === 'done'),
+			$searchQuery,
+			(p) => `${p.title || ''} ${p.exam || ''} ${p.institute || ''} #${p.id}`
+		)
 	);
 	const totalQuestions = $derived(
 		Object.values(questionsByPaper).reduce((a, b) => a + b, 0)
@@ -61,7 +61,7 @@
 	<h2>Papers</h2>
 	{#if filtered.length === 0}
 		<div class="pl-card">
-			<p>No papers match. Clear the sidebar search, or process new papers in Intake.</p>
+			<p>No papers match those keywords. Try fewer or shorter words, or process new papers in Intake.</p>
 		</div>
 	{:else}
 		<div class="wall">

@@ -3,6 +3,7 @@
    pill controls) rather than the sharp archival spec. */
 
 :root {
+	color-scheme: light;
 	--pl-paper: #faf7f0;
 	--pl-surface: #ffffff;
 	--pl-raised: #f1ece1;
@@ -29,6 +30,7 @@
 }
 
 [data-theme='dark'] {
+	color-scheme: dark;
 	--pl-paper: #141311;
 	--pl-surface: #1d1c19;
 	--pl-raised: #262521;
@@ -108,6 +110,16 @@ textarea {
 
 ::selection {
 	background: var(--pl-seal-soft);
+}
+
+::placeholder {
+	color: var(--pl-ink-soft);
+	opacity: 1;
+}
+
+option {
+	background: var(--pl-surface);
+	color: var(--pl-ink);
 }
 
 .pl-sub {

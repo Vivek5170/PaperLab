@@ -91,6 +91,48 @@ export const api = {
 		request('/jobs', { method: 'POST', body: JSON.stringify({ ids, mode, force }) }),
 	deletePaper: (id) => request(`/papers/${id}`, { method: 'DELETE' }),
 
+	listFigures: (paperId, qn) =>
+		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/figures`),
+	listTrash: (paperId, qn) =>
+		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/figures/trash`),
+	cropFigure: (paperId, qn, name, box) =>
+		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/figures/${name}`, {
+			method: 'PATCH',
+			body: JSON.stringify(box)
+		}),
+	replaceFigure: (paperId, qn, name, file) => {
+		const form = new FormData();
+		form.append('file', file);
+		return request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/figures/${name}`, {
+			method: 'PUT',
+			body: form,
+			headers: {}
+		});
+	},
+	deleteFigure: (paperId, qn, name) =>
+		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/figures/${name}`, {
+			method: 'DELETE'
+		}),
+	restoreFigure: (paperId, qn, trashName) =>
+		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/figures/${trashName}/restore`, {
+			method: 'POST'
+		}),
+	emptyTrashFigure: (paperId, qn, trashName) =>
+		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/figures/trash/${trashName}`, {
+			method: 'DELETE'
+		}),
+	addFigure: (paperId, qn, target, filename, file) => {
+		const form = new FormData();
+		form.append('target', target);
+		form.append('filename', filename);
+		form.append('file', file);
+		return request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/figures`, {
+			method: 'POST',
+			body: form,
+			headers: {}
+		});
+	},
+
 	login: (password) =>
 		request('/auth/login', { method: 'POST', body: JSON.stringify({ password }) }),
 	logout: () => request('/auth/logout', { method: 'POST' }),

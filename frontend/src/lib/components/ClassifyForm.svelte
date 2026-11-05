@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api.js';
+	import TopicPicker from '$lib/components/TopicPicker.svelte';
 
 	/** One Save writes type + difficulty + topics + suggestion (PATCH). */
 	let {
@@ -15,7 +16,7 @@
 	let options = $state([]); // [{code, path}]
 	let qtype = $state(initial.qtype ?? 'unknown');
 	let difficulty = $state(initial.difficulty ?? '');
-	let topicCodes = $state((initial.topics ?? []).map((t) => t.code));
+	let topicCodes = $state([...new Set((initial.topics ?? []).map((t) => t.code))]);
 	let suggestion = $state(initial.suggestion ?? '');
 	let saving = $state(false);
 	let message = $state('');
@@ -27,7 +28,7 @@
 			difficulties = meta.difficulties;
 			options = topics
 				.filter((t) => t.level === 'subtopic')
-				.map((t) => ({ code: t.code, path: `${t.code} - ${t.name}` }));
+				.map((t) => ({ code: t.code, path: t.name }));
 		} catch {
 			message = 'Could not load topic options.';
 		}
@@ -72,13 +73,9 @@
 			{/each}
 		</select>
 	</label>
-	<label>
+	<label class="topics-label">
 		Topics
-		<select multiple bind:value={topicCodes} size="6">
-			{#each options as opt (opt.code)}
-				<option value={opt.code}>{opt.path}</option>
-			{/each}
-		</select>
+		<TopicPicker {options} bind:value={topicCodes} />
 	</label>
 	<label>
 		Suggestion (why nothing fit / proposed new topic)
@@ -107,9 +104,6 @@
 		gap: 4px;
 		font-size: 0.85rem;
 		font-weight: 600;
-	}
-	select[multiple] {
-		min-height: 140px;
 	}
 	.row {
 		display: flex;

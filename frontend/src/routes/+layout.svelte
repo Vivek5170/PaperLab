@@ -60,6 +60,7 @@
 	.main {
 		flex: 1;
 		min-width: 0;
+		margin-left: 264px;
 		display: flex;
 		flex-direction: column;
 	}
@@ -68,5 +69,10 @@
 		max-width: 1120px;
 		width: 100%;
 		margin: 0 auto;
+	}
+	@media (max-width: 900px) {
+		.main {
+			margin-left: 0;
+		}
 	}
 </style>
