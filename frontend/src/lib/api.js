@@ -140,4 +140,15 @@ export const api = {
 	getMeta: () => request('/papers/meta'),
 	getQuestion: (paperId, qn) =>
 		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}`),
+
+	getSearchFacets: () => request('/search/facets'),
+	searchQuestions: (filters = {}, { limit = 24, cursor = null } = {}) => {
+		const q = new URLSearchParams();
+		for (const [key, vals] of Object.entries(filters)) {
+			for (const v of vals ?? []) q.append(key, v);
+		}
+		q.set('limit', limit);
+		if (cursor) q.set('cursor', cursor);
+		return request(`/search?${q.toString()}`);
+	},
 };

@@ -1,0 +1,363 @@
+<script>
+	/**
+	 * Topic tree dropdown: Module → Chapter → Week → Subtopic checkboxes
+	 * with checked / unchecked / indeterminate states. Checking a parent
+	 * selects it plus every descendant (backend expands union); unchecking
+	 * one child keeps its siblings. Selection is an explicit code list.
+	 */
+	let { nodes = [], counts = {}, selected = $bindable([]) } = $props();
+
+	let open = $state(false);
+	let q = $state('');
+	let panel = $state(null);
+	const expanded = $state(new Set());
+
+	const inSel = (code) => selected.includes(code);
+
+	const byParent = $derived.by(() => {
+		const m = new Map();
+		for (const n of nodes) {
+			const k = n.parent ?? '';
+			if (!m.has(k)) m.set(k, []);
+			m.get(k).push(n);
+		}
+		return m;
+	});
+	const roots = $derived(byParent.get('') ?? []);
+
+	function descendants(node) {
+		const out = [];
+		const stack = [...(byParent.get(node.code) ?? [])];
+		while (stack.length) {
+			const c = stack.pop();
+			out.push(c.code);
+			stack.push(...(byParent.get(c.code) ?? []));
+		}
+		return out;
+	}
+
+	function collect(node) {
+		return [node.code, ...descendants(node)];
+	}
+
+	function stateOf(node) {
+		const codes = collect(node);
+		const n = codes.filter(inSel).length;
+		if (n === codes.length) return 'on';
+		if (n > 0) return 'part';
+		return 'off';
+	}
+
+	function toggle(node) {
+		const codes = collect(node);
+		if (stateOf(node) === 'on') {
+			const drop = new Set(codes);
+			selected = selected.filter((c) => !drop.has(c));
+		} else {
+			const have = new Set(selected);
+			for (const c of codes) have.add(c);
+			selected = [...have];
+		}
+	}
+
+	function aggCount(node) {
+		if (node.level === 'subtopic') return counts[node.code] ?? 0;
+		let n = counts[node.code] ?? 0;
+		for (const c of descendants(node)) {
+			const kid = nodes.find((x) => x.code === c);
+			if (kid?.level === 'subtopic') n += counts[c] ?? 0;
+		}
+		return n;
+	}
+
+	function indet(el, val) {
+		el.indeterminate = !!val;
+		return { update(v) { el.indeterminate = !!v; } };
+	}
+
+	function toggleExpand(code) {
+		if (expanded.has(code)) expanded.delete(code);
+		else expanded.add(code);
+	}
+
+	const matches = $derived(
+		!q.trim()
+			? []
+			: nodes
+					.filter((n) => n.level === 'subtopic' && `${n.code} ${n.name}`.toLowerCase().includes(q.trim().toLowerCase()))
+					.slice(0, 60)
+	);
+
+	const selCount = $derived(selected.length);
+
+	function close() {
+		open = false;
+	}
+</script>
+
+<svelte:window
+	onclick={(e) => {
+		if (open && panel && !panel.contains(e.target)) close();
+	}}
+	onkeydown={(e) => {
+		if (e.key === 'Escape') close();
+	}}
+/>
+
+<div class="dd" bind:this={panel}>
+	<button
+		type="button"
+		class="dd-btn"
+		class:active={selCount > 0}
+		aria-expanded={open}
+		aria-haspopup="tree"
+		onclick={() => (open = !open)}
+	>
+		<span class="dd-label">Topics{selCount > 0 ? ` · ${selCount}` : ''}</span>
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+	</button>
+	{#if open}
+		<div class="dd-panel tree-panel">
+			<div class="tree-search">
+				<input
+					type="search"
+					bind:value={q}
+					placeholder="Find a subtopic…"
+					aria-label="Find a subtopic"
+				/>
+			</div>
+			{#if q.trim()}
+				<ul class="tree-list">
+					{#each matches as m (m.code)}
+						<li>
+							<label class="row leaf">
+								<input type="checkbox" checked={inSel(m.code)} onchange={() => toggle(m)} />
+								<span class="nm">{m.name}</span>
+								{#if (counts[m.code] ?? 0) > 0}
+									<span class="ct pl-mono">{counts[m.code]}</span>
+								{/if}
+							</label>
+						</li>
+					{/each}
+					{#if matches.length === 0}
+						<li><p class="dd-empty">No subtopics match.</p></li>
+					{/if}
+				</ul>
+			{:else}
+				<ul class="tree-list">
+					{#each roots as mod (mod.code)}
+						{@render branch(mod, 0)}
+					{/each}
+				</ul>
+			{/if}
+			<div class="dd-foot">
+				<span class="hint">{selCount} selected</span>
+				<button type="button" class="dd-clear" disabled={selCount === 0} onclick={() => (selected = [])}>
+					Clear
+				</button>
+			</div>
+		</div>
+	{/if}
+</div>
+
+{#snippet branch(node, depth)}
+	{@const kids = byParent.get(node.code) ?? []}
+	{@const st = stateOf(node)}
+	{@const isOpen = expanded.has(node.code)}
+	<li>
+		<div class="row" style={`--d: ${depth}`}>
+			{#if kids.length}
+				<button
+					type="button"
+					class="chev"
+					aria-expanded={isOpen}
+					aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${node.name}`}
+					onclick={() => toggleExpand(node.code)}
+				>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d={isOpen ? 'm6 9 6 6 6-6' : 'm9 6 6 6-6 6'} /></svg>
+				</button>
+			{:else}
+				<span class="chev-sp"></span>
+			{/if}
+			<label class="lbl">
+				<input type="checkbox" checked={st === 'on'} use:indet={st === 'part'} onchange={() => toggle(node)} />
+				<span class="nm">{node.name}</span>
+				{#if aggCount(node) > 0}
+					<span class="ct pl-mono">{aggCount(node)}</span>
+				{/if}
+			</label>
+		</div>
+		{#if kids.length && isOpen}
+			<ul>
+				{#each kids as k (k.code)}
+					{@render branch(k, depth + 1)}
+				{/each}
+			</ul>
+		{/if}
+	</li>
+{/snippet}
+
+<style>
+	.dd {
+		position: relative;
+	}
+	.dd-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-pill);
+		background: var(--pl-surface);
+		color: var(--pl-ink-soft);
+		font-weight: 600;
+		font-size: 0.82rem;
+		padding: 8px 14px;
+		min-height: 40px;
+		white-space: nowrap;
+	}
+	.dd-btn:hover {
+		background: var(--pl-raised);
+		color: var(--pl-ink);
+	}
+	.dd-btn.active {
+		background: var(--pl-seal-soft);
+		border-color: var(--pl-seal);
+		color: var(--pl-ink);
+	}
+	.dd-btn svg {
+		width: 14px;
+		height: 14px;
+		flex-shrink: 0;
+	}
+	.dd-panel {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 50;
+		background: var(--pl-surface);
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-md);
+		box-shadow: var(--pl-shadow-md);
+	}
+	.tree-panel {
+		width: min(380px, 90vw);
+		display: flex;
+		flex-direction: column;
+		max-height: 420px;
+	}
+	.tree-search {
+		padding: 8px;
+		border-bottom: 1px solid var(--pl-line);
+	}
+	.tree-search input {
+		width: 100%;
+		min-height: 40px;
+	}
+	.tree-list {
+		list-style: none;
+		margin: 0;
+		padding: 6px;
+		overflow-y: auto;
+	}
+	.tree-list ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.row {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 4px 4px calc(4px + var(--d, 0) * 16px);
+		border-radius: var(--pl-radius-sm);
+	}
+	.row:hover {
+		background: var(--pl-raised);
+	}
+	.row.leaf {
+		padding: 9px 10px;
+		gap: 10px;
+		cursor: pointer;
+	}
+	.chev {
+		border: none;
+		background: none;
+		padding: 6px;
+		min-height: 0;
+		color: var(--pl-ink-soft);
+		display: grid;
+		place-items: center;
+	}
+	.chev svg {
+		width: 14px;
+		height: 14px;
+	}
+	.chev-sp {
+		width: 26px;
+		flex-shrink: 0;
+	}
+	.lbl {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex: 1;
+		min-width: 0;
+		cursor: pointer;
+		margin: 0;
+		padding: 6px 4px;
+		font-weight: 500;
+	}
+	.lbl input,
+	.row.leaf input {
+		accent-color: var(--pl-seal);
+		width: 18px;
+		height: 18px;
+		flex-shrink: 0;
+		min-height: 0;
+		margin: 0;
+	}
+	.nm {
+		flex: 1;
+		min-width: 0;
+		font-size: 0.85rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ct {
+		color: var(--pl-ink-soft);
+		font-size: 0.75rem;
+		flex-shrink: 0;
+	}
+	.dd-empty {
+		margin: 0;
+		padding: 14px;
+		color: var(--pl-ink-soft);
+		font-size: 0.85rem;
+	}
+	.dd-foot {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		border-top: 1px solid var(--pl-line);
+		padding: 4px 6px 4px 12px;
+	}
+	.hint {
+		font-size: 0.78rem;
+		color: var(--pl-ink-soft);
+	}
+	.dd-clear {
+		border: none;
+		background: none;
+		color: var(--pl-seal);
+		font-weight: 600;
+		font-size: 0.82rem;
+		padding: 8px 10px;
+		min-height: 36px;
+	}
+	.dd-clear:disabled {
+		color: var(--pl-ink-soft);
+		opacity: 0.5;
+		cursor: default;
+	}
+</style>

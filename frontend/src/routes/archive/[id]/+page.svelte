@@ -8,6 +8,8 @@
 	import FigurePanel from '$lib/components/FigurePanel.svelte';
 
 	const id = $derived($page.params.id);
+	const fromSearch = $derived($page.url.searchParams.get('from') === 'search');
+	const initialQ = $page.url.searchParams.get('q');
 	const isArchivist = $derived($role === 'archivist');
 
 	let paper = $state(null);
@@ -34,7 +36,10 @@
 	async function refresh() {
 		[paper, questions] = await Promise.all([api.getPaper(id), api.getQuestions(id)]);
 		if (!questions.some((q) => q.number === current)) {
-			current = questions[0]?.number ?? '';
+			current =
+				(initialQ && questions.some((q) => q.number === initialQ)
+					? initialQ
+					: (questions[0]?.number ?? ''));
 		}
 		currentQ = questions.find((q) => q.number === current) ?? null;
 	}
@@ -65,7 +70,11 @@
 
 <svelte:head><title>{paper ? paper.title : 'Reading Desk'} - PaperLab</title></svelte:head>
 
-<a class="back" href="/archive">Back to Archive</a>
+{#if fromSearch}
+	<a class="back" href="/search">Back to Search Results</a>
+{:else}
+	<a class="back" href="/archive">Back to Archive</a>
+{/if}
 
 {#if loading}
 	<p class="pl-sub">Loading paper…</p>
