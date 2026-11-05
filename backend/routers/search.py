@@ -42,7 +42,6 @@ PREVIEW_CHARS = 200
 FACETS_TTL_SEC = 60.0
 
 _YEAR_RE = re.compile(r"(19|20)\d{2}")
-_IMG_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 _FACETS_CACHE: dict = {"version": 0, "ts": 0.0, "payload": None}
 
@@ -223,16 +222,22 @@ def preview_text(tex: str, limit: int = PREVIEW_CHARS) -> str:
 
 
 def _thumb_url(paper_id: int, qn: str) -> str | None:
+    """First question-side figure via existing storage conventions.
+
+    Reuses app.figures.list_figures (trash/underscore + extension rules)
+    and directory_manager.get_question_dir; only runs for questions on
+    the current page -- never a tree scan.
+    """
+    from app.figures import figure_side, list_figures
+
     try:
-        figdir = directory_manager.get_question_dir(paper_id, qn) / "figures"
-        names = sorted(p.name for p in figdir.iterdir()
-                       if p.is_file() and not p.name.startswith("_")
-                       and p.suffix.lower() in _IMG_SUFFIXES)
+        figs = list_figures(directory_manager.get_question_dir(paper_id, qn))
     except OSError:
         return None
-    if not names:
+    if not figs:
         return None
-    return (f"/api/papers/{paper_id}/questions/{qn}/figures/{names[0]}")
+    first = next((p for p in figs if figure_side(p.name) == "question"), figs[0])
+    return f"/api/papers/{paper_id}/questions/{qn}/figures/{first.name}"
 
 
 # ---------------------------------------------------------------- search
