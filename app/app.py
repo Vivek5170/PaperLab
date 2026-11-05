@@ -32,22 +32,136 @@ database.init_db()
 st.markdown(
     """
     <style>
-    [data-testid="stSidebar"] .stButton > button {
-        min-height: 44px;
-        width: 100%;
-    }
-    .side-brand {
-        font-size: 1.25rem;
-        font-weight: 700;
-        margin-bottom: 0;
+    :root {
+        --pl-paper: #FAF7F0;
+        --pl-paper-deep: #EEE8D9;
+        --pl-ink: #1C1E21;
+        --pl-ink-soft: #5C6066;
+        --pl-line: #E0D9C8;
+        --pl-seal: #8C2F28;
+        --pl-seal-deep: #6E231E;
     }
     div.stButton > button {
         min-height: 44px;
+    }
+    .pl-brand {
+        border-left: 3px solid var(--pl-seal);
+        padding-left: 12px;
+        margin-bottom: 4px;
+    }
+    .pl-brand-name {
+        font-family: "Source Serif 4", Georgia, serif;
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--pl-ink);
+        line-height: 1.2;
+    }
+    .pl-brand-sub {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.78rem;
+        color: var(--pl-ink-soft);
+    }
+    .pl-ledger {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin: 8px 0;
+    }
+    .pl-ledger-cell {
+        border: 1px solid var(--pl-line);
+        border-radius: 4px;
+        padding: 6px 10px;
+    }
+    .pl-ledger-num {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--pl-ink);
+    }
+    .pl-ledger-label {
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--pl-ink-soft);
+    }
+    .pl-card-head {
+        border-bottom: 1px solid var(--pl-line);
+        padding-bottom: 8px;
+        margin-bottom: 8px;
+    }
+    .pl-card-title {
+        font-family: "Source Serif 4", Georgia, serif;
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--pl-ink);
+        line-height: 1.3;
+    }
+    .pl-card-meta {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.82rem;
+        color: var(--pl-ink-soft);
+        margin-top: 2px;
+    }
+    .pl-chiprow {
+        margin-top: 6px;
+    }
+    .pl-chip {
+        display: inline-block;
+        background: var(--pl-paper-deep);
+        border-radius: 2px;
+        padding: 2px 8px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.82rem;
+        color: var(--pl-ink);
+        margin-right: 6px;
+    }
+    .pl-locked {
+        border: 1px dashed var(--pl-line);
+        border-radius: 4px;
+        padding: 10px 12px;
+        font-size: 0.85rem;
+        color: var(--pl-ink-soft);
+    }
+    .pl-eyebrow-sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        * {
+            animation: none;
+        }
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+# Route keys (new IA) + one-release aliases for stale session values.
+_PAGE_ALIASES = {
+    "Library": "archive",
+    "Needs topics": "inbox",
+    "Topic tree": "syllabus",
+    "Admin": "intake",
+}
+_PAGE_TITLES = {
+    "archive": "Archive",
+    "inbox": "Tagging Inbox",
+    "syllabus": "Syllabus Map",
+    "intake": "Intake and Pipeline",
+    "ledger": "Usage Ledger",
+}
+
+
+def _locked_page(name: str) -> None:
+    """Admin-gated placeholder: login wall, no dead controls."""
+    st.header(name)
+    st.warning("This area needs archivist access - use the Admin button at the top right.")
+    if st.button("Log in", key=f"wall_{name}", help="Open the admin login"):
+        _login_dialog()
 
 # Offline discipline: non-done papers whose source PDFs were deleted from
 # data/uploads or data/processing are hard-deleted (DB row + Outputs; done
@@ -81,13 +195,14 @@ def _topbar() -> None:
     """Slim utility bar: breadcrumb left, admin toggle right."""
     h1, h2 = st.columns([4, 1])
     with h1:
-        st.caption(f"Location: {st.session_state.get('page', 'Library')}")
+        _cur = _PAGE_ALIASES.get(st.session_state.get("page", "archive"), "archive")
+        st.caption(f"Location: {_PAGE_TITLES.get(_cur, _cur)}")
     with h2:
         if is_admin():
             if st.button("Admin - Logout", key="admin_off",
                          help="Log out of admin mode"):
                 st.session_state.pop(SESSION_KEY, None)
-                st.session_state["page"] = "Library"
+                st.session_state["page"] = "archive"
                 st.toast("Admin mode off.")
                 st.success("Admin mode off.")
                 st.rerun()
@@ -136,40 +251,88 @@ def _paper_questions(pid: int):
 _topbar()
 
 with st.sidebar:
-    st.markdown('<p class="side-brand">PaperLab</p>', unsafe_allow_html=True)
-    st.caption("Physics extraction console - JEE / NEET archive")
+    st.markdown(
+        '<div class="pl-brand"><div class="pl-brand-name">PaperLab</div>'
+        '<div class="pl-brand-sub">physics archive</div></div>',
+        unsafe_allow_html=True,
+    )
+    st.caption("JEE / NEET extraction console")
+    _nav_raw = st.session_state.setdefault("page", "archive")
+    _nav_choice = _PAGE_ALIASES.get(_nav_raw, _nav_raw)
+    st.session_state["page"] = _nav_choice
+    st.text_input("Search papers", key="side_q", placeholder="Filter the Archive...",
+                  help="Filters the Archive wall by paper name")
+    if st.button("Archive", key="nav_archive", width="stretch",
+                 type="primary" if _nav_choice == "archive" else "secondary",
+                 help="Open the paper archive"):
+        st.session_state["page"] = "archive"
+        st.rerun()
     st.divider()
-    st.caption("Navigate")
-    _nav_choice = st.session_state.setdefault("page", "Library")
-    if st.button("Library", key="nav_lib", width="stretch",
-                 type="primary" if _nav_choice == "Library" else "secondary",
-                 help="Open the paper library"):
-        st.session_state["page"] = "Library"
-        st.rerun()
-    if st.button("Needs topics", key="nav_nt", width="stretch",
-                 type="primary" if _nav_choice == "Needs topics" else "secondary",
-                 help="Open questions missing topic tags"):
-        st.session_state["page"] = "Needs topics"
-        st.rerun()
-    if st.button("Topic tree", key="nav_tree", width="stretch",
-                 type="primary" if _nav_choice == "Topic tree" else "secondary",
-                 help="Open the topic hierarchy"):
-        st.session_state["page"] = "Topic tree"
-        st.rerun()
-    _adm_label = "Admin" + (" (on)" if is_admin() else "")
-    if st.button(_adm_label, key="nav_admin", width="stretch",
-                 type="primary" if _nav_choice == "Admin" else "secondary",
-                 help="Open admin area"):
-        st.session_state["page"] = "Admin"
-        st.rerun()
+    st.caption("Workshop")
+    if is_admin():
+        try:
+            _inq = _untagged_queue()
+            _inbox_n = len(_inq)
+        except Exception:
+            _inbox_n = None
+        _inbox_label = (f"Tagging Inbox ({_inbox_n} untagged)"
+                        if _inbox_n else "Tagging Inbox")
+        if st.button(_inbox_label, key="nav_inbox", width="stretch",
+                     type="primary" if _nav_choice == "inbox" else "secondary",
+                     help="Open questions missing topic tags"):
+            st.session_state["page"] = "inbox"
+            st.rerun()
+        if st.button("Syllabus Map", key="nav_syllabus", width="stretch",
+                     type="primary" if _nav_choice == "syllabus" else "secondary",
+                     help="Open the topic hierarchy"):
+            st.session_state["page"] = "syllabus"
+            st.rerun()
+        if st.button("Intake and Pipeline", key="nav_intake", width="stretch",
+                     type="primary" if _nav_choice == "intake" else "secondary",
+                     help="Stage files and run the pipeline"):
+            st.session_state["page"] = "intake"
+            st.rerun()
+        if st.button("Usage Ledger", key="nav_ledger", width="stretch",
+                     type="primary" if _nav_choice == "ledger" else "secondary",
+                     help="Token accounting and cost"):
+            st.session_state["page"] = "ledger"
+            st.rerun()
+    else:
+        st.markdown(
+            '<div class="pl-locked">Workshop locked - admin login required.</div>',
+            unsafe_allow_html=True,
+        )
     st.divider()
     _rows = _all_papers()
     _b = bucket_papers(_rows)
-    _lock = "admin on" if is_admin() else "locked"
-    st.caption(f"{len(_b['done'])} done - {len(_b['queued'])} queued")
-    st.caption(f"{len(_b['running'])} running - "
-               f"{len(_b['failed'])} failed - {_lock}")
-page = st.session_state.get("page", "Library")
+    st.markdown(
+        f'<div class="pl-ledger">'
+        f'<div class="pl-ledger-cell"><div class="pl-ledger-num">{len(_b["done"])}</div>'
+        f'<div class="pl-ledger-label">Done</div></div>'
+        f'<div class="pl-ledger-cell"><div class="pl-ledger-num">{len(_b["queued"])}</div>'
+        f'<div class="pl-ledger-label">Queued</div></div>'
+        f'<div class="pl-ledger-cell"><div class="pl-ledger-num">{len(_b["running"])}</div>'
+        f'<div class="pl-ledger-label">Running</div></div>'
+        f'<div class="pl-ledger-cell"><div class="pl-ledger-num">{len(_b["failed"])}</div>'
+        f'<div class="pl-ledger-label">Failed</div></div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.divider()
+    if is_admin():
+        if st.button("Switch to Student view", key="view_student",
+                     help="Log out and browse as a student"):
+            st.session_state.pop(SESSION_KEY, None)
+            st.session_state["page"] = "archive"
+            st.toast("Student view on - editing tools are hidden.")
+            st.rerun()
+        st.caption("Archivist view - editing tools visible")
+    else:
+        if st.button("Switch to Archivist view", key="view_admin",
+                     help="Log in to unlock the workshop"):
+            _login_dialog()
+        st.caption("Student view - editing tools are hidden")
+page = st.session_state.get("page", "archive")
 
 
 # ------------------------------------------------- figures & tex ---
@@ -292,7 +455,7 @@ def _render_tex_block(tex: str, base_dir: Path, key: str, label: str,
 
 
 def stage_upload() -> None:
-    st.header("Upload and verify")
+    st.header("Stage files")
     st.caption("Nothing enters processing until you explicitly confirm the pairs.")
     if "_staged_msg" in st.session_state:
         st.success(st.session_state.pop("_staged_msg"))
@@ -378,7 +541,7 @@ def stage_upload() -> None:
 
 
 def stage_processing() -> None:
-    st.header("Processing")
+    st.header("Pipeline")
     st.caption("Only confirmed pairs. Done papers never re-enter except by explicit rerun. "
                "Runs execute in the background; use Refresh to check progress.")
     stuck = reset_stuck_running_once()
@@ -417,7 +580,7 @@ def stage_processing() -> None:
     st.subheader("Queue")
     queue = buckets["queued"] + buckets["failed"]
     if not queue:
-        st.info("Queue is empty - confirm pairs on the Upload page.")
+        st.info("Queue is empty - confirm pairs in the Intake panel above.")
     else:
         for r in queue:
             extra = f" - {r['error']}" if r["status"] == "failed" else ""
@@ -606,40 +769,56 @@ def _qtype_summary(counts: dict) -> str:
 
 
 def stage_library() -> None:
+    """Public Archive wall (Reading Desk lives underneath one opened paper)."""
+    import html as _htmlesc
+
     if st.session_state.get("paper") is not None:
         _paper_page()
         return
     h1, h2 = st.columns([4, 1])
     with h1:
-        st.header("Paper library")
+        st.header("Archive")
     with h2:
         st.write("")
-        if st.button("Refresh", key="lib_refresh", help="Reload the library"):
+        if st.button("Refresh", key="lib_refresh", help="Reload the Archive"):
             st.rerun()
+    st.caption("Question paper archive. Use the sidebar search to filter by name.")
     all_rows = _all_papers()
     counts = _question_counts()
     qtypes = _qtype_counts()
     papers = [r for r in all_rows if (r["status"] or "") == "done"]
-    show_all = st.checkbox("Include unfinished papers", value=False)
-    if show_all:
-        papers = all_rows
-    query = st.text_input("Search papers", placeholder="fuzzy search by name...")
+    if is_admin():
+        show_all = st.checkbox("Include unfinished papers", value=False,
+                               help="Admin only: also list queued and failed papers")
+        if show_all:
+            papers = all_rows
+    query = st.session_state.get("side_q", "")
     exams = ["All"] + exam_options(all_rows)
     exam = st.selectbox("Exam", exams, help="Filter papers by exam")
     papers = filter_papers(papers, query, exam)
     if not papers:
-        st.info("No completed papers yet - process some on the Processing page.")
+        st.info("No completed papers yet - new intakes appear here after the pipeline finishes.")
         return
     for r in papers:
         nq = counts.get(r["id"], 0)
         with st.container(border=True):
             c1, c2 = st.columns([4, 1])
-            c1.subheader(f"{r['paper_name'] or f'Paper {r['id']}'}")
-            c1.caption(f"{r['exam_type'] or 'Unknown exam'} - "
-                       f"{r['paper_date'] or 'undated'} - "
-                       f"{nq} questions - #{r['id']}")
-            if qtypes.get(r["id"]):
-                c1.caption(f"Types: {_qtype_summary(qtypes[r['id']])}")
+            title = _htmlesc.escape(r['paper_name'] or f"Paper {r['id']}")
+            meta = _htmlesc.escape(
+                f"{r['exam_type'] or 'Unknown exam'} - "
+                f"{r['paper_date'] or 'undated'} - "
+                f"{nq} questions - #{r['id']}")
+            chips = "".join(
+                f'<span class="pl-chip">{_htmlesc.escape(c)}</span>'
+                for c in _qtype_summary(qtypes[r["id"]]).split(" - ")
+            ) if qtypes.get(r["id"]) else ""
+            c1.markdown(
+                f'<div class="pl-card-head"><div class="pl-card-title">{title}</div>'
+                f'<div class="pl-card-meta">{meta}</div>'
+                + (f'<div class="pl-chiprow">{chips}</div>' if chips else '')
+                + '</div>',
+                unsafe_allow_html=True,
+            )
             if r["source_institute"]:
                 c1.caption(f"Institute: {r['source_institute']}")
             if r["question_pdf_path"]:
@@ -662,7 +841,7 @@ def stage_library() -> None:
 
 def _paper_page() -> None:
     """Focused sub-page for one opened paper, with a way back."""
-    if st.button("Back to library", key="back_lib", help="Return to the library"):
+    if st.button("Back to Archive", key="back_lib", help="Return to the Archive"):
         for k in ("paper", "q", "show_ans"):
             st.session_state.pop(k, None)
         st.rerun()
@@ -964,25 +1143,29 @@ def _figure_manager(pid: int, qn: str, qdir) -> None:
             st.error(str(exc))
 
 
-# -------------------------------------------------------------- Admin ---
+# ------------------------------------------------- Workshop (admin) ---
 
-def stage_admin() -> None:
-    st.header("Admin")
+def stage_intake() -> None:
+    """Staging + verification + runs, one scroll (admin only)."""
     if not is_admin():
-        st.warning("This area needs admin mode - use the Admin button at the top right.")
-        if st.button("Log in", key="admin_wall_go", help="Open the admin login"):
-            _login_dialog()
+        _locked_page("Intake and Pipeline")
         return
     if uses_default_password():
         st.warning('Admin password is still the default "admin" - '
                    "set PAPERLAB_ADMIN_PASSWORD in .env before hosting.")
-    tab_stats, tab_flow = st.tabs(["Statistics", "Upload and Processing"])
-    with tab_stats:
-        _admin_statistics()
-    with tab_flow:
-        stage_upload()
-        st.divider()
-        stage_processing()
+    st.header("Intake and Pipeline")
+    stage_upload()
+    st.divider()
+    stage_processing()
+
+
+def stage_ledger() -> None:
+    """Token accounting and cost (admin only)."""
+    if not is_admin():
+        _locked_page("Usage Ledger")
+        return
+    st.header("Usage Ledger")
+    _admin_statistics()
 
 
 def _admin_statistics() -> None:
@@ -1132,7 +1315,10 @@ def _untagged_queue() -> list:
 
 
 def stage_needs_topics() -> None:
-    st.header("Needs topics")
+    if not is_admin():
+        _locked_page("Tagging Inbox")
+        return
+    st.header("Tagging Inbox")
     queue = _untagged_queue()
     conn = database.get_connection()
     try:
@@ -1200,10 +1386,10 @@ def _all_topics() -> list:
 
 def stage_tree() -> None:
     if not is_admin():
-        st.header("Topic tree")
-        st.warning("This area needs admin mode - use the Admin button at the top right.")
+        st.header("Syllabus Map")
+        st.warning("This area needs archivist access - use the Admin button at the top right.")
         return
-    st.header("Topic tree")
+    st.header("Syllabus Map")
     rows = _all_topics()
     if not rows:
         st.info("Tree is empty - seed it with database.init_topics().")
@@ -1415,11 +1601,13 @@ def stage_tree() -> None:
                    "or children exist - retag/move them first).")
 
 
-if page == "Admin":
-    stage_admin()
-elif page == "Needs topics":
+if page == "intake":
+    stage_intake()
+elif page == "inbox":
     stage_needs_topics()
-elif page == "Topic tree":
+elif page == "syllabus":
     stage_tree()
+elif page == "ledger":
+    stage_ledger()
 else:
     stage_library()

@@ -1,0 +1,207 @@
+/* PaperLab design tokens: Archive Reading Room, modern sleek shell.
+   Palette from DESIGN.md; radii follow the reference layout (soft cards,
+   pill controls) rather than the sharp archival spec. */
+
+:root {
+	--pl-paper: #faf7f0;
+	--pl-surface: #ffffff;
+	--pl-raised: #f1ece1;
+	--pl-ink: #1c1e21;
+	--pl-ink-soft: #5c6066;
+	--pl-line: #e0d9c8;
+	--pl-seal: #8c2f28;
+	--pl-seal-deep: #6e231e;
+	--pl-seal-soft: #f5e3df;
+	--pl-pine: #234e3e;
+	--pl-pine-soft: #e2efe8;
+	--pl-ochre: #8a6d1b;
+	--pl-ochre-soft: #f5ecd4;
+	--pl-focus: #8c2f28;
+	--pl-radius-sm: 8px;
+	--pl-radius-md: 12px;
+	--pl-radius-lg: 16px;
+	--pl-radius-pill: 999px;
+	--pl-shadow-sm: 0 1px 2px rgb(28 30 33 / 0.06), 0 4px 16px rgb(28 30 33 / 0.06);
+	--pl-shadow-md: 0 8px 32px rgb(28 30 33 / 0.14);
+	--pl-font-display: 'Source Serif 4', Georgia, serif;
+	--pl-font-ui: Inter, system-ui, -apple-system, sans-serif;
+	--pl-font-mono: ui-monospace, sfmono-regular, menlo, monospace;
+}
+
+[data-theme='dark'] {
+	--pl-paper: #141311;
+	--pl-surface: #1d1c19;
+	--pl-raised: #262521;
+	--pl-ink: #ede6d6;
+	--pl-ink-soft: #a8a094;
+	--pl-line: #35322b;
+	--pl-seal: #c25a4e;
+	--pl-seal-deep: #d67f73;
+	--pl-seal-soft: #3a2320;
+	--pl-pine-soft: #1e332b;
+	--pl-ochre: #d6b94a;
+	--pl-ochre-soft: #38300f;
+	--pl-focus: #c25a4e;
+	--pl-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.3);
+	--pl-shadow-md: 0 8px 32px rgb(0 0 0 / 0.5);
+}
+
+[data-theme='dark'] .pl-btn-primary {
+	background: #a03a32;
+	border-color: #a03a32;
+}
+
+[data-theme='dark'] .pl-btn-primary:hover {
+	background: #7e231e;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--pl-paper);
+	color: var(--pl-ink);
+	font-family: var(--pl-font-ui);
+	font-size: 0.95rem;
+	line-height: 1.55;
+}
+
+h1,
+h2,
+h3 {
+	font-family: var(--pl-font-display);
+	font-weight: 600;
+	line-height: 1.2;
+	margin: 0;
+}
+
+a {
+	color: inherit;
+}
+
+button {
+	font: inherit;
+	cursor: pointer;
+	min-height: 44px;
+}
+
+:focus-visible {
+	outline: 2px solid var(--pl-focus);
+	outline-offset: 2px;
+}
+
+input,
+select,
+textarea {
+	font: inherit;
+	color: var(--pl-ink);
+	background: var(--pl-surface);
+	border: 1px solid var(--pl-line);
+	border-radius: var(--pl-radius-sm);
+	padding: 10px 12px;
+	min-height: 44px;
+}
+
+::selection {
+	background: var(--pl-seal-soft);
+}
+
+.pl-sub {
+	color: var(--pl-ink-soft);
+}
+
+.pl-mono {
+	font-family: var(--pl-font-mono);
+	font-size: 0.82rem;
+}
+
+.pl-card {
+	background: var(--pl-surface);
+	border: 1px solid var(--pl-line);
+	border-radius: var(--pl-radius-md);
+	padding: 16px;
+}
+
+.pl-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	border-radius: var(--pl-radius-sm);
+	padding: 10px 18px;
+	font-weight: 600;
+	font-size: 0.85rem;
+	border: 1px solid var(--pl-line);
+	background: var(--pl-surface);
+	color: var(--pl-ink);
+	text-decoration: none;
+}
+
+.pl-btn:hover {
+	background: var(--pl-raised);
+}
+
+.pl-btn-primary {
+	background: var(--pl-seal);
+	border-color: var(--pl-seal);
+	color: #fff;
+}
+
+.pl-btn-primary:hover {
+	background: var(--pl-seal-deep);
+}
+
+.pl-chip {
+	display: inline-block;
+	background: var(--pl-raised);
+	border-radius: 6px;
+	padding: 2px 8px;
+	font-family: var(--pl-font-mono);
+	font-size: 0.75rem;
+	margin-right: 6px;
+}
+
+.pl-table-wrap {
+	overflow-x: auto;
+	border: 1px solid var(--pl-line);
+	border-radius: var(--pl-radius-md);
+	background: var(--pl-surface);
+}
+
+table.pl-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.85rem;
+}
+
+.pl-table th,
+.pl-table td {
+	text-align: left;
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--pl-line);
+	white-space: nowrap;
+}
+
+.pl-table th {
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--pl-ink-soft);
+}
+
+.pl-error {
+	border: 1px solid var(--pl-ochre);
+	border-radius: var(--pl-radius-sm);
+	padding: 12px 14px;
+	background: var(--pl-ochre-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation: none !important;
+		transition: none !important;
+	}
+}

@@ -1,0 +1,33 @@
+import { writable } from 'svelte/store';
+
+function persistent(key, fallback) {
+	const stored =
+		typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+	const store = writable(stored ?? fallback);
+	store.subscribe((value) => {
+		try {
+			localStorage.setItem(key, value);
+		} catch {
+			/* private mode: stay in memory */
+		}
+	});
+	return store;
+}
+
+/** 'light' | 'dark' — applied to <html data-theme> by +layout.svelte. */
+export const theme = persistent('pl-theme', 'light');
+
+/**
+ * 'student' | 'archivist'. The server session is the source of truth
+ * (+layout syncs it from /api/auth/me on load); this only hides edit UI.
+ */
+export const role = persistent('pl-role', 'student');
+
+/** Opens the archivist login dialog (rendered once in +layout). */
+export const loginOpen = writable(false);
+
+/** Global filter text shared by the sidebar search and list pages. */
+export const searchQuery = writable('');
+
+/** Tagging Inbox items, shared so layout badge and inbox page fetch once. */
+export const inboxItems = writable(null);
