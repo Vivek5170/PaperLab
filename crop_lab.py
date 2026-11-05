@@ -9,6 +9,7 @@ Nothing is saved anywhere; previews only.
 from __future__ import annotations
 
 import io
+import tempfile
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -43,7 +44,7 @@ if choice == "(upload one)":
         st.info("Pick a PDF from data/ or upload one to start.")
         st.stop()
     safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in uploaded.name)
-    pdf_path = f"/tmp/crop_lab_{safe}_{uploaded.size}.pdf"
+    pdf_path = str(Path(tempfile.gettempdir()) / f"crop_lab_{safe}_{uploaded.size}.pdf")
     Path(pdf_path).write_bytes(uploaded.getvalue())
     # A new file under a recycled path would reuse stale fingerprints.
     if st.session_state.get("lab_pdf") != pdf_path:
@@ -68,7 +69,7 @@ import pdf_clean as _pc
 
 
 def _cleaned_copy(src: str) -> tuple[str, dict | None]:
-    """Cleaned copy of src under /tmp/crop_lab_cleaned (cached by content).
+    """Cleaned copy of src under the system temp dir (cached by content).
 
     Returns (work_path, report). Falls back to (src, None) on any error.
     """
@@ -77,7 +78,7 @@ def _cleaned_copy(src: str) -> tuple[str, dict | None]:
         with open(src, "rb") as f:
             for chunk in iter(lambda: f.read(1 << 20), b""):
                 h.update(chunk)
-        d = Path("/tmp/crop_lab_cleaned")
+        d = Path(tempfile.gettempdir()) / "crop_lab_cleaned"
         d.mkdir(parents=True, exist_ok=True)
         dst = d / (h.hexdigest()[:16] + ".pdf")
         if dst.exists():

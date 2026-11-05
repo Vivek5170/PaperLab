@@ -3,7 +3,7 @@
 Best = pdf_clean.clean_pdf_canvas + pdf_longtext.strip_long_text.
 One output PDF per archive PDF, each page doubled in width.
 
-Run: python3 make_sbs.py [--src data/archive] [--out /tmp/longtext_sbs]
+Run: python3 make_sbs.py [--src data/archive] [--out <system-temp-dir>/longtext_sbs]
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def side_by_side(orig: Path, modified: Path, out: Path) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default="data/archive")
-    ap.add_argument("--out", default="/tmp/longtext_sbs")
+    ap.add_argument("--out", default=str(Path(tempfile.gettempdir()) / "longtext_sbs"))
     ap.add_argument("--aggressive", action="store_true",
                     help="also strip short-line debris far from strokes")
     ap.add_argument("--chrome", action="store_true",

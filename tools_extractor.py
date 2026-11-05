@@ -43,10 +43,10 @@ _RENDER_DPI = 200
 # Preview budgets: pages stay readable, crop previews are small from birth.
 PAGE_PX, CROP_PX = 1600, 600
 _PREVIEW_JPEG_Q = 80
-_ENC_CACHE = Path("/tmp/enc")
-_RENDER_CACHE = Path("/tmp/physics_pages")
+_ENC_CACHE = Path(tempfile.gettempdir()) / "paperlab_enc"
+_RENDER_CACHE = Path(tempfile.gettempdir()) / "paperlab_physics_pages"
 # Disk caches are content-keyed and unbounded by design; cap the file count
-# so /tmp cannot grow forever across runs (oldest entries go first).
+# so the system temp dir cannot grow forever across runs (oldest go first).
 _CACHE_FILE_CAP = 1000
 
 
