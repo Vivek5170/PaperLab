@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 import database
 from backend.deps import require_admin
+from backend.routers.search import bump_search_version
 
 router = APIRouter()
 
@@ -63,6 +64,7 @@ def create_topic(body: CreateBody):
             code = database.add_topic(body.parent, body.level, body.name, body.descr)
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    bump_search_version()
     return {"code": code}
 
 
@@ -78,6 +80,7 @@ def update_topic(code: str, body: UpdateBody):
         new_rev = database.update_topic(code, body.name, body.descr, int(body.rev))
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    bump_search_version()
     return {"code": code, "rev": new_rev}
 
 
@@ -91,6 +94,7 @@ def move_topic(code: str, body: MoveBody):
         database.move_topic(code, body.newParent)
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    bump_search_version()
     return {"code": code, "parent": body.newParent}
 
 
@@ -100,4 +104,5 @@ def delete_topic(code: str):
         database.delete_topic(code)
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    bump_search_version()
     return {"code": code, "deleted": True}

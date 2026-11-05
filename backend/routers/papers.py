@@ -17,6 +17,7 @@ import directory_manager
 from app.library import bucket_papers, filter_papers
 from app.pairing import UPLOAD_DIR, delete_paper_everywhere, register_pair
 from backend.deps import require_admin
+from backend.routers.search import bump_search_version
 from backend.segments import tex_segments
 
 router = APIRouter()
@@ -173,6 +174,7 @@ def delete_paper(paper_id: int):
     """Hard-delete: DB row, questions, token rows, Outputs, managed source PDFs."""
     _require_paper(paper_id)
     delete_paper_everywhere(paper_id)
+    bump_search_version()
     return {"paperId": paper_id, "deleted": True}
 
 
@@ -265,6 +267,7 @@ def classify_question(paper_id: int, qn: str, body: ClassifyBody):
             database.set_question_topics(qid, body.topicCodes, src="human")
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    bump_search_version()
     return _question_detail(paper_id, qn)
 
 
@@ -285,4 +288,5 @@ def register_pairs(body: RegisterBody):
         s = (UPLOAD_DIR / Path(p.solution).name) if p.solution else None
         pid, reused = register_pair(str(q), str(s) if s else None)
         out.append({"question": p.question, "paperId": pid, "reused": reused})
+    bump_search_version()
     return {"registered": out}

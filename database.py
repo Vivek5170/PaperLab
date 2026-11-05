@@ -143,6 +143,48 @@ CREATE TABLE IF NOT EXISTS questions (
 );
 """
 
+# Indexes backing the /api/search endpoint. Created lazily inside init_db
+# (migration-safe IF NOT EXISTS) so existing databases gain them on next
+# boot; sized for ~20k questions (B-tree lookups + GROUP BY, no full scans).
+SEARCH_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS idx_questions_paper ON questions(paper_id)",
+    "CREATE INDEX IF NOT EXISTS idx_questions_qtype ON questions(qtype)",
+    "CREATE INDEX IF NOT EXISTS idx_questions_difficulty ON questions(difficulty)",
+    "CREATE INDEX IF NOT EXISTS idx_papers_exam ON papers(exam_type)",
+    "CREATE INDEX IF NOT EXISTS idx_papers_institute ON papers(source_institute)",
+    "CREATE INDEX IF NOT EXISTS idx_papers_status ON papers(status)",
+    "CREATE INDEX IF NOT EXISTS idx_qt_qid ON question_topics(question_id)",
+    "CREATE INDEX IF NOT EXISTS idx_qt_topic ON question_topics(topic_code)",
+    "CREATE INDEX IF NOT EXISTS idx_topics_parent ON topics(parent)",
+)
+
+
+def _ensure_search_indexes(conn: sqlite3.Connection) -> None:
+    """Create /api/search indexes; safe to re-run on every init_db.
+
+    Column-aware: pre-migration tables (see
+    test_migrate_old_db_gets_status_and_token_table) may lack newer
+    columns, so only index what exists. Later init_db runs pick up the
+    rest once migrations add the columns.
+    """
+    cols: dict[str, set[str]] = {}
+    for stmt in SEARCH_INDEXES:
+        # "CREATE INDEX IF NOT EXISTS <name> ON <table>(<column>)"
+        try:
+            rest = stmt.split(" ON ", 1)[1]
+            table, col = rest.split("(", 1)
+            table, col = table.strip(), col.rstrip(")").strip()
+        except (IndexError, ValueError):
+            continue
+        if table not in cols:
+            cols[table] = {r["name"] for r in
+                           conn.execute(f"PRAGMA table_info({table})").fetchall()} \
+                if conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table'"
+                    " AND name = ?", (table,)).fetchone() else set()
+        if col in cols[table]:
+            conn.execute(stmt)
+
 
 def get_connection(db_path: str | Path | None = None) -> sqlite3.Connection:
     """Return a SQLite connection with foreign keys enforced (WAL for readers)."""
@@ -235,6 +277,7 @@ def init_db(db_path: str | Path | None = None) -> Path:
                 "WHERE q_start IS NOT NULL AND s_start IS NULL "
                 "AND sol_section_start IS NULL"
             )
+        _ensure_search_indexes(conn)
         conn.commit()
     finally:
         conn.close()
@@ -516,7 +559,7 @@ def get_question_links(question_id: int) -> list[tuple]:
     try:
         return [(r["topic_code"], r["rank"], r["src"]) for r in conn.execute(
             "SELECT topic_code, rank, src FROM question_topics "
-            "WHERE question_id = ? ORDER BY rank",
+            "WHERE question_id = ? ORDER BY rank, topic_code",
             (question_id,)).fetchall()]
     finally:
         conn.close()
