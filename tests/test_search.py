@@ -68,6 +68,9 @@ def _seed(client_db):
             " VALUES (?,?,0,'human')", (qids[(p1, "1")], "PH01.01"))
         conn.execute(
             "INSERT INTO question_topics (question_id, topic_code, rank, src)"
+            " VALUES (?,?,1,'human')", (qids[(p1, "1")], "PH01.02"))
+        conn.execute(
+            "INSERT INTO question_topics (question_id, topic_code, rank, src)"
             " VALUES (?,?,0,'human')", (qids[(p1, "2")], "PH01.02"))
         conn.execute(
             "INSERT INTO question_topics (question_id, topic_code, rank, src)"
@@ -247,6 +250,21 @@ def test_topic_expansion_matches_expected_set(search_client):
         assert got == expect, sel
 
 
+def test_subtree_counts_are_distinct_questions(search_client):
+    client, _ = search_client
+    f = _get(client, "/api/search/facets")
+    sub = f["topicSubtreeCounts"]
+    # p1q1 carries two M1 tags: naive per-subtopic sums would give 4, but
+    # only 3 distinct questions sit under M1.
+    assert sub["M1"] == 3
+    assert sub["PH01"] == 3
+    assert sub["PH01-W1"] == 3
+    assert sub["PH01.01"] == 2
+    assert sub["PH01.02"] == 2
+    assert sub["PH13.14"] == 1
+    assert sub["M2"] == 1
+
+
 def test_overlapping_selection_dedupes(search_client):
     client, _ = search_client
     m1 = _get(client, "/api/search?topic=M1&limit=100")
@@ -260,7 +278,8 @@ def test_chapters_deterministic_first_plus_overflow(search_client):
     b = _get(client, "/api/search?topic=M1&limit=100")
     assert [(i["chapters"], i["chapterOverflow"]) for i in a["items"]] == [
         (i["chapters"], i["chapterOverflow"]) for i in b["items"]]
-    multi = next(i for i in a["items"] if len(i["topics"]) == 2)
+    multi = next(i for i in a["items"]
+                 if {t["code"] for t in i["topics"]} == {"PH01.02", "PH13.14"})
     assert multi["chapters"] == ["Vectors", "Electrostatics"]
     assert multi["chapterOverflow"] == 0
 

@@ -37,7 +37,7 @@ Base URL: same-origin `/api` (dev proxy in `vite.config.js` forwards it to
 - `GET /api/inbox` ->
   `{total, items: [{paperId, number, qtype, difficulty, suggestion, topics: [{code, path, name, auto}]}]}` (light list, untagged only; fetch each question via `GET /api/papers/{id}/questions/{qn}`)
 - `GET /api/papers/{id}/questions/{qn}` -> full single question (`number, qtype, difficulty, suggestion, topics, question + solution` segments)
-- `GET /api/search/facets` -> `{version, qtypes: [{value, count}], difficulties: [...], ungradedDifficulty, exams: [...], institutes: [{name, key, raws, count}], instituteSuggestions: [{a, b, score}], years: [...], topicCounts: {code: n}}` (cached ~60s; version bumps on classify/topic/paper mutations)
+- `GET /api/search/facets` -> `{version, qtypes: [{value, count}], difficulties: [...], ungradedDifficulty, exams: [...], institutes: [{name, key, raws, count}], instituteSuggestions: [{a, b, score}], years: [...], topicCounts: {code: n}, topicSubtreeCounts: {code: n}}` (subtree = distinct questions per node; powers the tree counts; cached ~60s; version bumps on classify/topic/paper mutations)
 - `GET /api/search?qtype=&difficulty=&exam=&institute=&year=&topic=&limit=&cursor=` -> `{items: [{paperId, number, qtype, difficulty, paper: {title, exam, institute, year}, chapters: [up to 2], chapterOverflow, topics: [{code, name}], preview, thumb}], total, nextCursor, hasMore, filters}`. Multi-values union within a group, intersect across groups. `institute` takes canonical names from facets. `cursor` is bound to the filter set (changing filters with an old cursor -> 400). Ordered by question id, `limit` 1-100 default 24. Only `done` papers.
 
 ## Topics (archivist for writes)

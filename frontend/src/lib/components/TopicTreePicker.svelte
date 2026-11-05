@@ -61,13 +61,10 @@
 	}
 
 	function aggCount(node) {
-		if (node.level === 'subtopic') return counts[node.code] ?? 0;
-		let n = counts[node.code] ?? 0;
-		for (const c of descendants(node)) {
-			const kid = nodes.find((x) => x.code === c);
-			if (kid?.level === 'subtopic') n += counts[c] ?? 0;
-		}
-		return n;
+		// Facets carry distinct-question counts per subtree root, so a
+		// question with two tags under one module counts once here --
+		// matching the result list exactly.
+		return counts[node.code] ?? 0;
 	}
 
 	function indet(el, val) {

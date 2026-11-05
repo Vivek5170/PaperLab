@@ -40,7 +40,7 @@
 			year: facets.years.map((o) => ({ value: String(o.value), count: o.count }))
 		};
 	});
-	const topicCounts = $derived(facets?.topicCounts ?? {});
+	const topicCounts = $derived(facets?.topicSubtreeCounts ?? facets?.topicCounts ?? {});
 	const gradedCount = $derived(
 		facets ? facets.difficulties.reduce((n, o) => n + o.count, 0) : 0
 	);

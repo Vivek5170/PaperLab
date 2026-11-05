@@ -150,6 +150,20 @@ def _build_facets() -> dict:
             " FROM question_topics qt JOIN questions q ON q.id = qt.question_id"
             " JOIN papers p ON p.id = q.paper_id"
             " WHERE p.status = 'done' GROUP BY qt.topic_code").fetchall()}
+        # Distinct-question counts per subtree root (any level): a question
+        # with two tags under one module counts once. The recursive CTE
+        # walks topics(parent) down from every node; UNION dedupes.
+        subtree_counts = {r["node"]: r["c"] for r in conn.execute(
+            "WITH RECURSIVE d(root, code) AS ("
+            " SELECT code, code FROM topics"
+            " UNION"
+            " SELECT d.root, t.code FROM topics t"
+            " JOIN d ON t.parent = d.code)"
+            " SELECT d.root AS node, COUNT(DISTINCT qt.question_id) AS c"
+            " FROM d JOIN question_topics qt ON qt.topic_code = d.code"
+            " JOIN questions q ON q.id = qt.question_id"
+            " JOIN papers p ON p.id = q.paper_id"
+            " WHERE p.status = 'done' GROUP BY d.root").fetchall()}
         papers = _papers_snapshot(conn)
         institutes = _institute_groups(conn)
     finally:
@@ -175,6 +189,7 @@ def _build_facets() -> dict:
         "instituteSuggestions": suggest_merges(institutes),
         "years": [{"value": y, "count": c} for y, c in sorted(years.items())],
         "topicCounts": topic_counts,
+        "topicSubtreeCounts": subtree_counts,
     }
 
 
