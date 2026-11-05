@@ -338,8 +338,10 @@
 		cursor: pointer;
 	}
 	.warn {
-		border-left: 3px solid var(--pl-ochre);
-		padding-left: 10px;
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-sm);
+		background: var(--pl-ochre-soft);
+		padding: 8px 12px;
 	}
 	.cropbox {
 		display: flex;
