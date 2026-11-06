@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import katex from 'katex';
 	import 'katex/dist/katex.min.css';
-	import { MOCK_QUESTION_TEX, MOCK_SOLUTION_TEX, mockTexToHtml } from '$lib/mockTex.js';
+	import { MOCK_QUESTION_TEX, MOCK_SOLUTION_TEX, MOCK_FIGURES, mockTexToHtml } from '$lib/mockTex.js';
 
 	/**
 	 * MOCK workspace (exp/tex-editor): layout + interactions only.
@@ -102,6 +102,21 @@
 		showToast('Draft reset to the mock original.');
 	}
 
+	async function copyFig(name) {
+		const snippet = `\\includegraphics{${name}}`;
+		try {
+			await navigator.clipboard.writeText(snippet);
+		} catch {
+			const ta = document.createElement('textarea');
+			ta.value = snippet;
+			document.body.appendChild(ta);
+			ta.select();
+			document.execCommand('copy');
+			ta.remove();
+		}
+		showToast(`Copied ${snippet} — paste into the editor.`);
+	}
+
 	function onKey(e) {
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault();
@@ -158,6 +173,21 @@
 		<div class="seg" role="group" aria-label="Choose file">
 			<button type="button" class:active={part === 'question'} onclick={() => switchPart('question')}>Question</button>
 			<button type="button" class:active={part === 'solution'} onclick={() => switchPart('solution')}>Solution</button>
+		</div>
+		<div class="figstrip" aria-label="Figures in this question (mock)">
+			<span class="figlabel">Figures</span>
+			{#each MOCK_FIGURES as f (f)}
+				<button
+					type="button"
+					class="figchip"
+					title={`${f} — click to copy \\includegraphics`}
+					onclick={() => copyFig(f)}
+				>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+					<span>{f}</span>
+				</button>
+			{/each}
+			<a class="managelink" href={backHref} title="Open Manage figures in the reader">Manage figures</a>
 		</div>
 		<span class="status" data-state={saveState} role="status">
 			{#if saveState === 'saving'}Saving…
@@ -293,6 +323,53 @@
 		background: var(--pl-surface);
 		color: var(--pl-ink);
 		box-shadow: var(--pl-shadow-sm);
+	}
+	.figstrip {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+		min-width: 0;
+	}
+	.figlabel {
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--pl-ink-soft);
+		white-space: nowrap;
+	}
+	.figchip {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		max-width: 190px;
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-pill);
+		background: var(--pl-surface);
+		padding: 4px 10px 4px 8px;
+		min-height: 0;
+		font-size: 0.76rem;
+		font-family: var(--pl-font-mono);
+		color: var(--pl-ink-soft);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.figchip:hover {
+		color: var(--pl-seal);
+		border-color: var(--pl-seal);
+	}
+	.figchip svg {
+		width: 13px;
+		height: 13px;
+		flex-shrink: 0;
+	}
+	.figchip span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.managelink {
+		font-size: 0.78rem;
+		font-weight: 600;
+		white-space: nowrap;
 	}
 	.status {
 		font-size: 0.8rem;

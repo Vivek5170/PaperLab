@@ -139,3 +139,6 @@ export function mockTexToHtml(tex) {
 		.join('\n');
 	return html || '<p class="pl-sub">Empty document.</p>';
 }
+
+/** Mock figure inventory for the workspace strip (no backend). */
+export const MOCK_FIGURES = ['fig-q8-diagram.png', 'fig-q8-setup.png'];
