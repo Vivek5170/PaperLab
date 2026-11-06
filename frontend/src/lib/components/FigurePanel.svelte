@@ -523,19 +523,6 @@
 	}
 	.add h3 {
 		font-size: 1.05rem;
-		margin-bottom: 8px;
-	}
-	.add label {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		font-size: 0.85rem;
-		font-weight: 600;
-		margin-top: 8px;
-	}
-	.segrow {
-		display: flex;
-		gap: 8px;
 	}
 	.trash {
 		list-style: none;
