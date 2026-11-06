@@ -9,7 +9,11 @@
 		)
 	);
 
-	function toggle() {
+	function toggle(e) {
+		// The search card nests this button inside its link: swallow the
+		// click so it toggles the cart instead of opening the question.
+		e?.stopPropagation();
+		e?.preventDefault();
 		if (inCart) carts.remove(item.paperId, item.number);
 		else carts.add(item);
 	}
