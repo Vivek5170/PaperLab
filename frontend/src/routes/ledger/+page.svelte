@@ -361,24 +361,26 @@
 					{#each pdfs.papers as g (g.id)}
 						{#if g.files.length}
 							<li class="pdfgrp" aria-hidden="true">#{g.id} {g.name}</li>
-							{#each g.files as f (f.field)}
+							{#each g.files as f (f.stored)}
+								{@const all = f.storedAll ?? [f.stored]}
+								{@const on = all.every((s) => selPaths.includes(s))}
 								<li>
 									<button
 										type="button"
 										role="option"
-										aria-selected={selPaths.includes(f.stored)}
+										aria-selected={on}
 										class="pdfrow"
-										class:on={selPaths.includes(f.stored)}
+										class:on={on}
 										disabled={!f.exists || purging !== '' || deletingPdfs}
-										title={f.exists ? f.stored : `${f.name} — file missing on disk`}
+										title={f.exists ? all.join(' + ') : `${f.name} — file missing on disk`}
 										onclick={() => {
-											selPaths = selPaths.includes(f.stored)
-												? selPaths.filter((x) => x !== f.stored)
-												: [...selPaths, f.stored];
+											selPaths = on
+												? selPaths.filter((x) => !all.includes(x))
+												: [...new Set([...selPaths, ...all])];
 										}}
 									>
-										<span class="tick" aria-hidden="true">{#if selPaths.includes(f.stored)}✓{/if}</span>
-										<span class="kind">{f.kind === 'question' ? 'QP' : 'Solution'}</span>
+										<span class="tick" aria-hidden="true">{#if on}✓{/if}</span>
+										<span class="kind">{f.kind === 'both' ? 'QP + Solution' : f.kind === 'question' ? 'QP' : 'Solution'}</span>
 										<span class="pdfname pl-mono">{f.name}</span>
 										<span class="opt-count">{f.exists ? `${fmtBytes(f.bytes)} · in use` : 'missing · in use'}</span>
 									</button>
@@ -415,17 +417,35 @@
 					{/if}
 				</ul>
 				<div class="pdfpick-foot">
-					<button
-						type="button"
-						class="pdf-clear"
-						disabled={selCount === 0}
-						onclick={() => {
-							selPaths = [];
-							selUnlinked = [];
-						}}
-					>
-						Clear
-					</button>
+					<span class="footbtns">
+						<button
+							type="button"
+							class="pdf-clear"
+							onclick={() => {
+								selPaths = [
+									...new Set(
+										pdfs.papers.flatMap((g) =>
+											g.files.filter((f) => f.exists).flatMap((f) => f.storedAll ?? [f.stored])
+										)
+									)
+								];
+								selUnlinked = (pdfs.unlinked ?? []).map((u) => `${u.location}:${u.name}`);
+							}}
+						>
+							Select all
+						</button>
+						<button
+							type="button"
+							class="pdf-clear"
+							disabled={selCount === 0}
+							onclick={() => {
+								selPaths = [];
+								selUnlinked = [];
+							}}
+						>
+							Clear
+						</button>
+					</span>
 					<span class="pl-sub">{selCount ? `${selCount} selected` : 'No files selected'}</span>
 				</div>
 			</div>
@@ -677,6 +697,11 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
+	}
+	.footbtns {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
 	}
 	.pdf-clear {
 		border: none;

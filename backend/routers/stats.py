@@ -345,22 +345,35 @@ def _paper_pdf_entries() -> tuple[list[dict], list[dict]]:
     refs = _all_db_pdf_refs()
     per_paper = []
     for pid, name, qpath, spath in papers:
-        files = []
+        # Group by resolved file: a combined "QP, Key & Solutions" PDF
+        # referenced by both columns is ONE row, not two selections.
+        groups: dict[str, dict] = {}
         for field, kind, stored in (
                 ("question_pdf_path", "question", qpath),
                 ("solution_pdf_path", "solution", spath)):
             if not stored:
                 continue
             rp = _resolve_managed(stored)
+            key = str(rp) if rp is not None else f"stored:{stored}"
+            slot = groups.setdefault(key, {"rp": rp, "items": []})
+            slot["items"].append((field, kind, str(stored)))
+        files = []
+        for key, slot in groups.items():
+            rp = slot["rp"]
+            items = slot["items"]
+            kinds = sorted({k for _, k, _ in items})
             try:
                 size = rp.stat().st_size if rp else 0
             except OSError:
                 size = 0
+            first_stored = items[0][2]
             files.append({
-                "kind": kind,
-                "field": field,
-                "name": Path(stored).name,
-                "stored": str(stored),
+                "kind": "both" if len(kinds) > 1 else kinds[0],
+                "field": items[0][0],
+                "fields": [f for f, _, _ in items],
+                "name": Path(first_stored).name,
+                "stored": first_stored,
+                "storedAll": [s for _, _, s in items],
                 "exists": rp is not None,
                 "bytes": size,
             })
@@ -442,6 +455,9 @@ def delete_paper_pdfs(body: dict):
 
     conn = database.get_connection()
     try:
+        # Group by resolved file so one file sent twice (e.g. QP + solution
+        # sharing a combined PDF) is unlinked once; references still clear.
+        by_file: dict[str, dict] = {}
         for stored, rp in targets:
             if rp is None:
                 missing.append(stored or "(unknown file)")
@@ -455,16 +471,21 @@ def delete_paper_pdfs(body: dict):
                 except (OSError, ValueError):
                     continue
             if not inside:
-                refused.append(str(rp))
+                refused.append(stored or str(rp))
                 continue
+            slot = by_file.setdefault(str(rp), {"rp": rp, "stored": []})
+            if stored and stored not in slot["stored"]:
+                slot["stored"].append(stored)
+        for _key, slot in by_file.items():
+            rp = slot["rp"]
             try:
                 freed += rp.stat().st_size
                 rp.unlink()
             except OSError:
-                missing.append(stored or str(rp))
+                missing.extend(slot["stored"] or [str(rp)])
                 continue
             deleted += 1
-            if stored:
+            for stored in slot["stored"]:
                 for field in ("question_pdf_path", "solution_pdf_path"):
                     cur = conn.execute(
                         f"SELECT id FROM papers WHERE {field} = ?",

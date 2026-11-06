@@ -153,3 +153,42 @@ def test_paper_pdfs_selective_delete(tmp_db, tmp_path, monkeypatch):
         {"paths": [], "unlinked": [{"location": "archive", "name": stray.name}]})
     assert res2["deleted"] == 1
     assert not stray.exists()
+
+
+def test_combined_qp_solution_single_row(tmp_db, tmp_path, monkeypatch):
+    import database as _db
+    from backend.routers import stats as st
+
+    adir = _seed_archive(tmp_path, monkeypatch)
+    combo = adir / "combo_QP_Key_Solutions.pdf"
+    combo.write_bytes(b"%PDF" + b"z" * 400)
+    conn = _db.get_connection()
+    try:
+        pid = conn.execute(
+            "INSERT INTO papers (paper_name, status, question_pdf_path,"
+            " solution_pdf_path) VALUES (?,?,?,?)",
+            ("P", "done", str(combo), str(combo)),
+        ).lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+
+    listing = st.paper_pdfs()
+    paper = next((x for x in listing["papers"] if x["id"] == pid), None)
+    assert paper is not None
+    assert len(paper["files"]) == 1
+    assert paper["files"][0]["kind"] == "both"
+
+    # Sending both references deletes the file once and clears both columns.
+    res = st.delete_paper_pdfs(
+        {"paths": [str(combo), str(combo)], "unlinked": []})
+    assert res["deleted"] == 1
+    assert not combo.exists()
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT question_pdf_path, solution_pdf_path FROM papers"
+            " WHERE id = ?", (pid,)).fetchone()
+    finally:
+        conn.close()
+    assert row[0] is None and row[1] is None
