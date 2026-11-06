@@ -14,8 +14,7 @@
 	const nBlocks = $derived($blockTotal);
 
 	let cartId = $state('');
-	let importNote = $state('');
-	let dupesNote = $state('');
+	let importStatus = $state(null); // {added, skipped, cartName, dupes} | {error} | null
 	let confirmNew = $state(false);
 	let previewMode = $state('questions'); // questions | answers
 	let mobileTab = $state('edit'); // edit | preview (narrow screens only)
@@ -35,13 +34,7 @@
 	function doImport(allowDupes) {
 		if (!activeCart) return;
 		const r = builder.importFromCart(activeCart.items, { allowDupes });
-		dupesNote = '';
-		importNote =
-			allowDupes || r.skipped.length === 0
-				? `Imported ${r.added.length} question${r.added.length === 1 ? '' : 's'} from ${activeCart.name}.`
-				: `Added ${r.added.length}; ${r.skipped.length} already in the draft (skipped).`;
-		if (!allowDupes && r.skipped.length > 0)
-			dupesNote = `${r.skipped.length} duplicate${r.skipped.length === 1 ? '' : 's'} skipped.`;
+		importStatus = { added: r.added.length, skipped: r.skipped.length, cartName: activeCart.name, dupes: !allowDupes };
 	}
 
 	function removeWithUndo(bid, label) {
@@ -60,7 +53,7 @@
 		const ok = builder.restoreBlock(undoSnap, fallback);
 		undoSnap = null;
 		clearTimeout(undoTimer);
-		if (!ok) importNote = 'Could not undo — the section is gone. Re-import the question from its cart.';
+		if (!ok) importStatus = { added: 0, skipped: 0, cartName: '', error: 'Could not undo — the section is gone. Re-import the question from its cart.' };
 	}
 </script>
 
@@ -70,7 +63,7 @@
 	<header class="topbar">
 		<a class="back" href="/cart">← Cart</a>
 		<h1>Paper builder</h1>
-		<span class="pl-sub headsub">Drafts stay in this browser · numbering is generated, originals shown as source</span>
+		<span class="pl-sub headsub">Auto-numbered draft · stays in this browser</span>
 		{#if undoSnap}
 			<span class="undobar" role="status">
 				Removed {undoLabel}.
@@ -98,7 +91,7 @@
 				<label class="title">
 					<span class="pl-sub">Title</span>
 					<input
-						type="text" value={draft.title} placeholder="Untitled paper"
+						type="text" value={draft.title} placeholder="e.g. JEE Advanced 2023 Mock 1"
 						maxlength="120" aria-label="Draft title"
 						oninput={(e) => builder.setTitle(e.currentTarget.value)}
 					/>
@@ -112,11 +105,14 @@
 						<input type="radio" name="mode" checked={draft.mode === 'assignment'} disabled={!empty} onchange={() => builder.newDraft('assignment')} />
 						Assignment <span class="pl-sub">(flat)</span>
 					</label>
+				</div>
+				<div class="docfoot">
 					{#if confirmNew}
-						<button type="button" class="mini danger" onclick={() => { builder.newDraft(draft.mode); confirmNew = false; }}>Confirm new draft</button>
+						<span class="pl-sub">Discard this draft and start empty?</span>
+						<button type="button" class="mini danger" onclick={() => { builder.newDraft(draft.mode); confirmNew = false; }}>Discard draft</button>
 						<button type="button" class="mini" onclick={() => (confirmNew = false)}>Keep</button>
 					{:else}
-						<button type="button" class="mini" onclick={() => (confirmNew = true)} title="Discard this draft and start empty">New draft</button>
+						<button type="button" class="minitext" onclick={() => (confirmNew = true)} title="Discard this draft and start empty">Start new draft</button>
 					{/if}
 				</div>
 			</div>
@@ -134,14 +130,26 @@
 					</button>
 				</div>
 				{#if draft.mode === 'paper'}
-					<p class="pl-sub">Imports group automatically — one section per question type.</p>
+					<p class="pl-sub hint">Imports group automatically — one section per question type.</p>
 				{/if}
-				{#if importNote}<p class="pl-sub" role="status">{importNote}</p>{/if}
-				{#if dupesNote}
-					<p class="pl-sub" role="status">
-						{dupesNote}
-						<button type="button" class="pl-btn" onclick={() => doImport(true)}>Import including duplicates</button>
-					</p>
+				{#if importStatus}
+					<div class="status" role="status">
+						{#if importStatus.error}
+							<span>{importStatus.error}</span>
+						{:else if importStatus.added > 0 && importStatus.skipped === 0}
+							<span>Imported <strong>{importStatus.added}</strong> from {importStatus.cartName}.</span>
+						{:else if importStatus.added > 0}
+							<span>Added <strong>{importStatus.added}</strong> · {importStatus.skipped} already in.</span>
+							{#if importStatus.dupes}
+								<button type="button" class="mini" onclick={() => doImport(true)}>Import dupes too</button>
+							{/if}
+						{:else if importStatus.skipped > 0}
+							<span>All {importStatus.skipped} already in — nothing new.</span>
+							{#if importStatus.dupes}
+								<button type="button" class="mini" onclick={() => doImport(true)}>Import anyway</button>
+							{/if}
+						{/if}
+					</div>
 				{/if}
 			</div>
 
@@ -350,6 +358,47 @@
 		max-width: 100%;
 		flex: 1;
 		min-width: 140px;
+	}
+	.hint {
+		margin: 8px 0 0;
+	}
+	.status {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 8px 12px;
+		margin: 10px 0 0;
+		padding: 8px 12px;
+		background: var(--pl-raised);
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-sm);
+		font-size: 0.82rem;
+	}
+	.status strong {
+		font-size: 0.9rem;
+	}
+	.docfoot {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 12px;
+		padding-top: 10px;
+		border-top: 1px dashed var(--pl-line);
+	}
+	.minitext {
+		border: none;
+		background: none;
+		padding: 4px 2px;
+		min-height: 0;
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--pl-ink-soft);
+		cursor: pointer;
+	}
+	.minitext:hover {
+		color: var(--pl-seal);
+		text-decoration: underline;
+		text-underline-offset: 3px;
 	}
 	.sechead {
 		display: flex;
