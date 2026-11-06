@@ -24,6 +24,7 @@
 	const items = $derived([
 		{ href: '/archive', label: 'Archive', icon: 'book' },
 		{ href: '/search', label: 'Search Questions', icon: 'search' },
+		{ href: '/cart', label: 'Cart', icon: 'cart' },
 		{ href: '/inbox', label: 'Tagging Inbox', badge: props.inboxCount, admin: true, icon: 'tag' },
 		{ href: '/syllabus', label: 'Syllabus Map', admin: true, icon: 'map' },
 		{ href: '/intake', label: 'Intake & Pipeline', admin: true, icon: 'upload' },
@@ -33,6 +34,7 @@
 	const icons = {
 		book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4a2 2 0 0 0-2-2H6.5A2.5 2.5 0 0 0 4 4.5v15z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
 		search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+		cart: '<circle cx="9" cy="20" r="1.6"/><circle cx="17" cy="20" r="1.6"/><path d="M3 3h2l2.4 12.2a1 1 0 0 0 1 .8h8.7a1 1 0 0 0 1-.8L20 7H6"/>',
 		tag: '<path d="M12 2H2v10l9.3 9.3a1 1 0 0 0 1.4 0l8.6-8.6a1 1 0 0 0 0-1.4L12 2z"/><circle cx="7" cy="7" r="1.5"/>',
 		map: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>',
 		upload:

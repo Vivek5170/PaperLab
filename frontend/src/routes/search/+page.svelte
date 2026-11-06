@@ -3,6 +3,7 @@
 	import { api } from '$lib/api.js';
 	import FilterDropdown from '$lib/components/FilterDropdown.svelte';
 	import TopicTreePicker from '$lib/components/TopicTreePicker.svelte';
+	import AddToCart from '$lib/components/AddToCart.svelte';
 	import { qtypeLabel } from '$lib/qtypes.js';
 	import {
 		PAGE_SIZE,
@@ -183,35 +184,52 @@
 	{:else}
 		<div class="grid">
 			{#each items as item (`${item.paperId}/${item.number}`)}
-				<a
-					class="card pl-card"
-					href={`/search/${item.paperId}/${encodeURIComponent(item.number)}`}
-					onclick={rememberScroll}
-					aria-label={`Paper ${item.paperId}, question ${item.number}`}
-				>
-					<span class="top">
-						<span class="preview">{item.preview || 'No text preview available.'}</span>
-						{#if item.thumb}
-							<img class="thumb" src={item.thumb} alt="" loading="lazy" />
-						{/if}
-					</span>
-					<span class="chapters">
-						{#if item.chapters?.length}
-							{formatChapters(item)}
-						{:else}
-							<span class="untagged">Untagged</span>
-						{/if}
-					</span>
-					<span class="meta">
-						<span class="paperline">{item.paper?.exam ?? ''}{item.paper?.year ? ` · ${item.paper.year}` : ''}</span>
-						<span class="chips">
-							{#if item.difficulty}
-								<span class={`chip diff-${item.difficulty.toLowerCase()}`}>{item.difficulty}</span>
+				<div class="cell">
+					<a
+						class="card pl-card"
+						href={`/search/${item.paperId}/${encodeURIComponent(item.number)}`}
+						onclick={rememberScroll}
+						aria-label={`Paper ${item.paperId}, question ${item.number}`}
+					>
+						<span class="top">
+							<span class="preview">{item.preview || 'No text preview available.'}</span>
+							{#if item.thumb}
+								<img class="thumb" src={item.thumb} alt="" loading="lazy" />
 							{/if}
-							<span class="chip type" title={item.qtype}>{qtypeLabel(item.qtype)}</span>
 						</span>
-					</span>
-				</a>
+						<span class="chapters">
+							{#if item.chapters?.length}
+								{formatChapters(item)}
+							{:else}
+								<span class="untagged">Untagged</span>
+							{/if}
+						</span>
+						<span class="meta">
+							<span class="paperline">{item.paper?.exam ?? ''}{item.paper?.year ? ` · ${item.paper.year}` : ''}</span>
+							<span class="chips">
+								{#if item.difficulty}
+									<span class={`chip diff-${item.difficulty.toLowerCase()}`}>{item.difficulty}</span>
+								{/if}
+								<span class="chip type" title={item.qtype}>{qtypeLabel(item.qtype)}</span>
+							</span>
+						</span>
+					</a>
+					<div class="cellactions">
+						<AddToCart
+							item={{
+								paperId: item.paperId,
+								number: item.number,
+								qtype: item.qtype,
+								difficulty: item.difficulty,
+								preview: item.preview,
+								thumb: item.thumb,
+								exam: item.paper?.exam ?? '',
+								year: item.paper?.year ?? null,
+								institute: item.paper?.institute ?? ''
+							}}
+						/>
+					</div>
+				</div>
 			{/each}
 		</div>
 		{#if hasMore}
@@ -275,6 +293,20 @@
 	.card:hover {
 		box-shadow: var(--pl-shadow-sm);
 		border-color: var(--pl-seal);
+	}
+	.cell {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+	.cell .card {
+		flex: 1;
+	}
+	.cellactions {
+		display: flex;
+		justify-content: flex-end;
+		align-items: center;
+		padding-top: 6px;
 	}
 	.top {
 		display: flex;
