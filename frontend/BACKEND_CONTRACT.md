@@ -85,7 +85,7 @@ read-only: no writes, no trash. `expectedSha` guards concurrent saves.
 
 - `GET /api/papers/{id}/questions/{qn}/tex?part=question|solution` -> `{paperId, number, part, fileName, tex, sha256}` (404 when the .tex is missing; 400 on bad part)
 - `POST .../tex/preview` `{tex, part?}` -> `{segments}` (same shape as the reader; figure URLs resolve against the real question dir)
-- `PATCH .../tex` `{part, tex, expectedSha?}` -> `{paperId, number, part, saved, sha256, backup, segments}` (400 on bad LaTeX via verify_latex_syntax; 409 when expectedSha is stale)
+- `PATCH .../tex` `{part, tex, expectedSha?}` -> `{paperId, number, part, saved, sha256, backup, segments}` (400 on bad LaTeX via verify_latex_syntax; 409 when expectedSha is stale; atomic temp-file+rename write; unique `.bak-<nanos>` backups, newest 5 kept)
 
 ## Mapping notes (from current Streamlit code)
 

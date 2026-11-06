@@ -1,5 +1,6 @@
 <script>
 	import { page } from '$app/stores';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api.js';
 	import Segments from '$lib/components/Segments.svelte';
@@ -37,6 +38,8 @@
 
 	let saveState = $state('saved'); // saved | dirty | saving
 	let saveError = $state('');
+	let saveSeq = 0;
+	let allowNav = false;
 	let toast = $state('');
 	let toastTimer = null;
 	let segments = $state([]);
@@ -45,8 +48,9 @@
 	let previewTimer = null;
 	let previewSeq = 0;
 	let mobileTab = $state('edit'); // edit | preview (narrow screens only)
-	let pendingNav = $state(null); // { type: 'part', value } | { type: 'back' }
+	let pendingNav = $state(null); // { type: 'part'|'back'|'nav', value?, to? }
 	let figOpen = $state(false);
+	let figuresError = $state('');
 
 	function showToast(msg) {
 		toast = msg;
@@ -100,54 +104,88 @@
 
 	function switchPart(next) {
 		if (next === part) return;
+		if (saveState === 'saving') {
+			showToast('Saving… please wait.');
+			return;
+		}
 		if (dirty) {
 			pendingNav = { type: 'part', value: next };
 			return;
 		}
 		part = next;
 		mobileTab = 'edit';
-		segments = [];
 		queuePreview();
+	}
+
+	async function saveAndSwitch(next) {
+		pendingNav = null;
+		const ok = await save();
+		if (ok) {
+			part = next;
+			mobileTab = 'edit';
+			queuePreview();
+		} else {
+			pendingNav = { type: 'part', value: next };
+		}
 	}
 
 	function confirmNav() {
 		if (!pendingNav) return;
-		// Discard edits, then follow through.
-		drafts.question = baseline.question;
-		drafts.solution = baseline.solution;
+		// Discard chosen edits, then follow through.
+		if (pendingNav.type === 'part' || pendingNav.type === 'back') {
+			drafts.question = baseline.question;
+			drafts.solution = baseline.solution;
+		}
 		saveState = 'saved';
+		saveSeq++; // invalidate any in-flight save result
 		const nav = pendingNav;
 		pendingNav = null;
 		if (nav.type === 'part') {
 			part = nav.value;
-			segments = [];
 			queuePreview();
-		} else {
+		} else if (nav.type === 'back') {
 			window.location.href = backHref;
+		} else {
+			allowNav = true;
+			goto(nav.to, { invalidateAll: false }).finally(() => (allowNav = false));
 		}
 	}
 
 	async function save() {
-		if (saveState === 'saving') return;
+		if (saveState === 'saving') return false;
+		const seq = ++saveSeq;
+		const savedPart = part;
+		const savedText = drafts[part];
 		saveState = 'saving';
 		saveError = '';
 		try {
 			const res = await api.saveTex(paper, qn, {
-				part,
-				tex: drafts[part],
-				expectedSha: shas[part]
+				part: savedPart,
+				tex: savedText,
+				expectedSha: shas[savedPart]
 			});
-			baseline[part] = drafts[part];
-			shas[part] = res.sha256;
-			segments = res.segments ?? segments;
-			previewStale = false;
+			if (seq !== saveSeq) return false; // superseded; ignore stale result
+			// Disk now holds savedText. Advance the baseline to it; anything
+			// typed since stays dirty.
+			baseline[savedPart] = savedText;
+			shas[savedPart] = res.sha256;
+			if (savedPart === part) {
+				segments = res.segments ?? segments;
+				previewStale = false;
+			}
+			const clean = drafts[savedPart] === savedText;
 			saveState = dirty ? 'dirty' : 'saved';
-			showToast(`Saved ${fileName}.`);
+			showToast(
+				clean ? `Saved ${savedPart}.tex.` : `Saved ${savedPart}.tex — newer edits still unsaved.`
+			);
+			return true;
 		} catch (e) {
+			if (seq !== saveSeq) return false;
 			saveState = 'dirty';
-			saveError = e.message.includes('409')
-				? 'Someone else saved first — reload the page and reapply your edits.'
+			saveError = String(e.message).startsWith('409:')
+				? 'Someone else saved first. Copy your draft, reload the saved file, and reapply your edits.'
 				: `Save failed: ${e.message}`;
+			return false;
 		}
 	}
 
@@ -175,12 +213,57 @@
 		showToast(`Copied ${snippet} — paste into the editor.`);
 	}
 
+	async function copyDraft() {
+		try {
+			await navigator.clipboard.writeText(drafts[part]);
+			showToast('Draft copied — safe to reload.');
+		} catch {
+			showToast('Copy failed — select the editor text manually.');
+		}
+	}
+
+	async function reloadSaved() {
+		loaded[part] = false;
+		saveError = '';
+		await loadPart(part);
+	}
+
+	function goBack(e) {
+		if (saveState === 'saving') {
+			e.preventDefault();
+			showToast('Saving… please wait.');
+			return;
+		}
+		if (dirty) {
+			e.preventDefault();
+			pendingNav = { type: 'back' };
+		}
+	}
+
 	function onKey(e) {
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault();
-			if (allLoaded && dirty) save();
-		} else if (e.key === 'Escape') {
-			figOpen = false;
+			if (allLoaded && dirty && saveState !== 'saving') save();
+			return;
+		}
+		if (e.key === 'Escape') {
+			if (pendingNav) pendingNav = null;
+			else figOpen = false;
+		}
+	}
+
+	function trapTab(e) {
+		if (e.key !== 'Tab' || !dialogEl) return;
+		const items = [...dialogEl.querySelectorAll('button')].filter((b) => !b.disabled);
+		if (items.length === 0) return;
+		const first = items[0];
+		const last = items[items.length - 1];
+		if (e.shiftKey && document.activeElement === first) {
+			e.preventDefault();
+			last.focus();
+		} else if (!e.shiftKey && document.activeElement === last) {
+			e.preventDefault();
+			first.focus();
 		}
 	}
 
@@ -189,19 +272,47 @@
 	}
 
 	$effect(() => {
-		// Warn on reload/close with unsaved edits.
+		// Warn on reload/close with unsaved edits. Chrome requires returnValue.
 		const handler = (e) => {
-			if (dirty) e.preventDefault();
+			if (dirty || saveState === 'saving') {
+				e.preventDefault();
+				e.returnValue = '';
+			}
 		};
 		window.addEventListener('beforeunload', handler);
 		return () => window.removeEventListener('beforeunload', handler);
 	});
 
+	beforeNavigate((nav) => {
+		if (allowNav || (!dirty && saveState !== 'saving')) return;
+		nav.cancel();
+		if (saveState === 'saving') {
+			showToast('Saving… please wait.');
+			return;
+		}
+		if (nav.to?.url) pendingNav = { type: 'nav', to: nav.to.url };
+	});
+
+	let dialogEl = $state(null);
+	let lastFocus = null;
+	$effect(() => {
+		if (pendingNav && dialogEl) {
+			lastFocus = document.activeElement;
+			const h = dialogEl.querySelector('h2');
+			h?.setAttribute('tabindex', '-1');
+			h?.focus();
+		} else if (!pendingNav && lastFocus?.focus) {
+			lastFocus.focus();
+			lastFocus = null;
+		}
+	});
+
 	onMount(async () => {
 		try {
 			figures = await api.listFigures(paper, qn);
-		} catch {
+		} catch (e) {
 			figures = [];
+			figuresError = `Could not load figures: ${e.message}`;
 		}
 		await Promise.all([loadPart('question'), loadPart('solution')]);
 	});
@@ -212,16 +323,12 @@
 
 <div class="ws">
 	<header class="topbar">
-		{#if dirty}
-			<a class="back" href={backHref} onclick={(e) => { e.preventDefault(); pendingNav = { type: 'back' }; }}>← Back</a>
-		{:else}
-			<a class="back" href={backHref}>← Back</a>
-		{/if}
+		<a class="back" href={backHref} onclick={goBack}>← Back</a>
 		<span class="ident pl-mono">Paper {paper} · Q{qn}</span>
-		<span class="expbadge">Experimental</span>
+		<span class="expbadge" title="Experimental workspace: TeX saves are real, everything else is read-only">Experimental</span>
 		<div class="seg" role="group" aria-label="Choose file">
-			<button type="button" class:active={part === 'question'} onclick={() => switchPart('question')}>Question</button>
-			<button type="button" class:active={part === 'solution'} onclick={() => switchPart('solution')}>Solution</button>
+			<button type="button" class:active={part === 'question'} aria-pressed={part === 'question'} disabled={saveState === 'saving'} onclick={() => switchPart('question')}>Question</button>
+			<button type="button" class:active={part === 'solution'} aria-pressed={part === 'solution'} disabled={saveState === 'saving'} onclick={() => switchPart('solution')}>Solution</button>
 			<div class="figdrop">
 				<button
 					type="button"
@@ -236,7 +343,9 @@
 				</button>
 				{#if figOpen}
 					<ul class="figmenu" role="menu" aria-label="Figures in this question">
-						{#if figures.length === 0}
+						{#if figuresError}
+							<li role="none"><span class="figempty">{figuresError}</span></li>
+						{:else if figures.length === 0}
 							<li role="none"><span class="figempty">No figures in this question.</span></li>
 						{:else}
 							{#each figures as f (f.name)}
@@ -255,12 +364,13 @@
 			</div>
 		</div>
 		<span class="status" data-state={saveState} role="status">
-			{#if saveState === 'saving'}Saving…
+			{#if !allLoaded}Loading…
+			{:else if saveState === 'saving'}Saving…
 			{:else if dirty}Unsaved changes
 			{:else}Saved{/if}
 		</span>
 		<div class="actions">
-			<button type="button" class="pl-btn" disabled={!dirty} onclick={discard}>Discard</button>
+			<button type="button" class="pl-btn" disabled={!dirty || saveState === 'saving'} onclick={discard}>Discard</button>
 			<button type="button" class="pl-btn pl-btn-primary" disabled={!dirty || saveState === 'saving'} onclick={save}>
 				{saveState === 'saving' ? 'Saving…' : 'Save'}
 			</button>
@@ -271,12 +381,18 @@
 		<p class="pl-error loaderr" role="alert">{loadError}</p>
 	{/if}
 	{#if saveError}
-		<p class="pl-error loaderr" role="alert">{saveError}</p>
+		<div class="loaderr" role="alert">
+			<span class="pl-error">{saveError}</span>
+			<span class="errbtns">
+				<button type="button" class="pl-btn" onclick={copyDraft}>Copy my draft</button>
+				<button type="button" class="pl-btn" onclick={reloadSaved}>Reload saved file</button>
+			</span>
+		</div>
 	{/if}
 
-	<nav class="mobtabs" aria-label="Workspace view">
-		<button type="button" class:active={mobileTab === 'edit'} onclick={() => (mobileTab = 'edit')}>Editor</button>
-		<button type="button" class:active={mobileTab === 'preview'} onclick={() => (mobileTab = 'preview')}>
+	<nav class="mobtabs" role="tablist" aria-label="Workspace view">
+		<button type="button" role="tab" aria-selected={mobileTab === 'edit'} class:active={mobileTab === 'edit'} onclick={() => (mobileTab = 'edit')}>Editor</button>
+		<button type="button" role="tab" aria-selected={mobileTab === 'preview'} class:active={mobileTab === 'preview'} onclick={() => (mobileTab = 'preview')}>
 			Preview{#if previewStale}…{/if}
 		</button>
 	</nav>
@@ -294,19 +410,29 @@
 				autocomplete="off"
 				autocapitalize="off"
 				aria-label={`Edit ${fileName}`}
-				disabled={!allLoaded}
-				value={draft}
+				disabled={!allLoaded || saveState === 'saving'}
+				bind:value={drafts[part]}
 				oninput={(e) => onInput(e.currentTarget.value)}
 			></textarea>
 		</section>
 
-		<section class="pane previewpane" class:active={mobileTab === 'preview'} aria-label="Preview" aria-live="polite">
+		<section class="pane previewpane" class:active={mobileTab === 'preview'} aria-label="Preview">
 			<div class="panehead">
 				<span>Preview</span>
-				<span class="pl-sub">{previewStale ? 'Updating…' : previewError || 'Live render · reader styles'}</span>
+				<span class="pl-sub prevstate">
+					{#if previewStale}Updating…
+					{:else if previewError}<span role="status">{previewError}</span> <button type="button" class="retrybtn" onclick={queuePreview}>Retry</button>
+					{:else}Live render · reader styles{/if}
+				</span>
 			</div>
 			<div class="paper">
-				<Segments {segments} />
+				{#if !allLoaded}
+					<div class="skel" aria-hidden="true"></div>
+					<div class="skel short" aria-hidden="true"></div>
+					<div class="skel" aria-hidden="true"></div>
+				{:else}
+					<Segments {segments} zoomable />
+				{/if}
 			</div>
 		</section>
 	</div>
@@ -316,14 +442,24 @@
 	{/if}
 
 	{#if pendingNav}
-		<div class="overlay" role="dialog" aria-modal="true" aria-label="Unsaved changes">
-			<div class="dialog">
-				<h2>Discard unsaved edits?</h2>
-				<p class="pl-sub">Your edits are not saved yet. Leaving now loses the draft text.</p>
-				<div class="dialogrow">
-					<button type="button" class="pl-btn" onclick={() => (pendingNav = null)}>Keep editing</button>
-					<button type="button" class="pl-btn pl-btn-primary" onclick={confirmNav}>Discard changes</button>
-				</div>
+		<div class="overlay" role="dialog" aria-modal="true" aria-label="Unsaved changes" onkeydown={trapTab}>
+			<div class="dialog" bind:this={dialogEl}>
+				{#if pendingNav.type === 'part'}
+					<h2>Switch file with unsaved edits?</h2>
+					<p class="pl-sub">Your {part}.tex edits are not saved yet.</p>
+					<div class="dialogrow">
+						<button type="button" class="pl-btn" onclick={() => (pendingNav = null)}>Keep editing</button>
+						<button type="button" class="pl-btn" onclick={confirmNav}>Discard & switch</button>
+						<button type="button" class="pl-btn pl-btn-primary" onclick={() => saveAndSwitch(pendingNav.value)}>Save & switch</button>
+					</div>
+				{:else}
+					<h2>Leave with unsaved edits?</h2>
+					<p class="pl-sub">Your edits are not saved yet. Leaving now loses the draft text.</p>
+					<div class="dialogrow">
+						<button type="button" class="pl-btn pl-btn-primary" onclick={() => (pendingNav = null)}>Keep editing</button>
+						<button type="button" class="pl-btn" onclick={confirmNav}>Discard changes</button>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -472,6 +608,14 @@
 	}
 	.loaderr {
 		margin: 12px 16px 0;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+	.errbtns {
+		display: inline-flex;
+		gap: 8px;
 	}
 	.mobtabs {
 		display: none;
@@ -503,6 +647,34 @@
 	}
 	.panehead .pl-sub {
 		font-weight: 400;
+	}
+	.seg > button:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.panehead .prevstate {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.retrybtn {
+		border: 1px solid var(--pl-line);
+		background: var(--pl-surface);
+		border-radius: var(--pl-radius-sm);
+		padding: 2px 10px;
+		min-height: 0;
+		font-size: 0.78rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.skel {
+		height: 1em;
+		border-radius: 4px;
+		background: var(--pl-raised);
+		margin: 0.9em 0;
+	}
+	.skel.short {
+		width: 55%;
 	}
 	.editor {
 		flex: 1;

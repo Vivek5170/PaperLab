@@ -66,15 +66,25 @@ def test_get_tex_rejects_bad_part_and_missing(tex_client):
     assert client.get(_tex_url(pid, qn="nope")).status_code == 404
 
 
-def test_tex_routes_require_admin(tmp_db, tmp_outputs):
-    # No dependency override: session cookie missing -> 401.
-    from backend.main import app as _app
+def test_tex_routes_require_admin(tmp_db, monkeypatch):
+    # No dependency override: session cookie missing -> 401 on all routes.
+    import backend.deps as _deps
 
-    _app.dependency_overrides.pop(require_admin, None)
-    with TestClient(_app, raise_server_exceptions=False) as client:
+    calls = {"n": 0}
+
+    async def _deny():
+        from fastapi import HTTPException, status as _status
+        calls["n"] += 1
+        raise HTTPException(_status.HTTP_401_UNAUTHORIZED, "login required")
+
+    monkeypatch.setitem(app.dependency_overrides, require_admin, _deny)
+    with TestClient(app, raise_server_exceptions=False) as client:
         assert client.get("/api/papers/1/questions/1/tex?part=question").status_code == 401
         assert client.post("/api/papers/1/questions/1/tex/preview",
                            json={"tex": "x"}).status_code == 401
+        assert client.patch("/api/papers/1/questions/1/tex",
+                            json={"part": "question", "tex": "x"}).status_code == 401
+    assert calls["n"] == 3
 
 
 def test_preview_matches_reader_and_writes_nothing(tex_client):
@@ -121,3 +131,37 @@ def test_save_validates_writes_backup_and_returns_segments(tex_client):
                      json={"part": "question", "tex": "Other $z$.", "expectedSha": sha})
     assert r.status_code == 409
     assert (qdir / "question.tex").read_text(encoding="utf-8") == UPDATED_TEX
+
+
+def test_save_solution_part_and_backup_uniqueness(tex_client):
+    client, pid = tex_client
+    qdir = directory_manager.get_question_dir(pid, "1")
+    sha = client.get(_tex_url(pid, part="solution")).json()["sha256"]
+    for i in range(3):
+        body = client.patch(f"/api/papers/{pid}/questions/1/tex",
+                            json={"part": "solution",
+                                   "tex": f"Attempt {i} $y_{i}$.",
+                                   "expectedSha": sha}).json()
+        sha = body["sha256"]
+    backups = sorted(qdir.glob("solution.tex.bak-*"))
+    assert len(backups) == 3
+    assert len({b.name for b in backups}) == 3  # same-second saves never collide
+    assert (qdir / "solution.tex").read_text(encoding="utf-8") == "Attempt 2 $y_2$."
+
+
+def test_save_rejects_oversized_body(tex_client):
+    client, pid = tex_client
+    r = client.patch(f"/api/papers/{pid}/questions/1/tex",
+                     json={"part": "question", "tex": "x" * 600_000})
+    assert r.status_code == 422
+    assert (directory_manager.get_question_dir(pid, "1") / "question.tex").read_text(
+        encoding="utf-8") == VALID_TEX
+
+
+def test_get_tex_rejects_non_utf8(tex_client, tmp_path):
+    client, pid = tex_client
+    qdir = directory_manager.get_question_dir(pid, "1")
+    qdir.joinpath("question.tex").write_bytes(b"latin1 \xff\xfe bytes")
+    r = client.get(_tex_url(pid))
+    assert r.status_code == 400
+    assert "UTF-8" in r.text

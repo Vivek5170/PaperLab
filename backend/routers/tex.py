@@ -2,13 +2,15 @@
 
 Read-only preview reuses backend.segments.tex_segments (the exact reader
 pipeline) with the real question dir, so figure references resolve to the
-same URLs. Saves are archivist-only, LaTeX-validated BEFORE writing, and
-keep a timestamped .bak backup next to the file (never inside figures/,
-never matching render-cache names).
+same URLs. Saves are archivist-only, LaTeX-validated BEFORE writing,
+atomic (temp file + rename, so a crash can never truncate the live file),
+and keep a uniquely-named timestamped .bak backup next to the file
+(never inside figures/, never matching render-cache names).
 """
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from pathlib import Path
 
@@ -23,7 +25,8 @@ from backend.segments import tex_segments
 router = APIRouter()
 
 PARTS = ("question", "solution")
-MAX_TEX_BYTES = 500_000
+MAX_TEX_CHARS = 500_000
+KEEP_BACKUPS = 5
 
 
 def _qdir(paper_id: int, qn: str) -> Path:
@@ -55,14 +58,28 @@ def _verify_or_raise(tex: str) -> None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"invalid LaTeX: {v}")
 
 
+def _prune_backups(texp: Path, keep: int = KEEP_BACKUPS) -> None:
+    """Keep only the newest `keep` .bak files for a .tex file."""
+    try:
+        backups = sorted(texp.parent.glob(f"{texp.name}.bak-*"),
+                         key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        return
+    for old in backups[keep:]:
+        try:
+            old.unlink()
+        except OSError:
+            pass
+
+
 class PreviewBody(BaseModel):
-    tex: str = Field(min_length=0, max_length=MAX_TEX_BYTES)
+    tex: str = Field(min_length=0, max_length=MAX_TEX_CHARS)
     part: str = "question"
 
 
 class SaveBody(BaseModel):
     part: str
-    tex: str = Field(min_length=1, max_length=MAX_TEX_BYTES)
+    tex: str = Field(min_length=1, max_length=MAX_TEX_CHARS)
     expectedSha: str | None = None
 
 
@@ -71,12 +88,17 @@ def get_tex(paper_id: int, qn: str, part: str = Query(default="question")):
     """Raw .tex text for the editor. Archivist-only (unlike the reader)."""
     texp = _require_tex(paper_id, qn, part)
     data = texp.read_bytes()
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            f"{part}.tex is not valid UTF-8; fix the file before editing")
     return {
         "paperId": paper_id,
         "number": qn,
         "part": part,
         "fileName": f"{part}.tex",
-        "tex": data.decode("utf-8"),
+        "tex": text,
         "sha256": hashlib.sha256(data).hexdigest(),
     }
 
@@ -97,14 +119,34 @@ def save_tex(paper_id: int, qn: str, body: SaveBody):
     """Validate then save raw .tex; keeps a timestamped .bak backup."""
     texp = _require_tex(paper_id, qn, body.part)
     current = texp.read_bytes()
-    if body.expectedSha and hashlib.sha256(current).hexdigest() != body.expectedSha:
+    if body.expectedSha is not None and hashlib.sha256(current).hexdigest() != body.expectedSha:
         raise HTTPException(status.HTTP_409_CONFLICT,
                             "tex changed since you loaded it; reload and reapply your edits")
     _verify_or_raise(body.tex)
-    backup = texp.with_name(f"{texp.name}.bak-{int(time.time())}")
+    # Unique backup: nanoseconds + collision bump, so same-second saves
+    # can never overwrite each other.
+    stamp = time.time_ns()
+    backup = texp.with_name(f"{texp.name}.bak-{stamp}")
+    while backup.exists():
+        stamp += 1
+        backup = texp.with_name(f"{texp.name}.bak-{stamp}")
     backup.write_bytes(current)
+    _prune_backups(texp)
+    # Atomic write: temp file + fsync + rename. A crash mid-write leaves
+    # the live .tex untouched (worst case an orphan .tmp file).
     data = body.tex.encode("utf-8")
-    texp.write_bytes(data)
+    tmp = texp.with_name(f"{texp.name}.tmp-{stamp}")
+    try:
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, texp)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
     sha = hashlib.sha256(data).hexdigest()
     qdir = texp.parent
     return {

@@ -47,6 +47,7 @@
 {#if isLab}
 	<div class="labshell">
 		{@render children()}
+		<LoginDialog />
 	</div>
 {:else}
 	<div class="shell">
