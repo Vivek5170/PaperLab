@@ -11,6 +11,21 @@
 
 	const cart = $derived($activeCart);
 
+	// Transient toolbar states (rename/create/armed confirms) belong to the
+	// active cart: switching carts resets them so a stale "Confirm delete"
+	// can never linger under a different cart.
+	let lastActiveId = $state($cartStore.activeId);
+	$effect(() => {
+		const id = $cartStore.activeId;
+		if (id !== lastActiveId) {
+			lastActiveId = id;
+			creating = false;
+			renaming = false;
+			confirmClear = false;
+			deleteArmed = false;
+		}
+	});
+
 	$effect(() => {
 		renameValue = cart?.name ?? '';
 	});
@@ -66,7 +81,12 @@
 			{#if cart}
 				<button
 					type="button" class="tbtn"
-					onclick={() => { renaming = !renaming; creating = false; }}
+					onclick={() => {
+						renaming = !renaming;
+						creating = false;
+						deleteArmed = false;
+						confirmClear = false;
+					}}
 					aria-expanded={renaming}
 				>Rename</button>
 				<button type="button" class="tbtn" onclick={() => carts.duplicate(cart.id)}>Duplicate</button>
