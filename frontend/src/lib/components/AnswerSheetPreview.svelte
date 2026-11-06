@@ -146,7 +146,10 @@
 			{ id: 'key', kind: 'key' }
 		];
 		if (ordered.length > 0) out.push({ id: 'solshead', kind: 'solshead', keepWithNext: true, breakBefore: true });
-		for (const e of ordered) out.push(...blockRows(e));
+		ordered.forEach((e, i) => {
+			if (i > 0) out.push({ id: `${e.blockId}:div`, kind: 'div' });
+			out.push(...blockRows(e));
+		});
 		return out;
 	});
 </script>
@@ -170,6 +173,8 @@
 		<h3 class="solshead">Detailed solutions</h3>
 	{:else if def.kind === 'solhead'}
 		<h4 class="solhead">{def.label}</h4>
+	{:else if def.kind === 'div'}
+		<hr class="sol-div" aria-hidden="true" />
 	{:else if def.kind === 'nosol'}
 		<p class="pl-sub">No detailed solution on file for this question — the key row above stands.</p>
 	{:else if def.kind === 'loading'}
@@ -208,6 +213,12 @@
 	.solhead {
 		font-size: 0.92rem;
 		margin: 2px 0 6px;
+	}
+	:global(hr.sol-div) {
+		border: none;
+		border-top: 1px solid var(--pl-line);
+		margin: 8px 0;
+		opacity: 0.8;
 	}
 	.skel {
 		height: 1em;

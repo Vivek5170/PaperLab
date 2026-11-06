@@ -100,6 +100,25 @@ function segHasContent(html) {
 	return html.replace(/<[^>]*>/g, '').trim() !== '';
 }
 
+// A paragraph whose only content is a "Solution for X" label (math-form
+// underline/bold data-tex, or plain text). These duplicate the sheet's own
+// "Solution Qn" heading, so the first is dropped and later ones (which mark
+// sub-solution boundaries in paragraph groups) become light dividers.
+function isSolutionLabelPara(html) {
+	const m = /^[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>\s*$/.exec(html.trim());
+	if (!m) return false;
+	const inner = m[1];
+	const text = inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+	if (/^Solution for\s+[A-Za-z0-9-]+\.?$/i.test(text)) return true;
+	if (text) return false;
+	for (const e of inner.matchAll(/data-tex="([^"]*)"/g)) {
+		try {
+			if (/Solution for/i.test(decodeURIComponent(e[1]))) return true;
+		} catch { /* ignore bad encoding */ }
+	}
+	return false;
+}
+
 // A paragraph holding nothing but the filed answer line.
 function isAnswerPara(html) {
 	const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -135,10 +154,26 @@ export function dressSolution(segments, { numbers = [] } = {}) {
 	const out = [];
 	for (const s of segments ?? []) {
 		if (s?.kind !== 'text' || typeof s.html !== 'string') { out.push(s); continue; }
-		// Strip answer-only paragraphs entirely.
+		// Strip answer-only paragraphs entirely; Solution-for labels are
+		// handled in the next pass (first dropped, later ones -> dividers).
 		const stripped = s.html.replace(/<p[^>]*>[\s\S]*?<\/p>/g, (m) => (isAnswerPara(m) ? '' : m));
-		if (!segHasContent(stripped) && s.html !== stripped) continue;
 		out.push({ ...s, html: stripped });
+	}
+	// Dedup filed "Solution for X" labels against the sheet's own heading.
+	let labelSeen = false;
+	for (const s of out) {
+		if (s.kind !== 'text' || typeof s.html !== 'string') continue;
+		s.html = s.html.replace(/<p[^>]*>[\s\S]*?<\/p>/g, (m) => {
+			if (!isSolutionLabelPara(m)) return m;
+			if (!labelSeen) { labelSeen = true; return ''; }
+			return '<hr class="sol-div">';
+		});
+	}
+	// Drop segments left with no content (key-only solutions surface as
+	// the explicit note in AnswerSheetPreview).
+	for (let i = out.length - 1; i >= 0; i--) {
+		const s = out[i];
+		if (s?.kind === 'text' && typeof s.html === 'string' && !segHasContent(s.html)) out.splice(i, 1);
 	}
 	let si = 0;
 	for (const s of out) {

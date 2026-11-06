@@ -84,14 +84,26 @@ describe('dressQuestion passages', () => {
 });
 
 describe('dressSolution', () => {
-	it('strips Answer paragraphs, relabels math Solution-for in order', () => {
+	it('strips Answer paragraphs, drops first Solution-for label (sheet heads it)', () => {
 		const enc = (s) => encodeURIComponent(s);
 		const segs = [T(`<p><strong>Answer: A-01) A, C</strong></p><p><span class="pl-math" data-tex="${enc('\\underline{\\textbf{Solution for A-01}}')}"></span></p><p>Work shown.</p>`)];
 		const out = dressSolution(segs, { numbers: [4] });
 		const html = out.map((s) => s.html || '').join(' ');
 		assert.doesNotMatch(html, /Answer:/);
-		assert.match(html, /Solution%20for%20Q4/);
+		assert.doesNotMatch(html, /Solution for/);
 		assert.match(html, /Work shown/);
+	});
+	it('turns later Solution-for labels into sub-solution dividers', () => {
+		const enc = (s) => encodeURIComponent(s);
+		const L = (qn) => `<p><span class="pl-math" data-tex="${enc(`\\underline{\\textbf{Solution for ${qn}}}`)}"></span></p>`;
+		const segs = [T(`<p><strong>Answer: 33) A</strong></p>${L('33')}<p>Sol 33.</p><p><strong>Answer: 34) B</strong></p>${L('34')}<p>Sol 34.</p>`)];
+		const out = dressSolution(segs, { numbers: [7, 8] });
+		const html = out.map((s) => s.html || '').join(' ');
+		assert.doesNotMatch(html, /Answer:/);
+		assert.doesNotMatch(html, /Solution for/);
+		assert.match(html, /Sol 33/);
+		assert.match(html, /Sol 34/);
+		assert.match(html, /<hr class="sol-div">/);
 	});
 	it('strips every repeated Answer block in group solutions', () => {
 		const out = dressSolution([T('<p><strong>Answer: 33) A</strong></p><p>Sol 33.</p><p><strong>Answer: 34) B</strong></p><p>Sol 34.</p>')], { numbers: [2, 3] });
