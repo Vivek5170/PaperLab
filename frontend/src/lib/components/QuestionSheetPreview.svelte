@@ -51,7 +51,7 @@
 		box-shadow: var(--pl-shadow-sm);
 		padding: 28px 30px;
 		width: 100%;
-		max-width: 720px;
+		max-width: 800px;
 		margin: 0 auto;
 	}
 	.dochead {
