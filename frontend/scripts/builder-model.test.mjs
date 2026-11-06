@@ -9,7 +9,7 @@ import { assignNumbers, flattenDraft, numberLabel } from '../src/lib/numbering.j
 import {
 	createDraft, importBlocks, autoGroup, addSection, deleteSection,
 	setSectionAtype, moveSection, moveBlock, moveBlockToSection,
-	removeBlock, setKeyOverride, sectionAccepts, validateDraft
+	removeBlock, restoreBlock, setKeyOverride, sectionAccepts, validateDraft
 } from '../src/lib/builderModel.js';
 
 const B = (blockId, paperId, number, qtype = 'scq') => ({ blockId, paperId, number, qtype });
@@ -74,15 +74,47 @@ describe('builderModel', () => {
 		assert.equal(r.added.length, 1);
 		assert.equal(Object.keys(r.draft.blocks).length, 4);
 	});
-	it('autoGroup merges par-* into normalized sections, keeps raw qtype', () => {
+	it('autoGroup: passages go to a Passage section, never typed', () => {
 		let d = createDraft('paper');
-		d = importBlocks(d, [C(11, '8', 'scq'), C(11, '15-17_paragraph', 'par-scq'), C(11, '9', 'msq')]).draft;
+		d = importBlocks(d, [C(11, '8', 'scq'), C(11, '15-17_paragraph', 'par-scq'), C(11, '33-34_paragraph', 'par-mix'), C(11, '9', 'msq')]).draft;
 		d = autoGroup(d).draft;
-		assert.equal(d.sections.length, 2);
-		const scq = d.sections.find((s) => s.atype === 'scq');
-		assert.equal(scq.blockIds.length, 2);
-		assert.equal(d.blocks[scq.blockIds[1]].qtype, 'par-scq');
-		assert.ok(!d.sections.some((s) => s.atype === 'par-scq'));
+		const types = d.sections.map((s) => s.atype).sort();
+		assert.deepEqual(types, ['msq', 'passage', 'scq']);
+		const pas = d.sections.find((s) => s.atype === 'passage');
+		assert.equal(pas.blockIds.length, 2);
+		assert.ok(!d.sections.some((s) => s.atype === 'par-scq' || s.atype === 'par-mix'));
+		// Raw qtype preserved on every block.
+		assert.equal(d.blocks[pas.blockIds[0]].qtype, 'par-scq');
+		assert.equal(d.blocks[pas.blockIds[1]].qtype, 'par-mix');
+	});
+	it('passage sections accept any paragraph, refuse singles', () => {
+		const p = { id: 's', title: 'P', atype: 'passage', blockIds: [] };
+		assert.equal(sectionAccepts(p, { qtype: 'par-mix', number: '33-34_paragraph' }), true);
+		assert.equal(sectionAccepts(p, { qtype: 'par-scq', number: '15-17_paragraph' }), true);
+		assert.equal(sectionAccepts(p, { qtype: 'scq', number: '8' }), false);
+	});
+	it('import into an empty draft generates typed + Passage sections', () => {
+		let d = createDraft('paper');
+		const r = importBlocks(d, [C(11, '8', 'scq'), C(11, '15-17_paragraph', 'par-scq')]);
+		assert.equal(r.draft.sections.length, 2);
+		assert.ok(r.draft.sections.some((s) => s.atype === 'passage'));
+		assert.ok(r.added.length === 2 && r.skipped.length === 0);
+	});
+	it('undo restores the same block id, position and overrides', () => {
+		let d = createDraft('paper');
+		d = importBlocks(d, [C(11, '8'), C(11, '9')]).draft;
+		const [idA, idB] = Object.keys(d.blocks);
+		d = setKeyOverride(d, idA, 0, 'B');
+		const sid = d.sections[0].id;
+		const r = removeBlock(d, idA);
+		assert.equal(r.removed, true);
+		assert.ok(r.snapshot);
+		const u = restoreBlock(r.draft, r.snapshot);
+		assert.equal(u.restored, true);
+		assert.deepEqual(u.draft.sections[0].blockIds, [idA, idB]);
+		assert.equal(u.draft.keyOverride[`${idA}:0`], 'B');
+		// Second restore of the same snapshot refuses (id back in use).
+		assert.equal(restoreBlock(u.draft, r.snapshot).restored, false);
 	});
 	it('section gate: normalized match passes, mismatch refuses', () => {
 		let d = createDraft('paper');

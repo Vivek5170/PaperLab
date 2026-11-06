@@ -20,6 +20,7 @@ import {
 	moveBlock,
 	moveBlockToSection,
 	removeBlock,
+	restoreBlock,
 	setKeyOverride,
 	validateDraft
 } from './builderModel.js';
@@ -177,7 +178,25 @@ export const builder = {
 		return r0;
 	},
 	removeBlock(id) {
-		builderStore.update((d) => removeBlock(d, id).draft);
+		let snapshot = null;
+		builderStore.update((d) => {
+			const r = removeBlock(d, id);
+			snapshot = r.snapshot ?? null;
+			return r.draft;
+		});
+		return snapshot;
+	},
+	restoreBlock(snapshot, fallbackSectionId = null) {
+		let restored = false;
+		builderStore.update((d) => {
+			let r = restoreBlock(d, snapshot);
+			if (!r.restored && r.reason === 'section-gone' && fallbackSectionId) {
+				r = restoreBlock(d, { ...snapshot, sectionId: fallbackSectionId });
+			}
+			restored = r.restored;
+			return r.draft;
+		});
+		return restored;
 	},
 	setOverride(blockId, subIndex, text) {
 		builderStore.update((d) => setKeyOverride(d, blockId, subIndex, text));

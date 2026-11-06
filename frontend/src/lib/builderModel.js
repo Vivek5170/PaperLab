@@ -13,14 +13,17 @@
  *   skips them unless allowDupes is explicitly confirmed.
  *
  * Section validation uses the NORMALIZED answer type
- * (normalizeAnswerType: par-scq == scq). Raw qtype stays on the block for
- * rendering. The assignment's locked section accepts everything.
+ * (normalizeAnswerType: par-scq == scq) for typed sections. Passages are
+ * STRUCTURAL groups, not types: any paragraph block — uniform or mixed —
+ * belongs in a Passage section and is never split. Raw qtype stays on the
+ * block for rendering. The assignment's locked section accepts everything.
  */
 import { normalizeAnswerType } from './qtypes.js';
+import { isParagraphId } from './paragraph.js';
 
 export const BUILDER_SCHEMA_VERSION = 1;
-/** Normalized types offered for manual paper sections. */
-export const SECTION_TYPES = ['scq', 'msq', 'int', 'num', 'mtx', 'mix', 'unknown'];
+/** Normalized types offered for manual paper sections. 'passage' is structural. */
+export const SECTION_TYPES = ['scq', 'msq', 'int', 'num', 'mtx', 'mix', 'unknown', 'passage'];
 
 export function newBlockId() {
 	try {
@@ -79,17 +82,50 @@ function touch(draft) {
 }
 
 /**
+ * Group incoming items into sections when the paper draft has none:
+ * singles by normalized type, every paragraph block into a Passage
+ * section. Passages are structural — never split, never typed.
+ */
+export function sectionsForItems(items) {
+	const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+	const singles = new Map();
+	const passages = [];
+	for (const src of items ?? []) {
+		if (!src || typeof src !== 'object') continue;
+		if (isParagraphId(src.number, src.qtype)) {
+			passages.push(src);
+			continue;
+		}
+		const t = normalizeAnswerType(src.qtype);
+		if (!singles.has(t)) singles.set(t, []);
+		singles.get(t).push(src);
+	}
+	const sections = [];
+	let li = 0;
+	for (const t of SECTION_TYPES) {
+		if (t === 'passage' || !singles.has(t)) continue;
+		sections.push({ id: newSectionId(), title: `Section ${letters[li++] ?? `X${li}`} · ${t.toUpperCase()}`, atype: t, blockIds: [] });
+	}
+	if (passages.length > 0) {
+		sections.push({ id: newSectionId(), title: `Section ${letters[li] ?? `X${li}`} · Passages`, atype: 'passage', blockIds: [] });
+	}
+	return { sections, passages };
+}
+
+/**
  * Import items as fresh blocks. Dupes (identity already in draft) are
- * skipped unless allowDupes. Target: first section (created when missing).
- * Returns {draft, added:[blockIds], skipped:[{paperId,number}]}.
+ * skipped unless allowDupes. Empty paper drafts gain generated sections
+ * (typed + Passage); otherwise blocks land in the target/first accepting
+ * section. Returns {draft, added:[blockIds], skipped:[{paperId,number}]}.
  */
 export function importBlocks(draft, items, { allowDupes = false, sectionId = null } = {}) {
 	const seen = identitySet(draft);
 	let d = draft;
 	if (!d.sections || d.sections.length === 0) {
-		d = d.mode === 'assignment' ? createDraft('assignment', d.title) : { ...d, sections: [] };
-		if (d.mode === 'paper' && d.sections.length === 0) {
-			d = { ...d, sections: [{ id: newSectionId(), title: 'Section A', atype: 'scq', blockIds: [] }] };
+		if (d.mode === 'assignment') {
+			d = createDraft('assignment', d.title);
+		} else {
+			d = { ...d, sections: sectionsForItems(items).sections };
 		}
 	}
 	let target = (d.sections.find((s) => s.id === sectionId) ?? d.sections[0]);
@@ -109,12 +145,11 @@ export function importBlocks(draft, items, { allowDupes = false, sectionId = nul
 		}
 		seen.add(k);
 		blocks[b.id] = b;
-		// Respect section typing: mismatches collect into the target anyway
-		// only when it accepts them; otherwise leave the block unplaced.
 		if (sectionAccepts(tsec, b)) {
 			tsec.blockIds.push(b.id);
 		} else {
-			// Find or note: place in first accepting section, else target.
+			// Target was explicitly picked but rejects: fall back to the
+			// first accepting section so no block is ever left unplaced.
 			const alt = sections.find((s) => sectionAccepts(s, b));
 			(alt ?? tsec).blockIds.push(b.id);
 		}
@@ -123,36 +158,60 @@ export function importBlocks(draft, items, { allowDupes = false, sectionId = nul
 	return { draft: touch({ ...d, blocks, sections }), added, skipped };
 }
 
-/** Normalized-type gate. Locked (assignment) section accepts everything. */
+/**
+ * Section gate. Locked (assignment) sections accept everything. Passage
+ * sections accept paragraph blocks of ANY qtype and refuse singles;
+ * typed sections accept their normalized type (par-scq == scq).
+ */
 export function sectionAccepts(section, block) {
 	if (!section || !block) return false;
 	if (section.locked) return true;
+	if (section.atype === 'passage') return isParagraphId(block.number, block.qtype);
 	return normalizeAnswerType(block.qtype) === section.atype;
 }
 
-/** Rebuild paper sections grouped by NORMALIZED type only (par-* merges). */
+/**
+ * Rebuild paper sections: singles grouped by NORMALIZED type, every
+ * paragraph block into Passage section(s). Mixed-type passages are never
+ * split — the Passage section carries no question type.
+ */
 export function autoGroup(draft) {
 	if (draft.mode !== 'paper') return { draft, grouped: false };
 	const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-	const order = [...SECTION_TYPES];
-	const buckets = new Map();
+	const singles = new Map();
+	const passages = [];
 	for (const b of Object.values(draft.blocks ?? {})) {
-		const t = normalizeAnswerType(b.qtype);
-		if (!buckets.has(t)) buckets.set(t, []);
-		buckets.get(t).push(b.id);
+		if (isParagraphId(b.number, b.qtype)) passages.push(b.id);
+		else {
+			const t = normalizeAnswerType(b.qtype);
+			if (!singles.has(t)) singles.set(t, []);
+			singles.get(t).push(b.id);
+		}
 	}
-	// Preserve current block order (document order) inside each bucket.
+	// Preserve current document order inside each bucket.
 	const docOrder = [];
 	for (const s of draft.sections) for (const bid of s.blockIds) docOrder.push(bid);
 	const pos = new Map(docOrder.map((id, i) => [id, i]));
-	const sections = order
-		.filter((t) => buckets.has(t))
-		.map((t, i) => ({
+	const byPos = (a, b) => (pos.get(a) ?? 0) - (pos.get(b) ?? 0);
+	const sections = [];
+	let li = 0;
+	for (const t of SECTION_TYPES) {
+		if (t === 'passage' || !singles.has(t)) continue;
+		sections.push({
 			id: newSectionId(),
-			title: `Section ${letters[i] ?? `X${i}`} · ${t.toUpperCase()}`,
+			title: `Section ${letters[li++] ?? `X${li}`} · ${t.toUpperCase()}`,
 			atype: t,
-			blockIds: buckets.get(t).slice().sort((a, b) => (pos.get(a) ?? 0) - (pos.get(b) ?? 0))
-		}));
+			blockIds: singles.get(t).slice().sort(byPos)
+		});
+	}
+	if (passages.length > 0) {
+		sections.push({
+			id: newSectionId(),
+			title: `Section ${letters[li] ?? `X${li}`} · Passages`,
+			atype: 'passage',
+			blockIds: passages.slice().sort(byPos)
+		});
+	}
 	return { draft: touch({ ...draft, sections }), grouped: true };
 }
 
@@ -250,6 +309,14 @@ export function moveBlockToSection(draft, blockId, targetId) {
 /** Remove a block: section refs AND its key overrides go with it. */
 export function removeBlock(draft, blockId) {
 	if (!draft.blocks?.[blockId]) return { draft, removed: false };
+	const snapshot = {
+		block: { ...draft.blocks[blockId] },
+		sectionId: (draft.sections.find((s) => s.blockIds.includes(blockId)) ?? {}).id ?? null,
+		index: Math.max(0, (draft.sections.find((s) => s.blockIds.includes(blockId)) ?? { blockIds: [] }).blockIds.indexOf(blockId)),
+		overrides: Object.fromEntries(
+			Object.entries(draft.keyOverride ?? {}).filter(([k]) => k.startsWith(`${blockId}:`))
+		)
+	};
 	const blocks = { ...draft.blocks };
 	delete blocks[blockId];
 	const sections = draft.sections.map((s) => ({
@@ -258,7 +325,31 @@ export function removeBlock(draft, blockId) {
 	const keyOverride = Object.fromEntries(
 		Object.entries(draft.keyOverride ?? {}).filter(([k]) => !k.startsWith(`${blockId}:`))
 	);
-	return { draft: touch({ ...draft, blocks, sections, keyOverride }), removed: true };
+	return { draft: touch({ ...draft, blocks, sections, keyOverride }), removed: true, snapshot };
+}
+
+/**
+ * Undo a removeBlock: reinsert the SAME block id at its old position with
+ * its overrides. Fails safely when the section is gone (caller picks a
+ * fallback) or the id was reused meanwhile.
+ */
+export function restoreBlock(draft, snapshot) {
+	if (!snapshot || !snapshot.block || !snapshot.block.id) return { draft, restored: false };
+	const { block, sectionId, index, overrides } = snapshot;
+	if (draft.blocks?.[block.id]) return { draft, restored: false, reason: 'id-reused' };
+	const si = draft.sections.findIndex((s) => s.id === sectionId);
+	if (si === -1) return { draft, restored: false, reason: 'section-gone' };
+	const blocks = { ...draft.blocks, [block.id]: { ...block } };
+	const sections = draft.sections.map((s, i) => {
+		if (i !== si) return s;
+		const ids = [...s.blockIds];
+		ids.splice(Math.max(0, Math.min(ids.length, index | 0)), 0, block.id);
+		return { ...s, blockIds: ids };
+	});
+	const keyOverride = { ...(draft.keyOverride ?? {}), ...Object.fromEntries(
+		Object.entries(overrides ?? {}).filter(([k, v]) => k.startsWith(`${block.id}:`) && typeof v === 'string')
+	) };
+	return { draft: touch({ ...draft, blocks, sections, keyOverride }), restored: true };
 }
 
 export function setKeyOverride(draft, blockId, subIndex, text) {

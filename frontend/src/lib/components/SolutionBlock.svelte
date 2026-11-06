@@ -6,7 +6,7 @@
 	 * or the key — the heading (with generated numbers) always renders.
 	 */
 	import { onMount } from 'svelte';
-	import { api } from '$lib/api.js';
+	import { getQuestionDetail, dropQuestionDetail } from '$lib/questionCache.js';
 	import Segments from '$lib/components/Segments.svelte';
 
 	let { block, numbers = [] } = $props();
@@ -33,7 +33,7 @@
 		state = 'loading';
 		error = '';
 		try {
-			const detail = await api.getQuestion(block.paperId, block.number);
+			const detail = await getQuestionDetail(block.paperId, block.number);
 			const sol = detail?.solution ?? [];
 			if (solutionMissing(sol)) state = 'missing-sol';
 			else {
@@ -45,6 +45,11 @@
 			state = msg.startsWith('404') ? 'missing-q' : 'error';
 			error = msg;
 		}
+	}
+
+	function retry() {
+		dropQuestionDetail(block.paperId, block.number);
+		load();
 	}
 
 	onMount(load);
@@ -63,7 +68,7 @@
 		<p class="pl-sub">Source question no longer exists (Paper {block.paperId} · Q{block.number}). Remove this block or re-import it.</p>
 	{:else}
 		<p class="pl-error" role="alert">Could not load this solution: {error}</p>
-		<button type="button" class="pl-btn" onclick={load}>Retry</button>
+		<button type="button" class="pl-btn" onclick={retry}>Retry</button>
 	{/if}
 </section>
 
