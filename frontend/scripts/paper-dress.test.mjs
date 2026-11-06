@@ -183,6 +183,18 @@ describe('par section instructions', () => {
 	});
 });
 
+describe('math-only solutions are content', () => {
+	it('keeps math-only paragraphs after Answer-strip (Q7-Q8 regression)', async () => {
+		const { dressSolution } = await import('../src/lib/paperDress.js');
+		const math = (tex) => `<p><span class="pl-math" data-tex="${tex}" data-display="0"></span></p>`;
+		const segs = [{ kind: 'text', html: `<p><strong>Answer: 33) 6</strong></p>\n${math('Rcal')} \n<p><strong>Answer: 34) 150</strong></p>\n${math('lheat')}` }];
+		const out = dressSolution(segs, { numbers: [7, 8] });
+		assert.equal(out.length, 1);
+		assert.ok(!/Answer:/.test(out[0].html));
+		assert.ok(/data-tex/.test(out[0].html), 'math kept');
+	});
+});
+
 describe('key-only solutions', () => {
 	it('dress to zero rows when the filed solution is only Answer lines', async () => {
 		const { dressSolution } = await import('../src/lib/paperDress.js');

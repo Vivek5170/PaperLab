@@ -90,6 +90,16 @@ export function dressQuestion(segments, { numbers = [], para = null } = {}) {
 	return out;
 }
 
+// True when HTML carries visible content: real text, math (which lives in
+// data-tex attributes with no inner text until KaTeX renders), images,
+// figures or tables. Tag-stripped text alone misclassifies math-only
+// solutions as empty — the exact bug that blanked Solutions Q7–Q8.
+function segHasContent(html) {
+	if (!html) return false;
+	if (/data-tex|<(img|figure|table|svg|canvas)\b/i.test(html)) return true;
+	return html.replace(/<[^>]*>/g, '').trim() !== '';
+}
+
 // A paragraph holding nothing but the filed answer line.
 function isAnswerPara(html) {
 	const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -127,7 +137,7 @@ export function dressSolution(segments, { numbers = [] } = {}) {
 		if (s?.kind !== 'text' || typeof s.html !== 'string') { out.push(s); continue; }
 		// Strip answer-only paragraphs entirely.
 		const stripped = s.html.replace(/<p[^>]*>[\s\S]*?<\/p>/g, (m) => (isAnswerPara(m) ? '' : m));
-		if (stripped.replace(/<[^>]*>/g, '').trim() === '' && s.html !== stripped) continue;
+		if (!segHasContent(stripped) && s.html !== stripped) continue;
 		out.push({ ...s, html: stripped });
 	}
 	let si = 0;
