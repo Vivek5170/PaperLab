@@ -61,3 +61,95 @@ def test_disk_sizes_and_purge_guards(tmp_db, tmp_outputs, tmp_path, monkeypatch)
     usage2 = st.disk_usage()
     assert usage2["renderCache"] == {"bytes": 0, "files": 0}
     assert usage2["cleanedPdfs"]["files"] == 0
+
+
+def _seed_archive(tmp_path, monkeypatch):
+    import directory_manager as dm
+
+    adir = tmp_path / "archive"
+    adir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(dm, "ARCHIVE_DIR", adir)
+    return adir
+
+
+def test_intermediates_purge_covers_crops(tmp_db, tmp_path, monkeypatch):
+    import database as _db
+    from backend.routers import stats as st
+
+    adir = _seed_archive(tmp_path, monkeypatch)
+    (adir / "a_QP_crop.pdf").write_bytes(b"%PDF" + b"c" * 500)
+    keep_crop = adir / "b_QP_crop.pdf"
+    keep_crop.write_bytes(b"%PDF" + b"k" * 700)
+    conn = _db.get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO papers (paper_name, status, question_pdf_path,"
+            " solution_pdf_path) VALUES (?,?,?,?)",
+            ("P", "done", str(keep_crop), None))
+        conn.commit()
+    finally:
+        conn.close()
+    usage = st.disk_usage()
+    assert usage["cropPdfs"]["files"] == 1  # referenced crop kept out
+    assert usage["cropPdfs"]["protected"] == 1
+
+    r = st.purge_intermediates()
+    assert r["crop"] == 1
+    assert r["deleted"] == 1
+    assert not (adir / "a_QP_crop.pdf").exists()
+    assert keep_crop.is_file()  # DB-referenced crop survives
+
+
+def test_paper_pdfs_selective_delete(tmp_db, tmp_path, monkeypatch):
+    import database as _db
+    from backend.routers import stats as st
+
+    adir = _seed_archive(tmp_path, monkeypatch)
+    qp = adir / "GTA-99_QP.pdf"
+    qp.write_bytes(b"%PDF" + b"q" * 100)
+    sol = adir / "GTA-99_Key.pdf"
+    sol.write_bytes(b"%PDF" + b"s" * 200)
+    stray = adir / "notes_answer.pdf"
+    stray.write_bytes(b"%PDF" + b"n" * 50)
+    conn = _db.get_connection()
+    try:
+        pid = conn.execute(
+            "INSERT INTO papers (paper_name, status, question_pdf_path,"
+            " solution_pdf_path) VALUES (?,?,?,?)",
+            ("P", "done", str(qp), str(sol))).lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+
+    listing = st.paper_pdfs()
+    paper = next((x for x in listing["papers"] if x["id"] == pid), None)
+    assert paper is not None
+    kinds = {f["kind"] for f in paper["files"]}
+    assert kinds == {"question", "solution"}
+    assert all(f["exists"] for f in paper["files"])
+    assert {u["name"] for u in listing["unlinked"]} == {"notes_answer.pdf"}
+
+    # Outside-data paths are refused, never deleted.
+    outside = tmp_path / "outside.pdf"
+    outside.write_bytes(b"%PDF-out")
+    bad = st.delete_paper_pdfs({"paths": [str(outside)], "unlinked": []})
+    assert bad["deleted"] == 0
+    assert bad["refused"] != []
+    assert outside.is_file()
+
+    res = st.delete_paper_pdfs({"paths": [str(sol)], "unlinked": []})
+    assert res["deleted"] == 1
+    assert not sol.exists() and qp.is_file()
+    conn = _db.get_connection()
+    try:
+        row = conn.execute(
+            "SELECT question_pdf_path, solution_pdf_path FROM papers"
+            " WHERE id = ?", (pid,)).fetchone()
+    finally:
+        conn.close()
+    assert row[0] == str(qp) and row[1] is None
+
+    res2 = st.delete_paper_pdfs(
+        {"paths": [], "unlinked": [{"location": "archive", "name": stray.name}]})
+    assert res2["deleted"] == 1
+    assert not stray.exists()

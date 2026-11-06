@@ -79,6 +79,9 @@ export const api = {
 	getDiskUsage: () => request('/stats/disk'),
 	purgeRenderCache: () => request('/stats/disk/render', { method: 'DELETE' }),
 	purgeCleanedPdfs: () => request('/stats/disk/cleaned', { method: 'DELETE' }),
+	purgeIntermediates: () => request('/stats/disk/intermediates', { method: 'DELETE' }),
+	getPaperPdfs: () => request('/stats/pdfs'),
+	deletePaperPdfs: (body) => request('/stats/pdfs', { method: 'DELETE', body: JSON.stringify(body) }),
 
 	listUploads: () => request('/uploads'),
 	uploadFiles: (formData) =>

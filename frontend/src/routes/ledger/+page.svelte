@@ -20,9 +20,15 @@
 	let dangerMsg = $state('');
 	let disk = $state(null);
 	let armRender = $state(false);
-	let armCleaned = $state(false);
+	let armInter = $state(false);
 	let purging = $state('');
 	let purgeMsg = $state('');
+	let pdfs = $state(null);
+	let selPaths = $state([]);
+	let selUnlinked = $state([]);
+	let armPdfDel = $state(false);
+	let deletingPdfs = $state(false);
+	let pdfMsg = $state('');
 
 	const currencyTabs = [
 		{ id: 'USD', label: 'USD ($)' },
@@ -37,14 +43,16 @@
 		loading = true;
 		error = '';
 		try {
-			const [s, p, d] = await Promise.all([
+			const [s, p, d, pdf] = await Promise.all([
 				api.getStats(),
 				api.listPapers(),
-				api.getDiskUsage()
+				api.getDiskUsage(),
+				api.getPaperPdfs()
 			]);
 			stats = s;
 			papers = p;
 			disk = d;
+			pdfs = pdf;
 			currency = String(stats.currencyDefault || 'INR')
 				.toLowerCase()
 				.startsWith('in')
@@ -87,30 +95,71 @@
 	}
 
 	async function purge(kind) {
-		const armed = kind === 'render' ? armRender : armCleaned;
+		const armed = kind === 'render' ? armRender : armInter;
 		if (!armed) {
 			if (kind === 'render') {
 				armRender = true;
-				armCleaned = false;
+				armInter = false;
 			} else {
-				armCleaned = true;
+				armInter = true;
 				armRender = false;
 			}
 			return;
 		}
-		if (kind === 'render') armRender = false;
-		else armCleaned = false;
+		armRender = false;
+		armInter = false;
 		purging = kind;
 		purgeMsg = '';
 		try {
 			const res =
-				kind === 'render' ? await api.purgeRenderCache() : await api.purgeCleanedPdfs();
-			purgeMsg = `Deleted ${res.deleted} file${res.deleted === 1 ? '' : 's'}, freed ${fmtBytes(res.bytes)}.`;
+				kind === 'render' ? await api.purgeRenderCache() : await api.purgeIntermediates();
+			const extra =
+				res.cleaned != null || res.crop != null
+					? ` (${res.cleaned ?? 0} cleaned + ${res.crop ?? 0} crop)`
+					: '';
+			purgeMsg = `Deleted ${res.deleted} file${res.deleted === 1 ? '' : 's'}${extra}, freed ${fmtBytes(res.bytes)}.`;
 			disk = await api.getDiskUsage();
 		} catch (e) {
 			purgeMsg = `Delete failed: ${e.message}`;
 		} finally {
 			purging = '';
+		}
+	}
+
+	const selCount = $derived(selPaths.length + selUnlinked.length);
+
+	async function deleteSelectedPdfs() {
+		if (selCount === 0 || purging !== '' || deletingPdfs) return;
+		if (!armPdfDel) {
+			armPdfDel = true;
+			return;
+		}
+		armPdfDel = false;
+		deletingPdfs = true;
+		pdfMsg = '';
+		try {
+			const res = await api.deletePaperPdfs({
+				paths: selPaths,
+				unlinked: selUnlinked.map((k) => {
+					const i = k.indexOf(':');
+					return { location: k.slice(0, i), name: k.slice(i + 1) };
+				})
+			});
+			const bits = [`Deleted ${res.deleted} file${res.deleted === 1 ? '' : 's'}`];
+			if ((res.cleared ?? []).length) bits.push(`cleared ${res.cleared.length} paper reference${res.cleared.length === 1 ? '' : 's'}`);
+			if ((res.missing ?? []).length) bits.push(`${res.missing.length} already missing`);
+			if ((res.refused ?? []).length) bits.push(`${res.refused.length} refused (outside data/)`);
+			bits.push(`freed ${fmtBytes(res.bytes)}`);
+			pdfMsg = bits.join(' · ') + '.';
+			selPaths = [];
+			selUnlinked = [];
+			const [d, pdf] = await Promise.all([api.getDiskUsage(), api.getPaperPdfs()]);
+			disk = d;
+			pdfs = pdf;
+		} catch (e) {
+			pdfMsg = `Delete failed: ${e.message}`;
+		} finally {
+			deletingPdfs = false;
 		}
 	}
 
@@ -276,24 +325,88 @@
 				</button>
 			</div>
 			<div class="pl-card">
-				<p class="rk-title">Cleaned PDFs</p>
-				<p class="rk-size">{disk ? fmtBytes(disk.cleanedPdfs.bytes) : '–'}</p>
+				<p class="rk-title">Crop + cleaned PDFs</p>
+				<p class="rk-size">
+					{disk ? fmtBytes((disk.cropPdfs?.bytes ?? 0) + (disk.cleanedPdfs.bytes ?? 0)) : '–'}
+				</p>
 				<p class="pl-sub rk-note">
-					{disk ? `${disk.cleanedPdfs.files} intermediate file${disk.cleanedPdfs.files === 1 ? '' : 's'}` : '…'}
-					{disk && disk.cleanedPdfs.protected ? ` · ${disk.cleanedPdfs.protected} DB-referenced kept` : ''}.
-					Rebuilds from the question PDF on the next run.
+					{disk
+						? `${disk.cropPdfs?.files ?? 0} crop + ${disk.cleanedPdfs.files} cleaned intermediate file${(disk.cropPdfs?.files ?? 0) + disk.cleanedPdfs.files === 1 ? '' : 's'}`
+						: '…'}
+					{disk && (disk.cleanedPdfs.protected || disk.cropPdfs?.protected)
+						? ` · ${(disk.cleanedPdfs.protected ?? 0) + (disk.cropPdfs?.protected ?? 0)} DB-referenced kept`
+						: ''}.
+					Crop canvases rebuild from cleaned PDFs; cleaned rebuilds from the question PDF on the next run.
 				</p>
 				<button
 					type="button"
 					class="pl-btn"
-					disabled={purging !== '' || !disk?.cleanedPdfs.files}
-					onclick={() => purge('cleaned')}
+					disabled={purging !== '' || !((disk?.cropPdfs?.files ?? 0) + (disk?.cleanedPdfs?.files ?? 0))}
+					onclick={() => purge('inter')}
 				>
-					{purging === 'cleaned' ? 'Deleting…' : armCleaned ? 'Click again to confirm' : 'Delete cleaned PDFs'}
+					{purging === 'inter' ? 'Deleting…' : armInter ? 'Click again to confirm' : 'Delete crop + cleaned'}
 				</button>
 			</div>
 		</div>
 		{#if purgeMsg}<p class="pl-sub" role="status">{purgeMsg}</p>{/if}
+
+		<h3 class="section-title">Paper PDFs</h3>
+		<p class="pl-sub pdf-lead">
+			Tick QP / solution PDFs to delete. Deleting a paper's file also clears its reference —
+			the reader will show no PDF for it. Crop canvases are handled by the purge above.
+		</p>
+		{#if pdfs}
+			{#each pdfs.papers as g (g.id)}
+				{#if g.files.length}
+					<div class="pl-card pdfgroup">
+						<p class="rk-title">#{g.id} {g.name}</p>
+						{#each g.files as f (f.field)}
+							<label class="pdffile">
+								<input
+									type="checkbox"
+									value={f.stored}
+									bind:group={selPaths}
+									disabled={!f.exists || purging !== '' || deletingPdfs}
+								/>
+								<span class="kind">{f.kind === 'question' ? 'QP' : 'Solution'}</span>
+								<span class="pdfname pl-mono">{f.name}</span>
+								<span class="pl-sub">{f.exists ? fmtBytes(f.bytes) : 'missing'} · in use</span>
+							</label>
+						{/each}
+					</div>
+				{/if}
+			{/each}
+			{#if (pdfs.unlinked ?? []).length}
+				<div class="pl-card pdfgroup">
+					<p class="rk-title">Unlinked PDFs</p>
+					{#each pdfs.unlinked as u (`${u.location}:${u.name}`)}
+						{@const key = `${u.location}:${u.name}`}
+						<label class="pdffile">
+							<input
+								type="checkbox"
+								value={key}
+								bind:group={selUnlinked}
+								disabled={purging !== '' || deletingPdfs}
+							/>
+							<span class="kind">{u.location}</span>
+							<span class="pdfname pl-mono">{u.name}</span>
+							<span class="pl-sub">{fmtBytes(u.bytes)}</span>
+						</label>
+					{/each}
+				</div>
+			{/if}
+			<div class="row pdfdel">
+				<button
+					type="button"
+					class="pl-btn pl-btn-danger"
+					disabled={selCount === 0 || purging !== '' || deletingPdfs}
+					onclick={deleteSelectedPdfs}
+				>
+					{deletingPdfs ? 'Deleting…' : armPdfDel ? `Click again to delete ${selCount}` : `Delete selected${selCount ? ` (${selCount})` : ''}`}
+				</button>
+				{#if pdfMsg}<span class="pl-sub" role="status">{pdfMsg}</span>{/if}
+			</div>
+		{/if}
 
 		<details class="danger">
 			<summary>Danger zone: delete a paper</summary>			<div class="danger-body">
@@ -433,6 +546,47 @@
 	.rk-note {
 		font-size: 0.82rem;
 		margin: 0 0 12px;
+	}
+	.pdf-lead {
+		margin: -4px 0 12px;
+	}
+	.pdfgroup {
+		margin-bottom: 12px;
+	}
+	.pdffile {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 7px 0;
+		border-bottom: 1px solid var(--pl-line);
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.pdffile:last-child {
+		border-bottom: none;
+	}
+	.pdffile input {
+		accent-color: var(--pl-seal);
+		min-height: 0;
+		flex-shrink: 0;
+	}
+	.pdffile .kind {
+		font-size: 0.7rem;
+		font-weight: 700;
+		background: var(--pl-raised);
+		border: 1px solid var(--pl-line);
+		border-radius: 6px;
+		padding: 1px 7px;
+		flex-shrink: 0;
+	}
+	.pdfname {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+	.pdfdel {
+		margin-top: 4px;
 	}
 	.danger {
 		margin-top: 24px;

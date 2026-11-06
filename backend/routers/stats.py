@@ -71,6 +71,57 @@ def _purgeable_cleaned() -> tuple[list[Path], list[Path]]:
     return deletable, protected
 
 
+def _is_crop_pdf(p: Path) -> bool:
+    return p.suffix.lower() == ".pdf" and p.stem.endswith("_crop")
+
+
+def _crop_files() -> list[Path]:
+    """Crop canvases living next to managed sources in data/archive/."""
+    adir = directory_manager.ARCHIVE_DIR
+    out = []
+    if adir.is_dir():
+        for p in sorted(adir.iterdir()):
+            if p.is_file() and not p.is_symlink() and _is_crop_pdf(p):
+                out.append(p)
+    return out
+
+
+def _protected_crop() -> set[str]:
+    """Absolute crop paths referenced by papers (never purge these)."""
+    conn = database.get_connection()
+    try:
+        refs = {r[0] for r in conn.execute(
+            "SELECT question_pdf_path FROM papers").fetchall()}
+        refs |= {r[0] for r in conn.execute(
+            "SELECT solution_pdf_path FROM papers").fetchall()}
+    finally:
+        conn.close()
+    keep = set()
+    for r in refs:
+        if not r or not str(r).endswith(".pdf"):
+            continue
+        try:
+            rp = str(Path(r).resolve())
+        except OSError:
+            continue
+        if Path(rp).stem.endswith("_crop"):
+            keep.add(rp)
+    return keep
+
+
+def _purgeable_crop() -> tuple[list[Path], list[Path]]:
+    """(deletable, protected) crop canvases."""
+    keep = _protected_crop()
+    deletable, protected = [], []
+    for p in _crop_files():
+        try:
+            rp = str(p.resolve())
+        except OSError:
+            continue
+        (protected if rp in keep else deletable).append(p)
+    return deletable, protected
+
+
 def _paper_dict(row) -> dict:
     return {
         "id": row["id"],
@@ -169,10 +220,13 @@ def disk_usage():
     """
     render = _render_cache_files(directory_manager.OUTPUT_BASE)
     deletable, protected = _purgeable_cleaned()
+    crop_del, crop_keep = _purgeable_crop()
     return {
         "renderCache": {"bytes": _size(render), "files": len(render)},
         "cleanedPdfs": {"bytes": _size(deletable), "files": len(deletable),
                         "protected": len(protected)},
+        "cropPdfs": {"bytes": _size(crop_del), "files": len(crop_del),
+                     "protected": len(crop_keep)},
     }
 
 
@@ -202,3 +256,227 @@ def purge_cleaned_pdfs():
         except OSError:
             continue
     return {"deleted": gone, "bytes": freed}
+
+
+@router.delete("/disk/intermediates", dependencies=[Depends(require_admin)])
+def purge_intermediates():
+    """One-shot purge of both regenerable states: crop canvases in
+    data/archive plus unreferenced cleaned PDFs. DB-referenced files are
+    kept. Crop canvases rebuild from cleaned PDFs; cleaned PDFs rebuild
+    from the question PDF on the next run."""
+    freed, gone, n_clean, n_crop = 0, 0, 0, 0
+    for p in _purgeable_cleaned()[0]:
+        try:
+            freed += p.stat().st_size
+            p.unlink()
+            gone += 1
+            n_clean += 1
+        except OSError:
+            continue
+    for p in _purgeable_crop()[0]:
+        try:
+            freed += p.stat().st_size
+            p.unlink()
+            gone += 1
+            n_crop += 1
+        except OSError:
+            continue
+    return {"deleted": gone, "bytes": freed, "cleaned": n_clean, "crop": n_crop}
+
+
+def _resolve_managed(stored: str | None) -> Path | None:
+    """Resolve a DB-stored PDF path to an existing absolute file.
+
+    Stored values may be absolute or bare filenames (older rows); try the
+    value as-is, then data/archive/, then data/cleaned/. Returns None when
+    nothing exists on disk.
+    """
+    if not stored:
+        return None
+    cands = [Path(stored)]
+    base = Path(stored).name
+    cands.append(directory_manager.ARCHIVE_DIR / base)
+    cands.append(directory_manager.CLEANED_DIR / base)
+    for c in cands:
+        try:
+            if c.is_file() and not c.is_symlink():
+                return c.resolve()
+        except OSError:
+            continue
+    return None
+
+
+def _all_db_pdf_refs() -> set[str]:
+    """Every question/solution PDF string stored by papers (raw + resolved)."""
+    conn = database.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT question_pdf_path, solution_pdf_path FROM papers").fetchall()
+    finally:
+        conn.close()
+    out = set()
+    for q, s in rows:
+        for v in (q, s):
+            if not v:
+                continue
+            out.add(str(v))
+            try:
+                out.add(str(Path(v).resolve()))
+            except OSError:
+                pass
+    return out
+
+
+def _paper_pdf_entries() -> tuple[list[dict], list[dict]]:
+    """(per-paper files, unlinked files) for the selective PDF deleter.
+
+    Per-paper entries mirror the DB references (deleting one also clears
+    the reference so nothing dangles). Unlinked entries are archive/cleaned
+    PDFs no paper points at (crop canvases excluded — they belong to the
+    intermediates purge).
+    """
+    conn = database.get_connection()
+    try:
+        papers = conn.execute(
+            "SELECT id, paper_name, question_pdf_path, solution_pdf_path"
+            " FROM papers ORDER BY id DESC").fetchall()
+    finally:
+        conn.close()
+    refs = _all_db_pdf_refs()
+    per_paper = []
+    for pid, name, qpath, spath in papers:
+        files = []
+        for field, kind, stored in (
+                ("question_pdf_path", "question", qpath),
+                ("solution_pdf_path", "solution", spath)):
+            if not stored:
+                continue
+            rp = _resolve_managed(stored)
+            try:
+                size = rp.stat().st_size if rp else 0
+            except OSError:
+                size = 0
+            files.append({
+                "kind": kind,
+                "field": field,
+                "name": Path(stored).name,
+                "stored": str(stored),
+                "exists": rp is not None,
+                "bytes": size,
+            })
+        per_paper.append({"id": pid, "name": name, "files": files})
+    seen = set()
+
+    def _collect(root: Path, location: str, skip_crop: bool):
+        if not root.is_dir():
+            return
+        for p in sorted(root.iterdir()):
+            if not p.is_file() or p.is_symlink():
+                continue
+            if p.suffix.lower() != ".pdf":
+                continue
+            if skip_crop and _is_crop_pdf(p):
+                continue
+            try:
+                rp = str(p.resolve())
+            except OSError:
+                continue
+            if rp in refs or str(p) in refs:
+                continue
+            key = (location, p.name)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                size = p.stat().st_size
+            except OSError:
+                size = 0
+            unlinked.append({"name": p.name, "location": location, "bytes": size})
+
+    unlinked: list[dict] = []
+    _collect(directory_manager.ARCHIVE_DIR, "archive", skip_crop=True)
+    _collect(directory_manager.CLEANED_DIR, "cleaned", skip_crop=False)
+    return per_paper, unlinked
+
+
+@router.get("/pdfs", dependencies=[Depends(require_admin)])
+def paper_pdfs():
+    """Selectable QP / solution PDFs per paper plus unlinked PDFs."""
+    per_paper, unlinked = _paper_pdf_entries()
+    return {"papers": per_paper, "unlinked": unlinked}
+
+
+@router.delete("/pdfs", dependencies=[Depends(require_admin)])
+def delete_paper_pdfs(body: dict):
+    """Delete selected PDFs; DB references to deleted files are cleared.
+
+    Body: {"paths": [stored DB strings], "unlinked": [{location, name}]}.
+    Only files inside the data tree are ever touched; anything outside is
+    reported, never deleted. Returns counts plus cleared references.
+    """
+    data_roots = set()
+    for _root in (directory_manager.ARCHIVE_DIR, directory_manager.CLEANED_DIR,
+                  directory_manager.DATA_ROOT):
+        try:
+            data_roots.add(_root.resolve())
+        except OSError:
+            continue
+    deleted, freed, cleared, missing, refused = 0, 0, [], [], []
+    targets: list[tuple[str | None, Path | None]] = []
+    for stored in body.get("paths") or []:
+        targets.append((str(stored), _resolve_managed(stored)))
+    for item in body.get("unlinked") or []:
+        loc = (item or {}).get("location")
+        name = (item or {}).get("name")
+        root = {"archive": directory_manager.ARCHIVE_DIR,
+                "cleaned": directory_manager.CLEANED_DIR}.get(loc)
+        rp = None
+        if root is not None and name and Path(name).name == name:
+            cand = root / name
+            try:
+                if cand.is_file() and not cand.is_symlink():
+                    rp = cand.resolve()
+            except OSError:
+                rp = None
+        targets.append((None, rp))
+
+    conn = database.get_connection()
+    try:
+        for stored, rp in targets:
+            if rp is None:
+                missing.append(stored or "(unknown file)")
+                continue
+            inside = False
+            for _base in data_roots:
+                try:
+                    if rp.is_relative_to(_base):
+                        inside = True
+                        break
+                except (OSError, ValueError):
+                    continue
+            if not inside:
+                refused.append(str(rp))
+                continue
+            try:
+                freed += rp.stat().st_size
+                rp.unlink()
+            except OSError:
+                missing.append(stored or str(rp))
+                continue
+            deleted += 1
+            if stored:
+                for field in ("question_pdf_path", "solution_pdf_path"):
+                    cur = conn.execute(
+                        f"SELECT id FROM papers WHERE {field} = ?",
+                        (stored,)).fetchall()
+                    if cur:
+                        conn.execute(
+                            f"UPDATE papers SET {field} = NULL WHERE {field} = ?",
+                            (stored,))
+                        for (pid,) in cur:
+                            cleared.append({"paperId": pid, "field": field})
+        conn.commit()
+    finally:
+        conn.close()
+    return {"deleted": deleted, "bytes": freed, "cleared": cleared,
+            "missing": missing, "refused": refused}
