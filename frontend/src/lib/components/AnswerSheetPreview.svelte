@@ -170,7 +170,7 @@
 	{:else if def.kind === 'key'}
 		<KeyTable {numbering} {blocks} {overrides} {parsed} {onOverride} />
 	{:else if def.kind === 'solshead'}
-		<h3 class="solshead">Detailed solutions</h3>
+		<h3 class="solshead">Solutions</h3>
 	{:else if def.kind === 'solhead'}
 		<h4 class="solhead">{def.label}</h4>
 	{:else if def.kind === 'div'}
