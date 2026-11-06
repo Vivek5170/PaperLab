@@ -206,12 +206,16 @@ import { cartStore } from '$lib/carts.js';
 		<div class="actions">
 			<button
 				type="button"
-				class="mini"
+				role="switch"
+				aria-checked={figBoxed}
+				class="frameswitch"
 				class:on={figBoxed}
-				aria-pressed={figBoxed}
 				title={figBoxed ? 'Hide boxes around figures' : 'Show boxes around figures'}
 				onclick={() => (figBoxed = !figBoxed)}
-			>Frames</button>
+			>
+				<span>Frames</span>
+				<span class="track" aria-hidden="true"><span class="knob"></span></span>
+			</button>
 			<button type="button" class="pl-btn" onclick={() => (confirmNew = true)}>New</button>
 			<button type="button" class="pl-btn pl-btn-primary" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
 		</div>
@@ -837,10 +841,57 @@ import { cartStore } from '$lib/carts.js';
 		opacity: 0.4;
 		cursor: default;
 	}
-	.mini.on {
+	.frameswitch {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		background: none;
+		border: none;
+		padding: 4px 2px;
+		min-height: 0;
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--pl-ink-soft);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.frameswitch .track {
+		width: 34px;
+		height: 20px;
+		flex-shrink: 0;
+		border-radius: 999px;
+		background: var(--pl-raised);
+		border: 1px solid var(--pl-line);
+		position: relative;
+		transition: background 120ms, border-color 120ms;
+	}
+	.frameswitch .knob {
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--pl-surface);
+		border: 1px solid var(--pl-line);
+		transition: left 120ms;
+	}
+	.frameswitch.on {
+		color: var(--pl-ink);
+	}
+	.frameswitch.on .track {
+		background: var(--pl-seal);
 		border-color: var(--pl-seal);
-		color: var(--pl-seal);
-		background: var(--pl-seal-soft);
+	}
+	.frameswitch.on .knob {
+		left: 16px;
+		background: #fff;
+		border-color: #fff;
+	}
+	.frameswitch:focus-visible {
+		outline: 2px solid var(--pl-focus);
+		outline-offset: 2px;
+		border-radius: 6px;
 	}
 	.blocks {
 		display: flex;
