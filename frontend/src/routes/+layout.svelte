@@ -110,4 +110,22 @@
 			overflow: visible;
 		}
 	}
+	@media print {
+		.shell.wide {
+			height: auto;
+			overflow: visible;
+			display: block;
+		}
+		.shell.wide :global(.sidebar),
+		.shell.wide :global(.topbar) {
+			display: none;
+		}
+		.shell.wide .main {
+			margin-left: 0;
+		}
+		.shell.wide .content.wide {
+			display: block;
+			overflow: visible;
+		}
+	}
 </style>
