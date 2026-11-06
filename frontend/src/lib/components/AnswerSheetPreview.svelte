@@ -176,7 +176,7 @@
 	{:else if def.kind === 'div'}
 		<hr class="sol-div" aria-hidden="true" />
 	{:else if def.kind === 'nosol'}
-		<p class="pl-sub">No detailed solution on file for this question — the key row above stands.</p>
+		<p class="nosol">No detailed solution on file for this question — the key row above stands.</p>
 	{:else if def.kind === 'loading'}
 		<div class="skel" aria-hidden="true"></div>
 		<div class="skel short" aria-hidden="true"></div>
@@ -213,6 +213,11 @@
 	.solhead {
 		font-size: 0.92rem;
 		margin: 2px 0 6px;
+	}
+	.nosol {
+		color: #5c6066;
+		font-size: 0.8rem;
+		margin: 4px 0 8px;
 	}
 	:global(hr.sol-div) {
 		border: none;

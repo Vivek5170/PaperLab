@@ -226,6 +226,7 @@
 	}
 	.dochead .pl-sub {
 		margin: 0;
+		color: #5c6066;
 	}
 	.sechead {
 		margin: 2px 0 8px;

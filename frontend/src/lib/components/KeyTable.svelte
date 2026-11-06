@@ -86,23 +86,27 @@
 		width: 100%;
 		border-collapse: collapse;
 		font-size: 0.8rem;
+		/* Paper-locked colors: the sheet is always light paper for print
+		   fidelity, so never use theme vars here (dark mode unreadable). */
+		color: #1c1e21;
 	}
 	th, td {
-		border: 1px solid var(--pl-line);
+		border: 1px solid #d9d1bf;
 		padding: 3px 6px;
 	}
 	th {
 		font-size: 0.68rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: var(--pl-ink-soft);
-		background: var(--pl-raised);
+		color: #5c6066;
+		background: #f1ece1;
 	}
 	.qn {
 		font-weight: 700;
 		white-space: nowrap;
 		text-align: center;
-		background: var(--pl-raised);
+		background: #f1ece1;
+		color: #1c1e21;
 		width: 40px;
 	}
 	td.empty {
