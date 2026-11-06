@@ -693,12 +693,14 @@ def test_crop_image_file_rotates_after_crop(tmp_path):
     _PIL.new("RGB", (100, 80), "white").save(str(p))
     crop_image_file(p, (0, 0, 1, 1), rotate=90)
     assert _PIL.open(p).size == (80, 100)  # w/h swap on 90 deg
+    crop_image_file(p, (0, 0, 1, 1), rotate=-90)
+    assert _PIL.open(p).size == (100, 80)  # back via -90
     crop_image_file(p, (0, 0, 1, 1), rotate=0)
-    assert _PIL.open(p).size == (80, 100)  # 0 is a no-op
+    assert _PIL.open(p).size == (100, 80)  # 0 is a no-op
     with _pytest.raises(ValueError):
         crop_image_file(p, (0, 0, 1, 1), rotate=400)
     with _pytest.raises(ValueError):
-        crop_image_file(p, (0, 0, 1, 1), rotate=-10)
+        crop_image_file(p, (0, 0, 1, 1), rotate=-190)
 
 
 def test_save_uploaded_figure_validates(tmp_path):

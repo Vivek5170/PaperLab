@@ -131,7 +131,7 @@ class CropBody(BaseModel):
     top: float
     right: float
     bottom: float
-    rotate: float = 0.0  # clockwise degrees in [0, 360], applied after crop
+    rotate: float = 0.0  # clockwise degrees in [-180, 180], after crop
 
 
 @router.patch("/{name}", dependencies=[Depends(require_admin)])

@@ -102,9 +102,12 @@ def remove_figure_refs(tex: str, filename: str) -> tuple[str, int]:
 
 def _crop_rotate_image(img, box: tuple[float, float, float, float],
                       rotate: float = 0.0):
-    """Crop (fractions) then rotate clockwise degrees; 0 = crop only.
+    """Crop (fractions) then rotate; 0 = crop only.
 
-    Raises ValueError on degenerate boxes or out-of-range rotation.
+    `rotate` is clockwise degrees in [-180, 180] (negative =
+    counter-clockwise), applied AFTER the crop so the box always refers
+    to the image as displayed. Raises ValueError on degenerate boxes
+    or out-of-range rotation.
     """
     l, t, r, b = (min(max(v, 0.0), 1.0) for v in box)
     if r - l < 0.01 or b - t < 0.01:
@@ -112,9 +115,9 @@ def _crop_rotate_image(img, box: tuple[float, float, float, float],
     try:
         deg = float(rotate)
     except (TypeError, ValueError):
-        raise ValueError("rotate must be degrees in [0, 360]")
-    if not 0.0 <= deg <= 360.0:
-        raise ValueError("rotate must be degrees in [0, 360]")
+        raise ValueError("rotate must be degrees in [-180, 180]")
+    if not -180.0 <= deg <= 180.0:
+        raise ValueError("rotate must be degrees in [-180, 180]")
     w, h = img.size
     out = img.crop((int(l * w), int(t * h),
                     max(int(r * w), int(l * w) + 1),
@@ -129,8 +132,8 @@ def crop_image_file(path: str | Path, box: tuple[float, float, float, float],
                      rotate: float = 0.0) -> None:
     """Crop an image file in place; box = (l, t, r, b) fractions in [0, 1].
 
-    `rotate` is optional clockwise degrees in [0, 360], applied AFTER the
-    crop (so the box always refers to the image as displayed). 0 = no-op.
+    `rotate` is optional clockwise degrees in [-180, 180], applied AFTER
+    the crop (so the box always refers to the image as displayed). 0 = no-op.
     Raises ValueError on degenerate boxes or out-of-range rotation.
     Cannot grow beyond the raster.
     """

@@ -64,6 +64,10 @@
 		preview = url;
 	}
 
+	function stepAngle(d) {
+		angle = Math.min(180, Math.max(-180, angle + d));
+	}
+
 	function queuePreview(fig) {
 		// Debounced exact-result preview: what Save would write, read-only.
 		clearTimeout(previewTimer);
@@ -277,7 +281,15 @@
 						<label>Right % <input type="range" min="1" max="100" bind:value={box.right} /></label>
 						<label>Top % <input type="range" min="0" max="99" bind:value={box.top} /></label>
 						<label>Bottom % <input type="range" min="1" max="100" bind:value={box.bottom} /></label>
-						<label>Rotate <span class="pl-mono">{angle}°</span> <input type="range" min="0" max="360" step="1" bind:value={angle} /></label>
+						<div class="rotctl">
+							<span id="rot-label">Rotate</span>
+							<div class="rotrow" role="group" aria-labelledby="rot-label">
+								<button type="button" class="pl-btn rotbtn" aria-label="Rotate 1 degree counter-clockwise" onclick={() => stepAngle(-1)}>−</button>
+								<input type="range" min="-180" max="180" step="1" bind:value={angle} aria-label="Rotation degrees" />
+								<button type="button" class="pl-btn rotbtn" aria-label="Rotate 1 degree clockwise" onclick={() => stepAngle(1)}>+</button>
+								<span class="pl-mono rotval">{angle}°</span>
+							</div>
+						</div>
 						{#if preview}
 							<div class="prevwrap">
 								<p class="pl-sub prevcap">Result preview — exactly what Save writes</p>
@@ -407,6 +419,34 @@
 		gap: 2px;
 		font-size: 0.8rem;
 		font-weight: 600;
+	}
+	.rotctl {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		font-size: 0.8rem;
+		font-weight: 600;
+	}
+	.rotrow {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.rotrow input[type='range'] {
+		flex: 1;
+		min-width: 0;
+	}
+	.rotbtn {
+		padding: 6px 12px;
+		min-height: 0;
+		font-size: 1rem;
+		line-height: 1;
+		flex-shrink: 0;
+	}
+	.rotval {
+		min-width: 3.5ch;
+		text-align: right;
+		flex-shrink: 0;
 	}
 	.cropwrap {
 		position: relative;
