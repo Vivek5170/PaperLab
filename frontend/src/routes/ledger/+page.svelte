@@ -383,15 +383,6 @@
 									<span class="opt-count">{live.length} file{live.length === 1 ? '' : 's'} · {fmtBytes(live.reduce((a, f) => a + (f.bytes ?? 0), 0))}</span>
 								</button>
 							</li>
-							{#each live as f (f.stored)}
-								<li>
-									<div class="pdfrow static">
-										<span class="kind">{f.kind === 'both' ? 'QP + Solution' : f.kind === 'question' ? 'QP' : 'Solution'}</span>
-										<span class="pdfname pl-mono">{f.name}</span>
-										<span class="opt-count">{fmtBytes(f.bytes)} · in use</span>
-									</div>
-								</li>
-							{/each}
 						{/if}
 					{/each}
 					{#if (pdfs.unlinked ?? []).length}
