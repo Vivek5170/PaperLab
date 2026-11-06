@@ -5,7 +5,10 @@
 	 * selects it plus every descendant (backend expands union); unchecking
 	 * one child keeps its siblings. Selection is an explicit code list.
 	 */
-	let { nodes = [], counts = {}, selected = $bindable([]) } = $props();
+	let { nodes = [], counts = {}, selected = $bindable([]), mode = 'filter' } = $props();
+	// mode 'filter' (search): checking a parent selects it plus every
+	// descendant. mode 'tag' (classify/inbox): exact selection — checking a
+	// parent tags only that node, so one click can't spam dozens of links.
 
 	let open = $state(false);
 	let q = $state('');
@@ -49,6 +52,12 @@
 	}
 
 	function toggle(node) {
+		if (mode === 'tag') {
+			selected = inSel(node.code)
+				? selected.filter((c) => c !== node.code)
+				: [...selected, node.code];
+			return;
+		}
 		const codes = collect(node);
 		if (stateOf(node) === 'on') {
 			const drop = new Set(codes);
@@ -181,7 +190,7 @@
 					class="box"
 					checked={st === 'on'}
 					use:indet={st === 'part'}
-					aria-label={`Select ${node.name} and all its subtopics`}
+					aria-label={mode === 'tag' ? `Select ${node.name}` : `Select ${node.name} and all its subtopics`}
 					onchange={() => toggle(node)}
 				/>
 				<button

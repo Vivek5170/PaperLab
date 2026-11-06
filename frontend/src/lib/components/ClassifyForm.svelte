@@ -1,7 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api.js';
-	import TopicPicker from '$lib/components/TopicPicker.svelte';
+	import TopicTreePicker from '$lib/components/TopicTreePicker.svelte';
 
 	/** One Save writes type + difficulty + topics + suggestion (PATCH). */
 	let {
@@ -13,7 +13,7 @@
 
 	let qtypes = $state([]);
 	let difficulties = $state([]);
-	let options = $state([]); // [{code, path}]
+	let topics = $state([]); // full tree nodes [{code, parent, level, name}]
 	let qtype = $state(initial.qtype ?? 'unknown');
 	let difficulty = $state(initial.difficulty ?? '');
 	let topicCodes = $state([...new Set((initial.topics ?? []).map((t) => t.code))]);
@@ -23,12 +23,10 @@
 
 	onMount(async () => {
 		try {
-			const [meta, topics] = await Promise.all([api.getMeta(), api.getTopics()]);
+			const [meta, tree] = await Promise.all([api.getMeta(), api.getTopics()]);
 			qtypes = meta.qtypes;
 			difficulties = meta.difficulties;
-			options = topics
-				.filter((t) => t.level === 'subtopic')
-				.map((t) => ({ code: t.code, path: t.name }));
+			topics = tree;
 		} catch {
 			message = 'Could not load topic options.';
 		}
@@ -73,10 +71,10 @@
 			{/each}
 		</select>
 	</label>
-	<label class="topics-label">
-		Topics
-		<TopicPicker {options} bind:value={topicCodes} />
-	</label>
+	<div class="topics-wrap">
+		<span class="topics-title">Topics</span>
+		<TopicTreePicker nodes={topics} bind:selected={topicCodes} mode="tag" />
+	</div>
 	<label>
 		Suggestion (why nothing fit / proposed new topic)
 		<textarea bind:value={suggestion} rows="2"></textarea>
@@ -104,6 +102,14 @@
 		gap: 4px;
 		font-size: 0.85rem;
 		font-weight: 600;
+	}
+	.topics-wrap {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		font-size: 0.85rem;
+		font-weight: 600;
+		align-items: flex-start;
 	}
 	.row {
 		display: flex;
