@@ -52,15 +52,16 @@
 
 <style>
 	.sheet {
-		font-size: 0.875rem;
-		line-height: 1.65;
-		background: #fffdf9;
+		font-size: 0.8125rem;
+		line-height: 1.6;
+		background: #ffffff;
+		color: #111111;
 		border: 1px solid var(--pl-line);
-		border-radius: var(--pl-radius-md);
-		box-shadow: var(--pl-shadow-sm);
-		padding: 28px 30px;
+		border-radius: 2px;
+		box-shadow: var(--pl-shadow-md);
+		padding: 44px 52px;
 		width: 100%;
-		max-width: 800px;
+		max-width: 794px;
 		margin: 0 auto;
 	}
 	.dochead {
@@ -80,9 +81,11 @@
 	.sheet :global(.fig) {
 		margin: 12px 0 14px;
 	}
-	.sheet :global(.fig img),
+	.sheet :global(.fig img) {
+		max-width: 250px;
+	}
 	.sheet :global(.pl-table img) {
-		max-width: 300px;
+		max-width: 200px;
 	}
 	.sechead {
 		font-family: var(--pl-font-display);
