@@ -42,6 +42,9 @@
 		cursor: pointer;
 		flex-shrink: 0;
 		padding: 0;
+		min-height: 0;
+		min-width: 0;
+		box-sizing: border-box;
 	}
 	.cartbtn:hover {
 		border-color: var(--pl-seal);
@@ -52,15 +55,15 @@
 		border-color: var(--pl-pine);
 		color: var(--pl-pine);
 	}
-	/* Search-card chips row: match the small chip rhythm. */
+	/* Search-card chips row: same height as the type chip (~22px). */
 	.cartbtn.chip {
-		width: 26px;
-		height: 26px;
+		width: 28px;
+		height: 22px;
 		border-radius: 6px;
 	}
 	.cartbtn.chip svg {
-		width: 15px;
-		height: 15px;
+		width: 14px;
+		height: 14px;
 	}
 	/* Reader title row: match the editlink tool button. */
 	.cartbtn.tool {
