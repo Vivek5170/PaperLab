@@ -7,7 +7,7 @@
 	 * placeholders (<span class="pl-math[data-tex]">) produced by the exact
 	 * Streamlit splitting rules; this component only fills them with KaTeX.
 	 */
-	let { segments = [], bust = '', zoomable = false } = $props();
+	let { segments = [], bust = '', zoomable = false, eager = false } = $props();
 
 	/** Click-to-zoom lightbox. Opt-in (zoomable) so existing uses are unaffected. */
 
@@ -171,10 +171,10 @@
 			<figure class="fig">
 				{#if zoomable}
 					<button type="button" class="figbtn" onclick={() => (zoom = withBust(seg.url))} aria-label="View figure larger">
-						<img src={withBust(seg.url)} alt="Question figure" loading="lazy" />
+						<img src={withBust(seg.url)} alt="Question figure" loading={eager ? "eager" : "lazy"} />
 					</button>
 				{:else}
-					<img src={withBust(seg.url)} alt="Question figure" loading="lazy" />
+					<img src={withBust(seg.url)} alt="Question figure" loading={eager ? "eager" : "lazy"} />
 				{/if}
 			</figure>
 		{:else if seg.kind === 'table'}
@@ -186,7 +186,7 @@
 								<th>
 									{#each cell as item, hii (hii)}
 										{#if item.kind === 'fig'}
-											<img src={withBust(item.url)} alt="Table figure" loading="lazy" />
+											<img src={withBust(item.url)} alt="Table figure" loading={eager ? "eager" : "lazy"} />
 										{:else}
 											{@html item.html || ''}
 										{/if}
@@ -202,7 +202,7 @@
 									<td>
 										{#each cell as item, ci (ci)}
 											{#if item.kind === 'fig'}
-												<img src={withBust(item.url)} alt="Table figure" loading="lazy" />
+												<img src={withBust(item.url)} alt="Table figure" loading={eager ? "eager" : "lazy"} />
 											{:else}
 												{@html item.html || ''}
 											{/if}

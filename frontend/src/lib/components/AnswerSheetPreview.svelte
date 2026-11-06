@@ -120,17 +120,23 @@
 		}
 		const dressed = dressSolution(d.data ?? [], { numbers: nums });
 		let n = 0;
+		let pushed = 0;
 		for (const seg of dressed) {
 			if (seg.kind === 'text' && typeof seg.html === 'string') {
 				const parts = splitTopBlocks(seg.html);
 				if (parts.length === 0) continue;
 				for (const piece of parts) {
 					out.push({ id: `${entry.blockId}:s${n++}`, kind: 'seg', seg: { kind: 'text', html: piece } });
+					pushed++;
 				}
 				continue;
 			}
 			out.push({ id: `${entry.blockId}:s${n++}`, kind: 'seg', seg });
+			pushed++;
 		}
+		// Key-only filed solutions dress to zero rows (Answer lines stripped).
+		// A bare heading looks broken — say so explicitly instead.
+		if (pushed === 0) out.push({ id: `${entry.blockId}:nosol`, kind: 'nosol' });
 		return out;
 	}
 
@@ -165,7 +171,7 @@
 	{:else if def.kind === 'solhead'}
 		<h4 class="solhead">{def.label}</h4>
 	{:else if def.kind === 'nosol'}
-		<p class="pl-sub">No solution on file for this question — the key row above still stands.</p>
+		<p class="pl-sub">No detailed solution on file for this question — the key row above stands.</p>
 	{:else if def.kind === 'loading'}
 		<div class="skel" aria-hidden="true"></div>
 		<div class="skel short" aria-hidden="true"></div>
@@ -176,7 +182,7 @@
 			onclick={() => reload(def.entry.blockId)}
 		>Retry</button>
 	{:else}
-		<Segments segments={[def.seg]} zoomable />
+		<Segments segments={[def.seg]} zoomable eager />
 	{/if}
 {/snippet}
 

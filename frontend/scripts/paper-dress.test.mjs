@@ -182,3 +182,14 @@ describe('par section instructions', () => {
 		assert.match(sectionMeta('par-msq', 4, 2).kind, /ONE OR MORE/);
 	});
 });
+
+describe('key-only solutions', () => {
+	it('dress to zero rows when the filed solution is only Answer lines', async () => {
+		const { dressSolution } = await import('../src/lib/paperDress.js');
+		const segs = [
+			{ kind: 'text', html: '<p>Answer: 33) A</p>' },
+			{ kind: 'text', html: '<p>Answer: 34) B</p>' }
+		];
+		assert.deepEqual(dressSolution(segs, { numbers: [7, 8] }), []);
+	});
+});
