@@ -5,6 +5,7 @@
 	 * detailed solutions flattened into flow rows. Same generated
 	 * numbers as the Question Sheet. Pure render of shared state.
 	 */
+	import { untrack } from 'svelte';
 	import { numberLabel } from '$lib/numbering.js';
 	import { parseParagraphRange } from '$lib/paragraph.js';
 	import {
@@ -23,17 +24,21 @@
 	let details = $state({});
 	let rev = $state(0);
 
-	const idsKey = $derived(ordered.map((e) => e.blockId).join(','));
+	const idsKey = $derived(ordered.map((e) => `${e.blockId}:${e.paperId}:${e.number}`).join(','));
 
 	$effect(() => {
 		void idsKey;
 		void rev;
 		let cancelled = false;
-		const missing = ordered.filter((e) => {
-			const k = details[e.blockId];
-			const fresh = k && k.loading && Date.now() - (k.at ?? 0) < 25000;
-			return !(k && (k.ready || k.missing || fresh));
-		});
+		// Untracked details reads: marking loading must not retrigger and
+		// cancel in-flight fetches (the eternal-skeleton bug).
+		const missing = untrack(() =>
+			ordered.filter((e) => {
+				const k = details[e.blockId];
+				const fresh = k && k.loading && Date.now() - (k.at ?? 0) < 25000;
+				return !(k && (k.ready || k.missing || fresh));
+			})
+		);
 		if (missing.length === 0) return;
 		for (const e of missing) details[e.blockId] = { loading: true, at: Date.now() };
 		(async () => {
@@ -42,16 +47,13 @@
 					const d = await withTimeout(
 						getQuestionDetail(e.paperId, e.number), 20000, 'Backend timed out — is it running on port 8000?');
 					if (cancelled) return;
-					const nums = numbering.byBlock[e.blockId] ?? [];
 					const sol = d.solution ?? [];
 					if (isMissingSolutionText(sol)) {
 						details[e.blockId] = { missing: true };
 					} else {
 						builder.setParsedKeys(e.blockId, extractAnswerKeys(sol));
-						details[e.blockId] = {
-							ready: true,
-							segs: dressSolution(sol, { numbers: nums })
-						};
+						// Store RAW; dressing happens in rows with current numbering.
+						details[e.blockId] = { ready: true, data: sol };
 					}
 				} catch (err) {
 					if (!cancelled) details[e.blockId] = { error: String(err?.message ?? err) };
@@ -98,8 +100,9 @@
 			out.push({ id: `${entry.blockId}:nosol`, kind: 'nosol' });
 			return out;
 		}
+		const dressed = dressSolution(d.data ?? [], { numbers: nums });
 		let n = 0;
-		for (const seg of d.segs) {
+		for (const seg of dressed) {
 			if (seg.kind === 'text' && typeof seg.html === 'string') {
 				const parts = splitTopBlocks(seg.html);
 				if (parts.length === 0) continue;

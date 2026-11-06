@@ -6,6 +6,7 @@
 	 * together: doc/section/passage headers and each question's first row
 	 * never strand alone at a page bottom. Pure function of draft state.
 	 */
+	import { untrack } from 'svelte';
 	import { toRoman } from '$lib/numbering.js';
 	import { isParagraphId, parseParagraphRange } from '$lib/paragraph.js';
 	import { sectionMeta } from '$lib/sectionMeta.js';
@@ -23,7 +24,7 @@
 	let details = $state({});
 	let rev = $state(0);
 
-	const idsKey = $derived(ordered.map((e) => e.blockId).join(','));
+	const idsKey = $derived(ordered.map((e) => `${e.blockId}:${e.paperId}:${e.number}`).join(','));
 
 	const paraIndex = $derived.by(() => {
 		const m = new Map();
@@ -36,11 +37,16 @@
 		void idsKey;
 		void rev;
 		let cancelled = false;
-		const missing = ordered.filter((e) => {
-			const k = details[e.blockId];
-			const fresh = k && k.loading && Date.now() - (k.at ?? 0) < 25000;
-			return !(k && (k.ready || k.missing || fresh));
-		});
+		// details reads are untracked: otherwise marking loading:true would
+		// retrigger this effect and cancel the in-flight fetches (eternal
+		// skeletons). idsKey/rev are the only retriggers.
+		const missing = untrack(() =>
+			ordered.filter((e) => {
+				const k = details[e.blockId];
+				const fresh = k && k.loading && Date.now() - (k.at ?? 0) < 25000;
+				return !(k && (k.ready || k.missing || fresh));
+			})
+		);
 		if (missing.length === 0) return;
 		for (const e of missing) details[e.blockId] = { loading: true, at: Date.now() };
 		(async () => {
@@ -49,12 +55,8 @@
 					const d = await withTimeout(
 						getQuestionDetail(e.paperId, e.number), 20000, 'Backend timed out — is it running on port 8000?');
 					if (cancelled) return;
-					const nums = numbering.byBlock[e.blockId] ?? [];
-					const para = parseParagraphRange(e.number, e.qtype);
-					details[e.blockId] = {
-						ready: true,
-						segs: dressQuestion(d.question ?? [], { numbers: nums, para })
-					};
+					// Store RAW; dressing happens in rows (pure, current numbering).
+					details[e.blockId] = { ready: true, data: d.question ?? [] };
 				} catch (err) {
 					if (!cancelled) details[e.blockId] = { error: String(err?.message ?? err) };
 				}
@@ -91,6 +93,9 @@
 			return [{ id: `${entry.blockId}:error`, kind: 'error', entry, message: d.error }];
 		const nums = numbering.byBlock[entry.blockId] ?? [];
 		const pl = paraIndex.get(entry.blockId);
+		const raw = d.data ?? [];
+		const para = parseParagraphRange(entry.number, entry.qtype);
+		const dressed = dressQuestion(raw, { numbers: nums, para });
 		const out = [];
 		if (pl) out.push({ id: `${entry.blockId}:para`, kind: 'parahead', label: pl, keepWithNext: true });
 		let first = true;
@@ -113,7 +118,7 @@
 			out.push({ id: `${entry.blockId}:t${n++}`, kind: 'seg', seg, keepWithNext: first });
 			first = false;
 		};
-		for (const seg of d.segs) pushSeg(seg);
+		for (const seg of dressed) pushSeg(seg);
 		if (nums.length === 0 || out.length === (pl ? 1 : 0)) {
 			out.push({
 				id: `${entry.blockId}:empty`,
