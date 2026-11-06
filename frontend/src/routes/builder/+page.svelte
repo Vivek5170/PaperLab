@@ -30,6 +30,11 @@ import { cartStore } from '$lib/carts.js';
 			? localStorage.getItem('pl-sheetfont-v1')
 			: 'paperlab'
 	);
+	let figScale = $state(
+		browser && Number(localStorage.getItem('pl-figscale-v1')) >= 40 && Number(localStorage.getItem('pl-figscale-v1')) <= 120
+			? Number(localStorage.getItem('pl-figscale-v1'))
+			: 80
+	);
 
 	function toggleSection(id) {
 		collapsed[id] = !collapsed[id];
@@ -39,6 +44,7 @@ import { cartStore } from '$lib/carts.js';
 		try {
 			localStorage.setItem('pl-figbox-v1', figBoxed ? '1' : '0');
 			localStorage.setItem('pl-sheetfont-v1', sheetFont);
+			localStorage.setItem('pl-figscale-v1', String(figScale));
 		} catch { /* private mode: prefs last the session */ }
 	});
 	function clampSplit(pct, w) {
@@ -446,15 +452,25 @@ import { cartStore } from '$lib/carts.js';
 		<div class="previewcol">
 			<div class="panehead">
 				<span>Preview</span>
-				<span class="pl-sub">Live A4 · print exact</span>
+				<span class="previewmeta">
+					<label class="figctl" title="Diagram size — pages reflow live, print matches">
+						Fig
+						<input
+							type="range" min="40" max="120" step="5"
+							bind:value={figScale} aria-label="Figure size percent"
+						/>
+						<span class="pl-sub">{figScale}%</span>
+					</label>
+					<span class="pl-sub">Live A4 · print exact</span>
+				</span>
 			</div>
 			<div class="previewscroll">
 				{#if previewMode === 'questions'}
-					<QuestionSheetPreview title={draft.title} ordered={order} numbering={num} sections={draft.sections} mode={draft.mode} bare={!figBoxed} font={sheetFont} />
+					<QuestionSheetPreview title={draft.title} ordered={order} numbering={num} sections={draft.sections} mode={draft.mode} bare={!figBoxed} font={sheetFont} figScale={figScale} />
 				{:else}
 					<AnswerSheetPreview
 						title={draft.title} numbering={num} blocks={draft.blocks}
-						overrides={draft.keyOverride} parsed={$parsedKeys} ordered={order} bare={!figBoxed} font={sheetFont}
+						overrides={draft.keyOverride} parsed={$parsedKeys} ordered={order} bare={!figBoxed} font={sheetFont} figScale={figScale}
 						onOverride={(bid, i, t) => builder.setOverride(bid, i, t)}
 					/>
 				{/if}
@@ -611,6 +627,26 @@ import { cartStore } from '$lib/carts.js';
 	}
 	.panehead .pl-sub {
 		font-weight: 400;
+	}
+	.previewmeta {
+		display: inline-flex;
+		align-items: center;
+		gap: 12px;
+	}
+	.figctl {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--pl-ink-soft);
+	}
+	.figctl input[type='range'] {
+		width: 90px;
+		min-height: 0;
+		padding: 0;
+		accent-color: var(--pl-seal);
+		cursor: pointer;
 	}
 	.panebody {
 		flex: 1;

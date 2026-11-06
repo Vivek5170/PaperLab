@@ -7,7 +7,7 @@
 	 * placeholders (<span class="pl-math[data-tex]">) produced by the exact
 	 * Streamlit splitting rules; this component only fills them with KaTeX.
 	 */
-	let { segments = [], bust = '', zoomable = false, eager = false, bare = false } = $props();
+	let { segments = [], bust = '', zoomable = false, eager = false, bare = false, scaleBadge = false } = $props();
 
 	/** Click-to-zoom lightbox. Opt-in (zoomable) so existing uses are unaffected. */
 
@@ -139,6 +139,45 @@
 		zoom = null;
 	}
 
+	/**
+	 * Live rendered-size badge for sheet figures: shows the displayed size
+	 * as a percent of the natural size, amber below 50% (labels at risk).
+	 * Screen-only — print CSS hides .figscale. No-op unless enabled.
+	 */
+	function figbadge(node, enabled) {
+		if (!enabled) return;
+		const fig = node.closest('figure');
+		if (!fig) return;
+		const badge = document.createElement('span');
+		badge.className = 'figscale';
+		badge.hidden = true;
+		fig.appendChild(badge);
+		const update = () => {
+			const nat = node.naturalWidth;
+			if (!nat || node.clientWidth <= 0) return;
+			const pct = Math.round((node.clientWidth / nat) * 100);
+			badge.textContent = `${pct}%`;
+			badge.classList.toggle('warn', pct < 50);
+			badge.hidden = false;
+		};
+		node.addEventListener('load', update);
+		let ro = null;
+		try {
+			ro = new ResizeObserver(update);
+			ro.observe(node);
+		} catch { /* ignore */ }
+		update();
+		return {
+			destroy() {
+				try {
+					ro?.disconnect();
+				} catch { /* ignore */ }
+				node.removeEventListener('load', update);
+				badge.remove();
+			}
+		};
+	}
+
 	$effect(() => {
 		if (!el) return;
 		// Track segments so new content re-renders math.
@@ -171,10 +210,10 @@
 			<figure class="fig">
 				{#if zoomable}
 					<button type="button" class="figbtn" onclick={() => (zoom = withBust(seg.url))} aria-label="View figure larger">
-						<img src={withBust(seg.url)} alt="Question figure" loading={eager ? "eager" : "lazy"} />
+						<img src={withBust(seg.url)} alt="Question figure" loading={eager ? "eager" : "lazy"} use:figbadge={scaleBadge} />
 					</button>
 				{:else}
-					<img src={withBust(seg.url)} alt="Question figure" loading={eager ? "eager" : "lazy"} />
+					<img src={withBust(seg.url)} alt="Question figure" loading={eager ? "eager" : "lazy"} use:figbadge={scaleBadge} />
 				{/if}
 			</figure>
 		{:else if seg.kind === 'table'}
@@ -243,6 +282,7 @@
 	.fig {
 		margin: 18px 0 22px;
 		text-align: center;
+		position: relative;
 	}
 	.fig img,
 	.pl-table img {
@@ -261,6 +301,23 @@
 		border: none;
 		border-radius: 0;
 		background: none;
+	}
+	.figscale {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		font-size: 0.65rem;
+		font-weight: 700;
+		line-height: 1.4;
+		background: rgb(0 0 0 / 0.55);
+		color: #fff;
+		border-radius: 6px;
+		padding: 1px 7px;
+		pointer-events: none;
+		white-space: nowrap;
+	}
+	.figscale.warn {
+		background: var(--pl-ochre);
 	}
 	.figbtn {
 		border: none;

@@ -19,7 +19,7 @@
 	import { tick, onMount } from 'svelte';
 	import { packRows, PAGE_W, PAGE_H, PAD_TOP, PAD_BOTTOM, usableHeight } from '$lib/paginate.js';
 
-	let { rows = [], row, gap = 20, font = 'paperlab' } = $props();
+	let { rows = [], row, gap = 20, font = 'paperlab', figScale = 80 } = $props();
 
 	// A few px of slack so late font/image settling moves breaks early
 	// rather than exactly at the edge.
@@ -170,7 +170,7 @@
 		style={`width: ${PAGE_W * scale}px; height: ${Math.ceil(frameH * scale)}px;`}
 		aria-busy={!measuredOnce}
 	>
-		<div class="pscale" bind:this={flowEl} style={`width: ${PAGE_W}px; transform: scale(${scale});`}>
+		<div class="pscale" bind:this={flowEl} style={`width: ${PAGE_W}px; transform: scale(${scale}); --fig-scale: ${figScale / 100};`}>
 			{#each pages as page, pi (page[0] ?? pi)}
 				<div
 					class="apage font-{font}"
@@ -235,10 +235,12 @@
 		margin: 12px 0 14px;
 	}
 	.apage :global(.fig img) {
-		max-width: 250px;
+		max-width: calc(250px * var(--fig-scale, 1));
+		max-height: calc(320px * var(--fig-scale, 1));
 	}
 	.apage :global(.pl-table img) {
-		max-width: 200px;
+		max-width: calc(200px * var(--fig-scale, 1));
+		max-height: calc(280px * var(--fig-scale, 1));
 	}
 	.apage :global(img) {
 		max-width: 100%;
@@ -275,6 +277,9 @@
 		}
 		.pscale {
 			transform: none !important;
+		}
+		.apage :global(.figscale) {
+			display: none;
 		}
 		.apage {
 			box-shadow: none;
