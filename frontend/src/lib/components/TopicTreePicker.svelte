@@ -7,8 +7,8 @@
 	 */
 	let { nodes = [], counts = {}, selected = $bindable([]), mode = 'filter' } = $props();
 	// mode 'filter' (search): checking a parent selects it plus every
-	// descendant. mode 'tag' (classify/inbox): exact selection — checking a
-	// parent tags only that node, so one click can't spam dozens of links.
+	// descendant. mode 'tag' (classify/inbox): only subtopics are
+	// selectable (parents just expand); checking one tags exactly it.
 
 	let open = $state(false);
 	let q = $state('');
@@ -53,6 +53,8 @@
 
 	function toggle(node) {
 		if (mode === 'tag') {
+			// Only subtopics are taggable; parents expand but never select.
+			if (node.level !== 'subtopic') return;
 			selected = inSel(node.code)
 				? selected.filter((c) => c !== node.code)
 				: [...selected, node.code];
@@ -114,6 +116,23 @@
 />
 
 <div class="dd" bind:this={panel}>
+	{#if mode === 'tag' && selected.length > 0}
+		<div class="sel-chips" aria-label="Selected topics">
+			{#each selected as code (code)}
+				{@const picked = nodes.find((n) => n.code === code)}
+				<span class="pl-chip" title={code}>
+					{picked?.name ?? code}
+					<button
+						type="button"
+						aria-label={`Remove ${picked?.name ?? code}`}
+						onclick={() => (selected = selected.filter((c) => c !== code))}
+					>
+						×
+					</button>
+				</span>
+			{/each}
+		</div>
+	{/if}
 	<button
 		type="button"
 		class="dd-btn"
@@ -185,22 +204,33 @@
 				>
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d={open ? 'm6 9 6 6 6-6' : 'm9 6 6 6-6 6'} /></svg>
 				</button>
-				<input
-					type="checkbox"
-					class="box"
-					checked={st === 'on'}
-					use:indet={st === 'part'}
-					aria-label={mode === 'tag' ? `Select ${node.name}` : `Select ${node.name} and all its subtopics`}
-					onchange={() => toggle(node)}
-				/>
-				<button
-					type="button"
-					class="nm-btn"
-					aria-expanded={open}
-					onclick={() => toggleExpand(node.code)}
-				>
-					<span class="nm">{node.name}</span>
-				</button>
+				{#if mode === 'tag'}
+					<button
+						type="button"
+						class="nm-btn"
+						aria-expanded={open}
+						onclick={() => toggleExpand(node.code)}
+					>
+						<span class="nm">{node.name}</span>
+					</button>
+				{:else}
+					<input
+						type="checkbox"
+						class="box"
+						checked={st === 'on'}
+						use:indet={st === 'part'}
+						aria-label={`Select ${node.name} and all its subtopics`}
+						onchange={() => toggle(node)}
+					/>
+					<button
+						type="button"
+						class="nm-btn"
+						aria-expanded={open}
+						onclick={() => toggleExpand(node.code)}
+					>
+						<span class="nm">{node.name}</span>
+					</button>
+				{/if}
 				{#if aggCount(node) > 0}
 					<span class="ct pl-mono">{aggCount(node)}</span>
 				{/if}
@@ -228,6 +258,21 @@
 <style>
 	.dd {
 		position: relative;
+	}
+	.sel-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin-bottom: 8px;
+	}
+	.sel-chips .pl-chip button {
+		border: none;
+		background: none;
+		cursor: pointer;
+		font-size: 1rem;
+		line-height: 1;
+		min-height: 0;
+		padding: 0 0 0 4px;
 	}
 	.dd-btn {
 		display: inline-flex;
