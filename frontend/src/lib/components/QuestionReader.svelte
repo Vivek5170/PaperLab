@@ -167,7 +167,7 @@
 				<div class="qtitle-row">
 					<h2 class="qtitle">Question {currentQ.number}</h2>
 					{#if cartItem}
-						<span class="cartslot"><AddToCart item={cartItem} /></span>
+						<span class="cartslot"><AddToCart item={cartItem} variant="tool" /></span>
 					{/if}
 					{#if isArchivist}
 						<a

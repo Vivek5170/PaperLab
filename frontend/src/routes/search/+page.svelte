@@ -210,25 +210,23 @@
 								{#if item.difficulty}
 									<span class={`chip diff-${item.difficulty.toLowerCase()}`}>{item.difficulty}</span>
 								{/if}
+								<AddToCart
+									item={{
+										paperId: item.paperId,
+										number: item.number,
+										qtype: item.qtype,
+										difficulty: item.difficulty,
+										preview: item.preview,
+										thumb: item.thumb,
+										exam: item.paper?.exam ?? '',
+										year: item.paper?.year ?? null,
+										institute: item.paper?.institute ?? ''
+									}}
+								/>
 								<span class="chip type" title={item.qtype}>{qtypeLabel(item.qtype)}</span>
 							</span>
 						</span>
 					</a>
-					<div class="cellactions">
-						<AddToCart
-							item={{
-								paperId: item.paperId,
-								number: item.number,
-								qtype: item.qtype,
-								difficulty: item.difficulty,
-								preview: item.preview,
-								thumb: item.thumb,
-								exam: item.paper?.exam ?? '',
-								year: item.paper?.year ?? null,
-								institute: item.paper?.institute ?? ''
-							}}
-						/>
-					</div>
 				</div>
 			{/each}
 		</div>
@@ -302,12 +300,6 @@
 	.cell .card {
 		flex: 1;
 	}
-	.cellactions {
-		display: flex;
-		justify-content: flex-end;
-		align-items: center;
-		padding-top: 6px;
-	}
 	.top {
 		display: flex;
 		gap: 10px;
@@ -362,6 +354,7 @@
 		display: flex;
 		gap: 6px;
 		flex-shrink: 0;
+		align-items: center;
 	}
 	.chip {
 		border-radius: 6px;
