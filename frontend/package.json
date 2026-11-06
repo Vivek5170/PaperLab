@@ -9,7 +9,8 @@
 		"preview": "vite preview",
 		"smoke": "node scripts/smoke.mjs",
 		"test:cart": "node --test scripts/cart-model.test.mjs",
-		"test:builder": "node --test scripts/builder-model.test.mjs"
+		"test:builder": "node --test scripts/builder-model.test.mjs",
+		"test:dress": "node --test scripts/paper-dress.test.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^3.0.0",

@@ -5,6 +5,8 @@
 	 */
 	import { onMount } from 'svelte';
 	import { getQuestionDetail, dropQuestionDetail } from '$lib/questionCache.js';
+	import { dressQuestion } from '$lib/paperDress.js';
+	import { parseParagraphRange } from '$lib/paragraph.js';
 	import Segments from '$lib/components/Segments.svelte';
 
 	let { block, numbers = [] } = $props();
@@ -12,6 +14,9 @@
 	let state = $state('loading'); // loading | ready | missing-q | error
 	let segments = $state([]);
 	let error = $state('');
+
+	const para = $derived(parseParagraphRange(block.number, block.qtype));
+	const shown = $derived(dressQuestion(segments, { numbers, para }));
 
 	const rangeLabel = $derived(
 		numbers.length <= 1 ? `Q${numbers[0] ?? '—'}` : `Questions Q${numbers[0]}–Q${numbers[numbers.length - 1]}`
@@ -45,7 +50,7 @@
 		<div class="skel" aria-hidden="true"></div>
 		<div class="skel short" aria-hidden="true"></div>
 	{:else if state === 'ready'}
-		<Segments {segments} zoomable />
+		<Segments segments={shown} zoomable />
 	{:else if state === 'missing-q'}
 		<p class="pl-sub">Source question no longer exists (Paper {block.paperId} · Q{block.number}). The number stays reserved in the key.</p>
 	{:else}
@@ -56,16 +61,16 @@
 
 <style>
 	.q {
-		margin: 0 0 18px;
-		font-size: 0.95rem;
-		line-height: 1.7;
+		margin: 0 0 16px;
+		font-size: 0.875rem;
+		line-height: 1.65;
 	}
 	.qhead {
 		margin: 0 0 6px;
 	}
 	.qn {
 		font-weight: 700;
-		font-size: 1rem;
+		font-size: 0.92rem;
 	}
 	.skel {
 		height: 1em;

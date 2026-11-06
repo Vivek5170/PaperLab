@@ -42,6 +42,8 @@
 
 <style>
 	.sheet {
+		font-size: 0.875rem;
+		line-height: 1.65;
 		background: #fffdf9;
 		border: 1px solid var(--pl-line);
 		border-radius: var(--pl-radius-md);
@@ -59,16 +61,23 @@
 	}
 	.dochead h2 {
 		font-family: var(--pl-font-display);
-		font-size: 1.5rem;
+		font-size: 1.3rem;
 		margin: 0 0 2px;
 	}
 	.dochead .pl-sub {
 		margin: 0;
 	}
+	.sheet :global(.fig) {
+		margin: 12px 0 14px;
+	}
+	.sheet :global(.fig img),
+	.sheet :global(.pl-table img) {
+		max-width: 300px;
+	}
 	.sechead {
 		font-family: var(--pl-font-display);
-		font-size: 1.15rem;
-		margin: 22px 0 12px;
+		font-size: 1.05rem;
+		margin: 18px 0 10px;
 		padding-bottom: 6px;
 		border-bottom: 1px solid var(--pl-line);
 		display: flex;

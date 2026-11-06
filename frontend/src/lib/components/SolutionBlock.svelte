@@ -8,6 +8,7 @@
 	import { onMount } from 'svelte';
 	import { getQuestionDetail, dropQuestionDetail } from '$lib/questionCache.js';
 	import Segments from '$lib/components/Segments.svelte';
+	import { dressSolution, isMissingSolutionText } from '$lib/paperDress.js';
 
 	let { block, numbers = [] } = $props();
 
@@ -15,14 +16,7 @@
 	let segments = $state([]);
 	let error = $state('');
 
-	function solutionMissing(segs) {
-		let text = '';
-		for (const s of segs ?? []) {
-			if (s?.kind === 'text' && typeof s.html === 'string')
-				text += s.html.replace(/<[^>]*>/g, ' ');
-		}
-		return text.replace(/\s+/g, ' ').trim() === '*missing*';
-	}
+	const shown = $derived(dressSolution(segments, { numbers }));
 
 	function heading() {
 		if (numbers.length <= 1) return `Solution Q${numbers[0] ?? '—'}`;
@@ -35,7 +29,7 @@
 		try {
 			const detail = await getQuestionDetail(block.paperId, block.number);
 			const sol = detail?.solution ?? [];
-			if (solutionMissing(sol)) state = 'missing-sol';
+			if (isMissingSolutionText(sol)) state = 'missing-sol';
 			else {
 				segments = sol;
 				state = 'ready';
@@ -61,7 +55,7 @@
 		<div class="skel" aria-hidden="true"></div>
 		<div class="skel short" aria-hidden="true"></div>
 	{:else if state === 'ready'}
-		<Segments {segments} zoomable />
+		<Segments segments={shown} zoomable />
 	{:else if state === 'missing-sol'}
 		<p class="pl-sub">No solution on file for this question — the key row above still stands.</p>
 	{:else if state === 'missing-q'}
@@ -76,10 +70,12 @@
 	.sol {
 		border-top: 1px solid var(--pl-line);
 		padding: 12px 0 4px;
+		font-size: 0.875rem;
+		line-height: 1.65;
 	}
 	.sol h4 {
 		margin: 0 0 8px;
-		font-size: 1rem;
+		font-size: 0.92rem;
 	}
 	.src {
 		font-weight: 400;

@@ -22,6 +22,8 @@
 
 <style>
 	.sheet {
+		font-size: 0.875rem;
+		line-height: 1.65;
 		background: #fffdf9;
 		border: 1px solid var(--pl-line);
 		border-radius: var(--pl-radius-md);
@@ -39,11 +41,18 @@
 	}
 	.dochead h2 {
 		font-family: var(--pl-font-display);
-		font-size: 1.4rem;
+		font-size: 1.25rem;
 		margin: 0 0 2px;
 	}
 	.dochead .pl-sub {
 		margin: 0;
+	}
+	.sheet :global(.fig) {
+		margin: 12px 0 14px;
+	}
+	.sheet :global(.fig img),
+	.sheet :global(.pl-table img) {
+		max-width: 300px;
 	}
 	.sheet :global(.key h3),
 	.sheet :global(.sols h3) {
