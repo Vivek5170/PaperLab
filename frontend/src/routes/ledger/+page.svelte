@@ -356,45 +356,79 @@
 			the reader will show no PDF for it. Crop canvases are handled by the purge above.
 		</p>
 		{#if pdfs}
-			{#each pdfs.papers as g (g.id)}
-				{#if g.files.length}
-					<div class="pl-card pdfgroup">
-						<p class="rk-title">#{g.id} {g.name}</p>
-						{#each g.files as f (f.field)}
-							<label class="pdffile">
-								<input
-									type="checkbox"
-									value={f.stored}
-									bind:group={selPaths}
-									disabled={!f.exists || purging !== '' || deletingPdfs}
-								/>
-								<span class="kind">{f.kind === 'question' ? 'QP' : 'Solution'}</span>
-								<span class="pdfname pl-mono">{f.name}</span>
-								<span class="pl-sub">{f.exists ? fmtBytes(f.bytes) : 'missing'} · in use</span>
-							</label>
-						{/each}
-					</div>
-				{/if}
-			{/each}
-			{#if (pdfs.unlinked ?? []).length}
-				<div class="pl-card pdfgroup">
-					<p class="rk-title">Unlinked PDFs</p>
-					{#each pdfs.unlinked as u (`${u.location}:${u.name}`)}
-						{@const key = `${u.location}:${u.name}`}
-						<label class="pdffile">
-							<input
-								type="checkbox"
-								value={key}
-								bind:group={selUnlinked}
-								disabled={purging !== '' || deletingPdfs}
-							/>
-							<span class="kind">{u.location}</span>
-							<span class="pdfname pl-mono">{u.name}</span>
-							<span class="pl-sub">{fmtBytes(u.bytes)}</span>
-						</label>
+			<div class="pdfpick">
+				<ul class="pdfpick-list" role="listbox" aria-label="Paper PDFs to delete" aria-multiselectable="true">
+					{#each pdfs.papers as g (g.id)}
+						{#if g.files.length}
+							<li class="pdfgrp" aria-hidden="true">#{g.id} {g.name}</li>
+							{#each g.files as f (f.field)}
+								<li>
+									<button
+										type="button"
+										role="option"
+										aria-selected={selPaths.includes(f.stored)}
+										class="pdfrow"
+										class:on={selPaths.includes(f.stored)}
+										disabled={!f.exists || purging !== '' || deletingPdfs}
+										title={f.exists ? f.stored : `${f.name} — file missing on disk`}
+										onclick={() => {
+											selPaths = selPaths.includes(f.stored)
+												? selPaths.filter((x) => x !== f.stored)
+												: [...selPaths, f.stored];
+										}}
+									>
+										<span class="tick" aria-hidden="true">{#if selPaths.includes(f.stored)}✓{/if}</span>
+										<span class="kind">{f.kind === 'question' ? 'QP' : 'Solution'}</span>
+										<span class="pdfname pl-mono">{f.name}</span>
+										<span class="opt-count">{f.exists ? `${fmtBytes(f.bytes)} · in use` : 'missing · in use'}</span>
+									</button>
+								</li>
+							{/each}
+						{/if}
 					{/each}
+					{#if (pdfs.unlinked ?? []).length}
+						<li class="pdfgrp" aria-hidden="true">Unlinked PDFs</li>
+						{#each pdfs.unlinked as u (`${u.location}:${u.name}`)}
+							{@const key = `${u.location}:${u.name}`}
+							<li>
+								<button
+									type="button"
+									role="option"
+									aria-selected={selUnlinked.includes(key)}
+									class="pdfrow"
+									class:on={selUnlinked.includes(key)}
+									disabled={purging !== '' || deletingPdfs}
+									title={`${u.location}/${u.name}`}
+									onclick={() => {
+										selUnlinked = selUnlinked.includes(key)
+											? selUnlinked.filter((x) => x !== key)
+											: [...selUnlinked, key];
+									}}
+								>
+									<span class="tick" aria-hidden="true">{#if selUnlinked.includes(key)}✓{/if}</span>
+									<span class="kind">{u.location}</span>
+									<span class="pdfname pl-mono">{u.name}</span>
+									<span class="opt-count">{fmtBytes(u.bytes)}</span>
+								</button>
+							</li>
+						{/each}
+					{/if}
+				</ul>
+				<div class="pdfpick-foot">
+					<button
+						type="button"
+						class="pdf-clear"
+						disabled={selCount === 0}
+						onclick={() => {
+							selPaths = [];
+							selUnlinked = [];
+						}}
+					>
+						Clear
+					</button>
+					<span class="pl-sub">{selCount ? `${selCount} selected` : 'No files selected'}</span>
 				</div>
-			{/if}
+			</div>
 			<div class="row pdfdel">
 				<button
 					type="button"
@@ -550,27 +584,72 @@
 	.pdf-lead {
 		margin: -4px 0 12px;
 	}
-	.pdfgroup {
+	.pdfpick {
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-md);
+		background: var(--pl-surface);
+		display: flex;
+		flex-direction: column;
 		margin-bottom: 12px;
 	}
-	.pdffile {
+	.pdfpick-list {
+		list-style: none;
+		margin: 0;
+		padding: 6px;
+		overflow-y: auto;
+		min-height: 0;
+		max-height: 320px;
+	}
+	.pdfgrp {
+		position: sticky;
+		top: -6px;
+		background: var(--pl-surface);
+		z-index: 1;
+		font-weight: 700;
+		font-size: 0.78rem;
+		padding: 8px 10px 4px;
+		border-bottom: 1px solid var(--pl-line);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.pdfrow {
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		padding: 7px 0;
-		border-bottom: 1px solid var(--pl-line);
+		width: 100%;
+		border: none;
+		background: none;
+		padding: 8px 10px;
+		border-radius: var(--pl-radius-sm);
 		font-size: 0.85rem;
+		text-align: left;
 		cursor: pointer;
+		color: var(--pl-ink);
 	}
-	.pdffile:last-child {
-		border-bottom: none;
+	.pdfrow:hover:not(:disabled) {
+		background: var(--pl-raised);
 	}
-	.pdffile input {
-		accent-color: var(--pl-seal);
-		min-height: 0;
+	.pdfrow:disabled {
+		opacity: 0.55;
+		cursor: default;
+	}
+	.pdfrow .tick {
+		width: 20px;
+		height: 20px;
 		flex-shrink: 0;
+		display: grid;
+		place-items: center;
+		border: 1px solid var(--pl-line);
+		border-radius: 6px;
+		font-size: 0.8rem;
+		color: #fff;
 	}
-	.pdffile .kind {
+	.pdfrow.on .tick {
+		background: var(--pl-seal);
+		border-color: var(--pl-seal);
+	}
+	.pdfrow .kind {
 		font-size: 0.7rem;
 		font-weight: 700;
 		background: var(--pl-raised);
@@ -580,10 +659,39 @@
 		flex-shrink: 0;
 	}
 	.pdfname {
+		flex: 1;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		min-width: 0;
+	}
+	.pdfrow .opt-count {
+		color: var(--pl-ink-soft);
+		font-size: 0.75rem;
+		flex-shrink: 0;
+	}
+	.pdfpick-foot {
+		border-top: 1px solid var(--pl-line);
+		padding: 4px 6px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+	.pdf-clear {
+		border: none;
+		background: none;
+		color: var(--pl-seal);
+		font-weight: 600;
+		font-size: 0.82rem;
+		padding: 8px 10px;
+		min-height: 0;
+		cursor: pointer;
+	}
+	.pdf-clear:disabled {
+		color: var(--pl-ink-soft);
+		opacity: 0.5;
+		cursor: default;
 	}
 	.pdfdel {
 		margin-top: 4px;
