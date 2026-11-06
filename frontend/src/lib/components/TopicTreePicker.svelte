@@ -115,7 +115,7 @@
 	}}
 />
 
-<div class="dd" bind:this={panel}>
+<div class="dd" class:tag={mode === 'tag'} bind:this={panel}>
 	{#if mode === 'tag' && selected.length > 0}
 		<div class="sel-chips" aria-label="Selected topics">
 			{#each selected as code (code)}
@@ -258,6 +258,17 @@
 <style>
 	.dd {
 		position: relative;
+	}
+	.dd.tag {
+		width: 100%;
+	}
+	.dd.tag .dd-btn {
+		width: 100%;
+		justify-content: space-between;
+	}
+	.dd.tag .tree-panel {
+		width: 100%;
+		max-height: 300px;
 	}
 	.sel-chips {
 		display: flex;
