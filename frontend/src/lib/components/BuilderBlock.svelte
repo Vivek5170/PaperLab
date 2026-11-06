@@ -58,8 +58,12 @@
 	{/if}
 	<div class="ops">
 		<div class="mv" role="group" aria-label={`Reorder block ${label}`}>
-			<button type="button" onclick={onUp} title="Move up" aria-label={`Move ${label} up`}>↑</button>
-			<button type="button" onclick={onDown} title="Move down" aria-label={`Move ${label} down`}>↓</button>
+			<button type="button" onclick={onUp} title="Move up" aria-label={`Move ${label} up`}>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6-6"/></svg>
+			</button>
+			<button type="button" onclick={onDown} title="Move down" aria-label={`Move ${label} down`}>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>
+			</button>
 			{#if showSectionMove && others.length > 0}
 				<select onchange={moveTo} aria-label={`Move ${label} to another section`} value="">
 					<option value="">Move to…</option>
@@ -139,6 +143,9 @@
 		align-items: center;
 	}
 	.mv button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		width: 32px;
 		height: 32px;
 		min-height: 0;
@@ -147,13 +154,15 @@
 		background: none;
 		color: var(--pl-ink-soft);
 		cursor: pointer;
-		font-size: 1rem;
-		line-height: 1;
-		padding: 0 0 2px;
+		padding: 0;
 	}
 	.mv button:hover {
 		border-color: var(--pl-seal);
 		color: var(--pl-seal);
+	}
+	.mv svg {
+		width: 15px;
+		height: 15px;
 	}
 	.mv select {
 		min-height: 32px;

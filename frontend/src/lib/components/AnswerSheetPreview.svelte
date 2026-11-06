@@ -59,7 +59,9 @@
 		border-radius: var(--pl-radius-md);
 		box-shadow: var(--pl-shadow-sm);
 		padding: 28px 30px;
-		max-width: 760px;
+		width: 100%;
+		max-width: 720px;
+		margin: 0 auto;
 	}
 	.dochead {
 		text-align: center;

@@ -246,8 +246,12 @@
 								<span class="pl-sub">{s.blockIds.length} block{s.blockIds.length === 1 ? '' : 's'}</span>
 								<span class="sops">
 									<button type="button" class="mini" onclick={() => { renameSid = s.id; renameVal = s.title; }}>Rename</button>
-									<button type="button" class="mini" disabled={si === 0} onclick={() => builder.moveSection(si, si - 1)} title="Move section up">↑</button>
-									<button type="button" class="mini" disabled={si === draft.sections.length - 1} onclick={() => builder.moveSection(si, si + 1)} title="Move section down">↓</button>
+									<button type="button" class="mini icon" disabled={si === 0} onclick={() => builder.moveSection(si, si - 1)} title="Move section up" aria-label={`Move ${s.title} up`}>
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6-6"/></svg>
+									</button>
+									<button type="button" class="mini icon" disabled={si === draft.sections.length - 1} onclick={() => builder.moveSection(si, si + 1)} title="Move section down" aria-label={`Move ${s.title} down`}>
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>
+									</button>
 									{#if s.blockIds.length === 0}
 										<button type="button" class="mini danger" onclick={() => builder.deleteSection(s.id)}>Delete</button>
 									{:else}
@@ -378,10 +382,11 @@
 	}
 	.workspace {
 		display: grid;
-		grid-template-columns: minmax(380px, 500px) minmax(0, 1fr);
-		gap: 16px;
+		grid-template-columns: minmax(420px, 560px) minmax(0, 1fr);
+		gap: 20px;
 		align-items: start;
 		margin-top: 4px;
+		max-width: 1460px;
 	}
 	.editor {
 		display: flex;
@@ -521,13 +526,15 @@
 	}
 	.mini {
 		border: 1px solid var(--pl-line);
-		border-radius: 6px;
+		border-radius: var(--pl-radius-pill);
 		background: none;
 		min-height: 32px;
-		padding: 4px 10px;
+		padding: 4px 12px;
 		font-size: 0.78rem;
 		font-weight: 600;
+		color: var(--pl-ink);
 		cursor: pointer;
+		white-space: nowrap;
 	}
 	.mini:hover:not(:disabled) {
 		border-color: var(--pl-seal);
@@ -539,6 +546,16 @@
 	}
 	.mini.danger {
 		color: var(--pl-seal);
+	}
+	.mini.icon {
+		padding: 4px 10px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.mini.icon svg {
+		width: 14px;
+		height: 14px;
 	}
 	.mini-note {
 		font-size: 0.78rem;
@@ -607,7 +624,7 @@
 	}
 	@media (max-width: 1100px) {
 		.workspace {
-			grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+			grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
 		}
 	}
 	@media (max-width: 900px) {
