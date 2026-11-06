@@ -210,6 +210,7 @@
 								{#if item.difficulty}
 									<span class={`chip diff-${item.difficulty.toLowerCase()}`}>{item.difficulty}</span>
 								{/if}
+								<span class="chip type" title={item.qtype}>{qtypeLabel(item.qtype)}</span>
 								<AddToCart
 									item={{
 										paperId: item.paperId,
@@ -222,8 +223,7 @@
 										year: item.paper?.year ?? null,
 										institute: item.paper?.institute ?? ''
 									}}
-								/>
-								<span class="chip type" title={item.qtype}>{qtypeLabel(item.qtype)}</span>
+							 />
 							</span>
 						</span>
 					</a>
