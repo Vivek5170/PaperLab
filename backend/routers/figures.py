@@ -130,6 +130,7 @@ class CropBody(BaseModel):
     top: float
     right: float
     bottom: float
+    rotate: float = 0.0  # clockwise degrees in [0, 360], applied after crop
 
 
 @router.patch("/{name}", dependencies=[Depends(require_admin)])
@@ -143,7 +144,8 @@ def crop_figure(paper_id: int, qn: str, name: str, body: CropBody):
     data = trashed.read_bytes()
     target.write_bytes(data)
     try:
-        crop_image_file(target, (body.left, body.top, body.right, body.bottom))
+        crop_image_file(target, (body.left, body.top, body.right, body.bottom),
+                        rotate=body.rotate)
     except ValueError as exc:
         # Roll back: restore the exact pre-crop bytes, drop the trash copy.
         target.write_bytes(data)
