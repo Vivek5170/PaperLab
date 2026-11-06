@@ -226,9 +226,9 @@ import { cartStore } from '$lib/carts.js';
 				class="fontsel"
 				bind:value={sheetFont}
 				aria-label="Sheet body font"
-				title="Sheet body font: PaperLab, Times (GTA/Chaitanya), Kokila (Allen), Arial (FITJEE)"
+				title="Sheet body font: Inter, Times (GTA/Chaitanya), Kokila (Allen), Arial (FITJEE)"
 			>
-				<option value="paperlab">PaperLab</option>
+				<option value="paperlab">Inter</option>
 				<option value="times">Times (GTA)</option>
 				<option value="kokila">Kokila (Allen)</option>
 				<option value="arial">Arial (FITJEE)</option>
