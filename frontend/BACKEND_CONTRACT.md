@@ -71,6 +71,7 @@ when the name is taken; only empty-trash unlinks.
 - `GET .../figures/trash` -> `[{name, original, keptAt}]`
 - `POST .../figures` multipart (`file`, `target=question|solution`, `filename?`) -> figure (validates image, attaches ref, rolls back on bad LaTeX)
 - `PATCH .../figures/{name}` `{left,top,right,bottom,rotate?}` fractions + optional clockwise degrees 0-360 (applied after crop; original kept in trash, rollback on bad input)
+- `POST .../figures/{name}/preview` same body -> PNG bytes of what Save would write (read-only, no trash)
 - `PUT .../figures/{name}` multipart `file` -> figure (same name, refs untouched)
 - `DELETE .../figures/{name}` -> `{deleted, trash, wasUsedIn}`
 - `POST .../figures/{name}/restore` -> figure (409 when the name is taken)

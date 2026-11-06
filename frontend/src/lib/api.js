@@ -103,6 +103,14 @@ export const api = {
 			method: 'PATCH',
 			body: JSON.stringify(box)
 		}),
+	previewFigure: async (paperId, qn, name, box) => {
+		const res = await fetch(
+			`${BASE}/papers/${paperId}/questions/${encodeURIComponent(qn)}/figures/${name}/preview`,
+			{ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(box) }
+		);
+		if (!res.ok) throw new Error(`preview: ${res.status}`);
+		return URL.createObjectURL(await res.blob());
+	},
 	replaceFigure: (paperId, qn, name, file) => {
 		const form = new FormData();
 		form.append('file', file);

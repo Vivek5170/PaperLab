@@ -100,14 +100,11 @@ def remove_figure_refs(tex: str, filename: str) -> tuple[str, int]:
     return "\n".join(keep), removed
 
 
-def crop_image_file(path: str | Path, box: tuple[float, float, float, float],
-                     rotate: float = 0.0) -> None:
-    """Crop an image file in place; box = (l, t, r, b) fractions in [0, 1].
+def _crop_rotate_image(img, box: tuple[float, float, float, float],
+                      rotate: float = 0.0):
+    """Crop (fractions) then rotate clockwise degrees; 0 = crop only.
 
-    `rotate` is optional clockwise degrees in [0, 360], applied AFTER the
-    crop (so the box always refers to the image as displayed). 0 = no-op.
     Raises ValueError on degenerate boxes or out-of-range rotation.
-    Cannot grow beyond the raster.
     """
     l, t, r, b = (min(max(v, 0.0), 1.0) for v in box)
     if r - l < 0.01 or b - t < 0.01:
@@ -118,16 +115,28 @@ def crop_image_file(path: str | Path, box: tuple[float, float, float, float],
         raise ValueError("rotate must be degrees in [0, 360]")
     if not 0.0 <= deg <= 360.0:
         raise ValueError("rotate must be degrees in [0, 360]")
-    p = Path(path)
-    img = Image.open(p).convert("RGB")
     w, h = img.size
-    cropped = img.crop((int(l * w), int(t * h),
-                        max(int(r * w), int(l * w) + 1),
-                        max(int(b * h), int(t * h) + 1)))
+    out = img.crop((int(l * w), int(t * h),
+                    max(int(r * w), int(l * w) + 1),
+                    max(int(b * h), int(t * h) + 1)))
     if deg:
         # PIL rotates counter-clockwise; negate for clockwise degrees.
-        cropped = cropped.rotate(-deg, expand=True, fillcolor=(255, 255, 255))
-    cropped.save(p, format=img.format or "PNG")
+        out = out.rotate(-deg, expand=True, fillcolor=(255, 255, 255))
+    return out
+
+
+def crop_image_file(path: str | Path, box: tuple[float, float, float, float],
+                     rotate: float = 0.0) -> None:
+    """Crop an image file in place; box = (l, t, r, b) fractions in [0, 1].
+
+    `rotate` is optional clockwise degrees in [0, 360], applied AFTER the
+    crop (so the box always refers to the image as displayed). 0 = no-op.
+    Raises ValueError on degenerate boxes or out-of-range rotation.
+    Cannot grow beyond the raster.
+    """
+    p = Path(path)
+    img = Image.open(p).convert("RGB")
+    _crop_rotate_image(img, box, rotate).save(p, format=img.format or "PNG")
     _record_mode(p.parent, p.name, "manual")
 
 

@@ -13,13 +13,14 @@ import json
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from PIL import Image
 from pydantic import BaseModel
 
 import directory_manager
 from app.figures import (
     FIGURE_EXTS,
+    _crop_rotate_image,
     _record_mode,
     crop_image_file,
     figure_side,
@@ -152,6 +153,31 @@ def crop_figure(paper_id: int, qn: str, name: str, body: CropBody):
         trashed.unlink(missing_ok=True)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
     return figure_dict(figures, paper_id, qn, name)
+
+
+@router.post("/{name}/preview", dependencies=[Depends(require_admin)])
+def preview_figure(paper_id: int, qn: str, name: str, body: CropBody):
+    """Render what Save would produce (crop + rotate) without writing.
+
+    Read-only: no trash, no file changes. Returns PNG bytes for a live
+    result preview while dragging the sliders.
+    """
+    figures = _figures_dir(paper_id, qn)
+    target = _resolve(figures, name)
+    if not target.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "figure not found")
+    try:
+        img = Image.open(target).convert("RGB")
+    except Exception:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "figure is not readable")
+    try:
+        out = _crop_rotate_image(
+            img, (body.left, body.top, body.right, body.bottom), body.rotate)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    buf = io.BytesIO()
+    out.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
 
 
 @router.put("/{name}", dependencies=[Depends(require_admin)])

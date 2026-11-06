@@ -16,6 +16,9 @@
 	let adjusting = $state(null);
 	let box = $state({ left: 0, top: 0, right: 100, bottom: 100 });
 	let angle = $state(0);
+	let preview = $state('');
+	let previewSeq = 0;
+	let previewTimer = null;
 	let replacing = $state(null);
 	let replaceFile = $state(null);
 	let replacePreview = $state('');
@@ -52,8 +55,45 @@
 		arming = null;
 		box = { left: 0, top: 0, right: 100, bottom: 100 };
 		angle = 0;
+		setPreview('');
 		message = '';
 	}
+
+	function setPreview(url) {
+		if (preview) URL.revokeObjectURL(preview);
+		preview = url;
+	}
+
+	function queuePreview(fig) {
+		// Debounced exact-result preview: what Save would write, read-only.
+		clearTimeout(previewTimer);
+		previewTimer = setTimeout(async () => {
+			const seq = ++previewSeq;
+			try {
+				const url = await api.previewFigure(paperId, qn, fig.name, {
+					left: box.left / 100,
+					top: box.top / 100,
+					right: box.right / 100,
+					bottom: box.bottom / 100,
+					rotate: angle
+				});
+				if (seq === previewSeq && adjusting === fig.name) setPreview(url);
+				else URL.revokeObjectURL(url);
+			} catch {
+				/* crop box mid-drag can be degenerate; next tick retries */
+			}
+		}, 300);
+	}
+
+	$effect(() => {
+		// Re-render the result preview on any slider move while adjusting.
+		const { left, top, right, bottom } = box;
+		const deg = angle;
+		if (adjusting && left != null && top != null && right != null && bottom != null && deg != null) {
+			const fig = figures.find((f) => f.name === adjusting);
+			if (fig) queuePreview(fig);
+		}
+	});
 
 	async function saveCrop(fig) {
 		busy = true;
@@ -238,6 +278,12 @@
 						<label>Top % <input type="range" min="0" max="99" bind:value={box.top} /></label>
 						<label>Bottom % <input type="range" min="1" max="100" bind:value={box.bottom} /></label>
 						<label>Rotate <span class="pl-mono">{angle}°</span> <input type="range" min="0" max="360" step="1" bind:value={angle} /></label>
+						{#if preview}
+							<div class="prevwrap">
+								<p class="pl-sub prevcap">Result preview — exactly what Save writes</p>
+								<img src={preview} alt="Rotated result preview" class="previmg" />
+							</div>
+						{/if}
 						<p class="pl-sub">Crop stays inside the current image. To expand, re-crop from the PDF.</p>
 						<div class="row">
 							<button type="button" class="pl-btn pl-btn-primary" disabled={busy} onclick={() => saveCrop(fig)}>Save crop</button>
@@ -384,6 +430,19 @@
 	}
 	.replaceprev {
 		max-width: 200px;
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-sm);
+	}
+	.prevwrap {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.prevcap {
+		margin: 0;
+	}
+	.previmg {
+		max-width: 220px;
 		border: 1px solid var(--pl-line);
 		border-radius: var(--pl-radius-sm);
 	}
