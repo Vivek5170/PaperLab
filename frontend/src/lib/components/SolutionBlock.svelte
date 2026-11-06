@@ -8,7 +8,8 @@
 	import { onMount } from 'svelte';
 	import { getQuestionDetail, dropQuestionDetail } from '$lib/questionCache.js';
 	import Segments from '$lib/components/Segments.svelte';
-	import { dressSolution, isMissingSolutionText } from '$lib/paperDress.js';
+	import { dressSolution, isMissingSolutionText, extractAnswerKeys } from '$lib/paperDress.js';
+	import { builder } from '$lib/builder.js';
 
 	let { block, numbers = [] } = $props();
 
@@ -32,6 +33,7 @@
 			if (isMissingSolutionText(sol)) state = 'missing-sol';
 			else {
 				segments = sol;
+				builder.setParsedKeys(block.blockId ?? block.id, extractAnswerKeys(sol));
 				state = 'ready';
 			}
 		} catch (e) {

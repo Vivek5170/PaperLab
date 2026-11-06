@@ -84,24 +84,49 @@ export function dressQuestion(segments, { numbers = [], para = null } = {}) {
 	return out;
 }
 
-const ANSWER_RE = /Answer:\s*[^)]+\)/g;
+// A paragraph holding nothing but the filed answer line.
+function isAnswerPara(html) {
+	const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+	return /^Answer:\s*[^)]+\)\s*\S[^<>]*$/.test(text) || /^Answer:\s*[^)]+\)\s*$/.test(text);
+}
 
 /**
- * Dress solution segments: relabel embedded original numbers
- * ("Answer: A-01) A,C", visible; "Solution for A-17", URL-encoded in
+ * Extract filed keys from RAW solution segments, in block order:
+ * "Answer: A-01) A, C" -> "A, C". One entry per Answer paragraph.
+ */
+export function extractAnswerKeys(segments) {
+	const keys = [];
+	for (const s of segments ?? []) {
+		if (s?.kind !== 'text' || typeof s.html !== 'string') continue;
+		for (const m of s.html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/g)) {
+			const text = m[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+			const k = text.match(/^Answer:\s*[^)]+\)\s*(\S[^<>]*?)\s*$/);
+			if (k) keys.push(k[1].trim());
+		}
+	}
+	return keys;
+}
+
+/**
+ * Dress solution segments: drop filed Answer paragraphs (the key table
+ * owns answers now) and relabel "Solution for A-17" (URL-encoded in
  * data-tex) to generated Q-numbers, preserving order of appearance.
  * Bodies reading "No solution provided." are left for the missing
  * placeholder (see SolutionBlock).
  */
 export function dressSolution(segments, { numbers = [] } = {}) {
 	if (!numbers.length) return segments;
-	const out = (segments ?? []).map((s) => (s.kind === 'text' ? { ...s } : s));
-	let ai = 0;
+	const out = [];
+	for (const s of segments ?? []) {
+		if (s?.kind !== 'text' || typeof s.html !== 'string') { out.push(s); continue; }
+		// Strip answer-only paragraphs entirely.
+		const stripped = s.html.replace(/<p[^>]*>[\s\S]*?<\/p>/g, (m) => (isAnswerPara(m) ? '' : m));
+		if (stripped.replace(/<[^>]*>/g, '').trim() === '' && s.html !== stripped) continue;
+		out.push({ ...s, html: stripped });
+	}
 	let si = 0;
 	for (const s of out) {
 		if (s.kind !== 'text' || typeof s.html !== 'string') continue;
-		s.html = s.html.replace(ANSWER_RE, (m) =>
-			ai < numbers.length ? `Answer: Q${numbers[ai++]})` : m);
 		s.html = s.html.replace(/data-tex="([^"]*)"/g, (m, enc) => {
 			let dec;
 			try {

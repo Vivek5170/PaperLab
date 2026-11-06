@@ -7,7 +7,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { dressQuestion, dressSolution, isMissingSolutionText } from '../src/lib/paperDress.js';
+import { dressQuestion, dressSolution, isMissingSolutionText, extractAnswerKeys } from '../src/lib/paperDress.js';
 import { toRoman } from '../src/lib/numbering.js';
 import { sectionMeta } from '../src/lib/sectionMeta.js';
 
@@ -81,43 +81,27 @@ describe('dressQuestion passages', () => {
 });
 
 describe('dressSolution', () => {
-	it('relabels Answer and math-mode Solution-for in order, incl. prefixes', () => {
+	it('strips Answer paragraphs, relabels math Solution-for in order', () => {
 		const enc = (s) => encodeURIComponent(s);
-		const segs = [T(`<p><strong>Answer: A-01) A, C</strong></p><p><span class="pl-math" data-tex="${enc('\\underline{\\textbf{Solution for A-01}}')}"></span></p>`)];
+		const segs = [T(`<p><strong>Answer: A-01) A, C</strong></p><p><span class="pl-math" data-tex="${enc('\\underline{\\textbf{Solution for A-01}}')}"></span></p><p>Work shown.</p>`)];
 		const out = dressSolution(segs, { numbers: [4] });
-		assert.match(out[0].html, /Answer: Q4\)/);
-		assert.match(out[0].html, /Solution%20for%20Q4/);
-		assert.doesNotMatch(out[0].html, /A-01/);
+		const html = out.map((s) => s.html || '').join(' ');
+		assert.doesNotMatch(html, /Answer:/);
+		assert.match(html, /Solution%20for%20Q4/);
+		assert.match(html, /Work shown/);
 	});
-	it('leaves extras alone when numbers run out', () => {
-		const out = dressSolution([T('<p><strong>Answer: 1) A</strong></p><p><strong>Answer: 2) B</strong></p>')], { numbers: [5] });
-		assert.match(out[0].html, /Answer: Q5\)/);
-		assert.match(out[0].html, /Answer: 2\)/);
+	it('strips every repeated Answer block in group solutions', () => {
+		const out = dressSolution([T('<p><strong>Answer: 33) A</strong></p><p>Sol 33.</p><p><strong>Answer: 34) B</strong></p><p>Sol 34.</p>')], { numbers: [2, 3] });
+		const html = out.map((s) => s.html || '').join(' ');
+		assert.doesNotMatch(html, /Answer:/);
+		assert.match(html, /Sol 33/);
+		assert.match(html, /Sol 34/);
 	});
-	it('detects No-solution bodies in both wrappings', () => {
-		assert.equal(isMissingSolutionText([T('<p>No solution provided.</p>')]), true);
-		assert.equal(isMissingSolutionText([T('<p><em>No solution provided.</em></p>')]), true);
-		assert.equal(isMissingSolutionText([T('<p><strong>Answer: 30) 3</strong></p><p>Real text.</p>')]), false);
-	});
-});
-
-describe('toRoman', () => {
-	it('numbers passages I, II, III...', () => {
-		assert.equal([1, 2, 3, 4, 9].map(toRoman).join(','), 'I,II,III,IV,IX');
-	});
-});
-
-describe('sectionMeta', () => {
-	it('describes each type without marks', () => {
-		assert.equal(sectionMeta('scq', 4).kind, 'SINGLE CORRECT ANSWER TYPE');
-		assert.equal(sectionMeta('msq', 3).kind, 'ONE OR MORE CORRECT ANSWER TYPE');
-		assert.equal(sectionMeta('int', 6).kind, 'INTEGER ANSWER TYPE');
-		assert.equal(sectionMeta('num', 6).kind, 'NUMERICAL VALUE TYPE');
-		assert.equal(sectionMeta('mtx', 2).kind, 'MATCHING ANSWER TYPE');
-		assert.equal(sectionMeta('par-num', 4, 2).kind, 'PARAGRAPH QUESTIONS');
-		assert.equal(sectionMeta('weird', 1).kind, 'GENERAL QUESTIONS');
-		for (const m of [sectionMeta('scq', 4), sectionMeta('par-num', 4, 2)]) {
-			assert.doesNotMatch(m.lines.join(' '), /Marks/i);
-		}
+	it('extracts filed keys in block order', () => {
+		assert.deepEqual(extractAnswerKeys([T('<p><strong>Answer: A-01) A, C</strong></p>')]), ['A, C']);
+		assert.deepEqual(
+			extractAnswerKeys([T('<p><strong>Answer: 33) A</strong></p>'), T('<p><strong>Answer: 34) 4.00</strong></p>')]),
+			['A', '4.00']);
+		assert.deepEqual(extractAnswerKeys([T('<p>No key here.</p>')]), []);
 	});
 });

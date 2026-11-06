@@ -4,7 +4,7 @@
 	 * map. Overrides are keyed `blockId:subIndex` and follow the question
 	 * through renumbering. Paragraph sub-rows group under one header.
 	 */
-	let { numbering, blocks = {}, overrides = {}, onOverride } = $props();
+	let { numbering, blocks = {}, overrides = {}, parsed = {}, onOverride } = $props();
 
 	const rows = $derived(
 		Object.keys(numbering.byNumber ?? {})
@@ -26,31 +26,26 @@
 
 <div class="key">
 	<h3>Answer key</h3>
-	<p class="pl-sub">First page of the paper. Values are editable short answers; keys follow the question when numbers shift.</p>
 	{#if rows.length === 0}
 		<p class="pl-sub">No questions yet — import a cart to start the key.</p>
 	{:else}
 		<table>
 			<thead>
-				<tr><th scope="col">Q.No</th><th scope="col">Source</th><th scope="col">Key</th></tr>
+				<tr><th scope="col">Q.No</th><th scope="col">Key</th></tr>
 			</thead>
 			<tbody>
 				{#each rows as r (r.n)}
 					{#if r.groupStart && (numbering.byBlock[r.blockId]?.length ?? 1) > 1}
 						<tr class="pgroup">
-							<td colspan="3">
-								Passage · Paper {r.block?.paperId} · Q{r.block?.number}
-								({numbering.byBlock[r.blockId].length} sub-questions)
-							</td>
+							<td colspan="2">Passage · {numbering.byBlock[r.blockId].length} questions</td>
 						</tr>
 					{/if}
 					<tr>
 						<td class="qn">Q{r.n}</td>
-						<td class="src">Paper {r.block?.paperId} · Q{r.block?.number}</td>
 						<td>
 							<input
 								type="text"
-								value={overrides[r.key] ?? ''}
+								value={overrides[r.key] ?? parsed[r.blockId]?.[r.subIndex] ?? ''}
 								placeholder="—"
 								maxlength="200"
 								aria-label={`Answer key for generated question ${r.n}`}

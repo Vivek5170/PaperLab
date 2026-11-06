@@ -87,6 +87,14 @@ export const numbering = derived(docOrder, ($o) => assignNumbers($o));
 
 export const blockTotal = derived(builderStore, ($d) => Object.keys($d.blocks ?? {}).length);
 
+/**
+ * Filed answer keys parsed from solution tex, per block in sub order:
+ * {blockId: [key0, key1...]}. Session-only (never persisted): re-parsed
+ * from the same cached fetch the solutions use. Manual overrides in
+ * draft.keyOverride always win over these.
+ */
+export const parsedKeys = writable({});
+
 export const builder = {
 	setTitle(title) {
 		builderStore.update((d) => ({
@@ -200,5 +208,8 @@ export const builder = {
 	},
 	setOverride(blockId, subIndex, text) {
 		builderStore.update((d) => setKeyOverride(d, blockId, subIndex, text));
+	},
+	setParsedKeys(blockId, keys) {
+		parsedKeys.update((m) => ({ ...m, [blockId]: keys }));
 	}
 };

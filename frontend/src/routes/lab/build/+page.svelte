@@ -1,7 +1,7 @@
 <script>
 	import { cartStore } from '$lib/carts.js';
 	import {
-		builderStore, builder, docOrder, numbering, blockTotal, builderCorrupt
+		builderStore, builder, docOrder, numbering, blockTotal, builderCorrupt, parsedKeys
 	} from '$lib/builder.js';
 	import { sectionAccepts } from '$lib/builderModel.js';
 	import BuilderBlock from '$lib/components/BuilderBlock.svelte';
@@ -240,7 +240,7 @@
 				{:else}
 					<AnswerSheetPreview
 						title={draft.title} numbering={num} blocks={draft.blocks}
-						overrides={draft.keyOverride} ordered={order}
+						overrides={draft.keyOverride} parsed={$parsedKeys} ordered={order}
 						onOverride={(bid, i, t) => builder.setOverride(bid, i, t)}
 					/>
 				{/if}
@@ -545,6 +545,26 @@
 		min-height: 0;
 		flex: 1;
 		padding: 4px 4px 32px;
+	}
+	@media print {
+		.page {
+			height: auto;
+			overflow: visible;
+			padding: 0;
+		}
+		.topbar, .editor, .previewbar, .mobtabs, .undobar, .corrupt {
+			display: none;
+		}
+		.workspace {
+			display: block;
+			padding: 0;
+		}
+		.previewcol {
+			max-height: none;
+		}
+		.previewscroll {
+			overflow: visible;
+		}
 	}
 	@media (max-width: 900px) {
 		.page {

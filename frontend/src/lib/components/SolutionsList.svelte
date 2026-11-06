@@ -10,8 +10,7 @@
 </script>
 
 <div class="sols">
-	<h3>Solutions</h3>
-	<p class="pl-sub">Follows the key. Each solution is headed by the same generated numbers as its question.</p>
+	<h3>Detailed solutions</h3>
 	{#if ordered.length === 0}
 		<p class="pl-sub">No solutions yet.</p>
 	{:else}
