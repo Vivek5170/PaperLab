@@ -152,6 +152,19 @@ export const api = {
 	getQuestion: (paperId, qn) =>
 		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}`),
 
+	getTex: (paperId, qn, part) =>
+		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/tex?part=${part}`),
+	previewTex: (paperId, qn, body) =>
+		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/tex/preview`, {
+			method: 'POST',
+			body: JSON.stringify(body)
+		}),
+	saveTex: (paperId, qn, body) =>
+		request(`/papers/${paperId}/questions/${encodeURIComponent(qn)}/tex`, {
+			method: 'PATCH',
+			body: JSON.stringify(body)
+		}),
+
 	getSearchFacets: () => request('/search/facets'),
 	searchQuestions: (filters = {}, { limit = 24, cursor = null } = {}) => {
 		const q = new URLSearchParams();

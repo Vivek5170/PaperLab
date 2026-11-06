@@ -28,6 +28,7 @@
 	let addTarget = $state('question');
 	let addName = $state('');
 	let addFile = $state(null);
+	let addInput = $state(null);
 
 	async function load() {
 		try {
@@ -203,6 +204,7 @@
 			message = `Attached ${fig.name} to ${addTarget}.`;
 			addName = '';
 			addFile = null;
+			if (addInput) addInput.value = '';
 			await refresh();
 		} catch (e) {
 			message = `Add failed: ${e.message}`;
@@ -337,7 +339,12 @@
 				<input type="text" bind:value={addName} placeholder="qfigN.png" />
 			</label>
 			<label>Cropped image (PNG/JPG)
-				<input type="file" accept="image/png,image/jpeg" onchange={(e) => (addFile = e.currentTarget.files?.[0] ?? null)} />
+				<input
+					type="file"
+					accept="image/png,image/jpeg"
+					bind:this={addInput}
+					onchange={(e) => (addFile = e.currentTarget.files?.[0] ?? null)}
+				/>
 			</label>
 			<div class="row">
 				<button type="button" class="pl-btn pl-btn-primary" disabled={!addFile || busy} onclick={add}>Add figure</button>
@@ -389,6 +396,34 @@
 	}
 	.badges .pl-chip {
 		margin-right: 0;
+	}
+	.add {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		min-width: 0;
+	}
+	.add h3 {
+		margin: 0;
+	}
+	.segrow {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.add label {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		min-width: 0;
+	}
+	.add input[type='text'],
+	.add input[type='file'] {
+		width: 100%;
+		max-width: 100%;
+		min-width: 0;
 	}
 	.row {
 		display: flex;

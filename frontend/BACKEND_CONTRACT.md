@@ -77,6 +77,16 @@ when the name is taken; only empty-trash unlinks.
 - `POST .../figures/{name}/restore` -> figure (409 when the name is taken)
 - `DELETE .../figures/trash/{name}` -> `{deleted}` (the only irreversible op)
 
+## TeX editor (archivist; experimental /lab/edit workspace)
+
+Saves keep a timestamped backup `{part}.tex.bak-<epoch>` next to the file
+(never inside `figures/`, never a render-cache name). Draft preview is
+read-only: no writes, no trash. `expectedSha` guards concurrent saves.
+
+- `GET /api/papers/{id}/questions/{qn}/tex?part=question|solution` -> `{paperId, number, part, fileName, tex, sha256}` (404 when the .tex is missing; 400 on bad part)
+- `POST .../tex/preview` `{tex, part?}` -> `{segments}` (same shape as the reader; figure URLs resolve against the real question dir)
+- `PATCH .../tex` `{part, tex, expectedSha?}` -> `{paperId, number, part, saved, sha256, backup, segments}` (400 on bad LaTeX via verify_latex_syntax; 409 when expectedSha is stale)
+
 ## Mapping notes (from current Streamlit code)
 
 - Library buckets: `app/library.py:bucket_papers`; fuzzy filter: `filter_papers`.

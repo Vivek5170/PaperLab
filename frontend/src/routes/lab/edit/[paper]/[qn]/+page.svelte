@@ -1,14 +1,13 @@
 <script>
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
-	import katex from 'katex';
-	import 'katex/dist/katex.min.css';
-	import { MOCK_QUESTION_TEX, MOCK_SOLUTION_TEX, MOCK_FIGURES, mockTexToHtml } from '$lib/mockTex.js';
+	import { api } from '$lib/api.js';
+	import Segments from '$lib/components/Segments.svelte';
 
 	/**
-	 * MOCK workspace (exp/tex-editor): layout + interactions only.
-	 * Hardcoded sample TeX, client-side mock preview, no API calls,
-	 * nothing persisted. Real loading/preview/save waits for approval.
+	 * Experimental TeX workspace (exp/tex-editor): real backend wiring.
+	 * GET raw tex, POST draft preview (read-only), PATCH save with
+	 * sha-guarded concurrency. Reader + pipeline untouched.
 	 */
 
 	const paper = $derived($page.params.paper ?? '?');
@@ -19,22 +18,32 @@
 	);
 
 	let part = $state($page.url.searchParams.get('part') === 'solution' ? 'solution' : 'question');
-	const baseline = $state({ question: MOCK_QUESTION_TEX, solution: MOCK_SOLUTION_TEX });
-	const drafts = $state({ question: MOCK_QUESTION_TEX, solution: MOCK_SOLUTION_TEX });
+	const baseline = $state({ question: '', solution: '' });
+	const drafts = $state({ question: '', solution: '' });
+	const shas = $state({ question: null, solution: null });
+	let loaded = $state({ question: false, solution: false });
+	let loadError = $state('');
+	let figures = $state([]);
 
 	const draft = $derived(drafts[part]);
-	const dirty = $derived(drafts.question !== baseline.question || drafts.solution !== baseline.solution);
-	const partDirty = $derived(drafts[part] !== baseline[part]);
+	const dirty = $derived(
+		(loaded.question && drafts.question !== baseline.question) ||
+			(loaded.solution && drafts.solution !== baseline.solution)
+	);
+	const partDirty = $derived(loaded[part] && drafts[part] !== baseline[part]);
+	const allLoaded = $derived(loaded.question && loaded.solution);
 	const fileName = $derived(part === 'question' ? 'question.tex' : 'solution.tex');
 	const lineCount = $derived(draft.split('\n').length);
 
 	let saveState = $state('saved'); // saved | dirty | saving
+	let saveError = $state('');
 	let toast = $state('');
 	let toastTimer = null;
-	let previewHtml = $state('');
+	let segments = $state([]);
 	let previewStale = $state(false);
+	let previewError = $state('');
 	let previewTimer = null;
-	let previewEl = $state(null);
+	let previewSeq = 0;
 	let mobileTab = $state('edit'); // edit | preview (narrow screens only)
 	let pendingNav = $state(null); // { type: 'part', value } | { type: 'back' }
 	let figOpen = $state(false);
@@ -45,18 +54,47 @@
 		toastTimer = setTimeout(() => (toast = ''), 3200);
 	}
 
+	async function loadPart(p) {
+		try {
+			const res = await api.getTex(paper, qn, p);
+			baseline[p] = res.tex;
+			drafts[p] = res.tex;
+			shas[p] = res.sha256;
+			loaded[p] = true;
+			if (p === part) {
+				previewStale = true;
+				queuePreview();
+			}
+		} catch (e) {
+			loadError = `Could not load ${p}.tex: ${e.message}`;
+		}
+	}
+
 	function queuePreview() {
 		previewStale = true;
+		previewError = '';
 		clearTimeout(previewTimer);
-		previewTimer = setTimeout(() => {
-			previewHtml = mockTexToHtml(drafts[part]);
-			previewStale = false;
-		}, 300);
+		previewTimer = setTimeout(async () => {
+			const seq = ++previewSeq;
+			const text = drafts[part];
+			const activePart = part;
+			try {
+				const res = await api.previewTex(paper, qn, { tex: text, part: activePart });
+				if (seq !== previewSeq) return; // stale response
+				segments = res.segments;
+				previewStale = false;
+			} catch (e) {
+				if (seq !== previewSeq) return;
+				previewStale = false;
+				previewError = `Preview failed: ${e.message}`;
+			}
+		}, 350);
 	}
 
 	function onInput(value) {
 		drafts[part] = value;
-		saveState = drafts.question !== baseline.question || drafts.solution !== baseline.solution ? 'dirty' : 'saved';
+		saveState = dirty ? 'dirty' : 'saved';
+		saveError = '';
 		queuePreview();
 	}
 
@@ -68,12 +106,13 @@
 		}
 		part = next;
 		mobileTab = 'edit';
+		segments = [];
 		queuePreview();
 	}
 
 	function confirmNav() {
 		if (!pendingNav) return;
-		// Discard all mock edits, then follow through.
+		// Discard edits, then follow through.
 		drafts.question = baseline.question;
 		drafts.solution = baseline.solution;
 		saveState = 'saved';
@@ -81,30 +120,48 @@
 		pendingNav = null;
 		if (nav.type === 'part') {
 			part = nav.value;
+			segments = [];
 			queuePreview();
 		} else {
 			window.location.href = backHref;
 		}
 	}
 
-	function mockSave() {
+	async function save() {
 		if (saveState === 'saving') return;
 		saveState = 'saving';
-		setTimeout(() => {
-			saveState = 'saved';
-			showToast('Mock save — nothing was persisted.');
-		}, 600);
+		saveError = '';
+		try {
+			const res = await api.saveTex(paper, qn, {
+				part,
+				tex: drafts[part],
+				expectedSha: shas[part]
+			});
+			baseline[part] = drafts[part];
+			shas[part] = res.sha256;
+			segments = res.segments ?? segments;
+			previewStale = false;
+			saveState = dirty ? 'dirty' : 'saved';
+			showToast(`Saved ${fileName}.`);
+		} catch (e) {
+			saveState = 'dirty';
+			saveError = e.message.includes('409')
+				? 'Someone else saved first — reload the page and reapply your edits.'
+				: `Save failed: ${e.message}`;
+		}
 	}
 
-	function mockDiscard() {
+	function discard() {
 		drafts[part] = baseline[part];
-		saveState = drafts.question !== baseline.question || drafts.solution !== baseline.solution ? 'dirty' : 'saved';
+		saveState = dirty ? 'dirty' : 'saved';
+		saveError = '';
+		segments = [];
 		queuePreview();
-		showToast('Draft reset to the mock original.');
+		showToast('Draft reset to the saved file.');
 	}
 
 	async function copyFig(name) {
-		const snippet = `\\includegraphics{${name}}`;
+		const snippet = `\\includegraphics{figures/${name}}`;
 		try {
 			await navigator.clipboard.writeText(snippet);
 		} catch {
@@ -121,7 +178,7 @@
 	function onKey(e) {
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault();
-			mockSave();
+			if (allLoaded && dirty) save();
 		} else if (e.key === 'Escape') {
 			figOpen = false;
 		}
@@ -132,26 +189,7 @@
 	}
 
 	$effect(() => {
-		// Fill KaTeX placeholders after each preview render (same call as Segments).
-		if (!previewEl) return;
-		void previewHtml;
-		for (const node of previewEl.querySelectorAll('.pl-math, .pl-math-block')) {
-			if (node.dataset.done) continue;
-			const tex = decodeURIComponent(node.dataset.tex || '');
-			try {
-				node.innerHTML = katex.renderToString(tex, {
-					displayMode: node.classList.contains('pl-math-block'),
-					throwOnError: false
-				});
-			} catch {
-				node.innerHTML = '';
-			}
-			node.dataset.done = '1';
-		}
-	});
-
-	$effect(() => {
-		// Warn on reload/close with unsaved mock edits.
+		// Warn on reload/close with unsaved edits.
 		const handler = (e) => {
 			if (dirty) e.preventDefault();
 		};
@@ -159,13 +197,17 @@
 		return () => window.removeEventListener('beforeunload', handler);
 	});
 
-	onMount(() => {
-		// Initial mock preview.
-		previewHtml = mockTexToHtml(drafts[part]);
+	onMount(async () => {
+		try {
+			figures = await api.listFigures(paper, qn);
+		} catch {
+			figures = [];
+		}
+		await Promise.all([loadPart('question'), loadPart('solution')]);
 	});
 </script>
 
-<svelte:head><title>Mock TeX editor - Paper {paper} Q{qn} - PaperLab</title></svelte:head>
+<svelte:head><title>TeX editor - Paper {paper} Q{qn} - PaperLab</title></svelte:head>
 <svelte:window onkeydown={onKey} onclick={onWindowClick} />
 
 <div class="ws">
@@ -176,7 +218,7 @@
 			<a class="back" href={backHref}>← Back</a>
 		{/if}
 		<span class="ident pl-mono">Paper {paper} · Q{qn}</span>
-		<span class="mockbadge">Mock</span>
+		<span class="expbadge">Experimental</span>
 		<div class="seg" role="group" aria-label="Choose file">
 			<button type="button" class:active={part === 'question'} onclick={() => switchPart('question')}>Question</button>
 			<button type="button" class:active={part === 'solution'} onclick={() => switchPart('solution')}>Solution</button>
@@ -193,17 +235,21 @@
 					Copy figures
 				</button>
 				{#if figOpen}
-					<ul class="figmenu" role="menu" aria-label="Figures in this question (mock)">
-						{#each MOCK_FIGURES as f (f)}
-							<li role="none">
-								<button
-									type="button"
-									role="menuitem"
-									title="Click to copy \\includegraphics"
-									onclick={() => { copyFig(f); figOpen = false; }}
-								>{f}</button>
-							</li>
-						{/each}
+					<ul class="figmenu" role="menu" aria-label="Figures in this question">
+						{#if figures.length === 0}
+							<li role="none"><span class="figempty">No figures in this question.</span></li>
+						{:else}
+							{#each figures as f (f.name)}
+								<li role="none">
+									<button
+										type="button"
+										role="menuitem"
+										title={`Used in: ${(f.usedIn ?? []).join(', ') || 'unused'} — click to copy`}
+										onclick={() => { copyFig(f.name); figOpen = false; }}
+									>{f.name}</button>
+								</li>
+							{/each}
+						{/if}
 					</ul>
 				{/if}
 			</div>
@@ -214,12 +260,19 @@
 			{:else}Saved{/if}
 		</span>
 		<div class="actions">
-			<button type="button" class="pl-btn" disabled={!dirty} onclick={mockDiscard}>Discard</button>
-			<button type="button" class="pl-btn pl-btn-primary" disabled={!dirty || saveState === 'saving'} onclick={mockSave}>
+			<button type="button" class="pl-btn" disabled={!dirty} onclick={discard}>Discard</button>
+			<button type="button" class="pl-btn pl-btn-primary" disabled={!dirty || saveState === 'saving'} onclick={save}>
 				{saveState === 'saving' ? 'Saving…' : 'Save'}
 			</button>
 		</div>
 	</header>
+
+	{#if loadError}
+		<p class="pl-error loaderr" role="alert">{loadError}</p>
+	{/if}
+	{#if saveError}
+		<p class="pl-error loaderr" role="alert">{saveError}</p>
+	{/if}
 
 	<nav class="mobtabs" aria-label="Workspace view">
 		<button type="button" class:active={mobileTab === 'edit'} onclick={() => (mobileTab = 'edit')}>Editor</button>
@@ -240,7 +293,8 @@
 				spellcheck="false"
 				autocomplete="off"
 				autocapitalize="off"
-				aria-label={`Edit ${fileName} (mock)`}
+				aria-label={`Edit ${fileName}`}
+				disabled={!allLoaded}
 				value={draft}
 				oninput={(e) => onInput(e.currentTarget.value)}
 			></textarea>
@@ -249,10 +303,10 @@
 		<section class="pane previewpane" class:active={mobileTab === 'preview'} aria-label="Preview" aria-live="polite">
 			<div class="panehead">
 				<span>Preview</span>
-				<span class="pl-sub">{previewStale ? 'Updating…' : 'Mock render · reader styles'}</span>
+				<span class="pl-sub">{previewStale ? 'Updating…' : previewError || 'Live render · reader styles'}</span>
 			</div>
-			<div class="paper" bind:this={previewEl}>
-				{@html previewHtml}
+			<div class="paper">
+				<Segments {segments} />
 			</div>
 		</section>
 	</div>
@@ -264,8 +318,8 @@
 	{#if pendingNav}
 		<div class="overlay" role="dialog" aria-modal="true" aria-label="Unsaved changes">
 			<div class="dialog">
-				<h2>Discard unsaved mock edits?</h2>
-				<p class="pl-sub">You have unsaved changes in this mock workspace. They were never persisted, so leaving loses the draft text.</p>
+				<h2>Discard unsaved edits?</h2>
+				<p class="pl-sub">Your edits are not saved yet. Leaving now loses the draft text.</p>
 				<div class="dialogrow">
 					<button type="button" class="pl-btn" onclick={() => (pendingNav = null)}>Keep editing</button>
 					<button type="button" class="pl-btn pl-btn-primary" onclick={confirmNav}>Discard changes</button>
@@ -305,7 +359,7 @@
 		color: var(--pl-ink-soft);
 		white-space: nowrap;
 	}
-	.mockbadge {
+	.expbadge {
 		font-size: 0.7rem;
 		font-weight: 700;
 		letter-spacing: 0.06em;
@@ -315,9 +369,6 @@
 		border-radius: var(--pl-radius-pill);
 		padding: 2px 10px;
 		white-space: nowrap;
-	}
-	h2 .mockbadge {
-		vertical-align: middle;
 	}
 	.seg {
 		display: inline-flex;
@@ -368,6 +419,8 @@
 		padding: 4px;
 		min-width: 220px;
 		max-width: min(320px, 80vw);
+		max-height: 50dvh;
+		overflow-y: auto;
 		background: var(--pl-surface);
 		border: 1px solid var(--pl-line);
 		border-radius: var(--pl-radius-md);
@@ -393,6 +446,12 @@
 	.figmenu button:hover {
 		background: var(--pl-raised);
 	}
+	.figempty {
+		display: block;
+		padding: 8px 10px;
+		font-size: 0.8rem;
+		color: var(--pl-ink-soft);
+	}
 	.status {
 		font-size: 0.8rem;
 		font-weight: 600;
@@ -410,6 +469,9 @@
 		display: flex;
 		gap: 8px;
 		flex-wrap: wrap;
+	}
+	.loaderr {
+		margin: 12px 16px 0;
 	}
 	.mobtabs {
 		display: none;
@@ -458,6 +520,9 @@
 		overflow: auto;
 		white-space: pre;
 	}
+	.editor:disabled {
+		opacity: 0.6;
+	}
 	.editor:focus {
 		outline: 2px solid var(--pl-focus);
 		outline-offset: 1px;
@@ -473,38 +538,6 @@
 		line-height: 1.7;
 		overflow-y: auto;
 		min-height: 50dvh;
-	}
-	.paper :global(p) {
-		margin: 0.75em 0;
-	}
-	.paper :global(p:first-child) {
-		margin-top: 0;
-	}
-	.paper :global(.pl-math-block) {
-		display: block;
-		text-align: center;
-		margin: 0.75em 0;
-	}
-	.paper :global(.mockfig) {
-		margin: 18px 0;
-		text-align: center;
-	}
-	.paper :global(.mockfig-box) {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		max-width: 360px;
-		height: 160px;
-		margin: 0 auto 6px;
-		border: 1px dashed var(--pl-line);
-		border-radius: var(--pl-radius-sm);
-		background: var(--pl-raised);
-		color: var(--pl-ink-soft);
-		font-size: 0.85rem;
-	}
-	.paper :global(figcaption) {
-		font-size: 0.75rem;
-		color: var(--pl-ink-soft);
 	}
 	.toast {
 		position: fixed;
