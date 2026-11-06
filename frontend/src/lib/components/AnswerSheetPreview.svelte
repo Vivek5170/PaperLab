@@ -56,7 +56,14 @@
 						details[e.blockId] = { ready: true, data: sol };
 					}
 				} catch (err) {
-					if (!cancelled) details[e.blockId] = { error: String(err?.message ?? err) };
+					if (cancelled) return;
+					const msg = String(err?.message ?? err);
+					// Our 20s timeout leaves the shared cached promise pending
+					// until the 30s api abort; evict it so Retry fetches fresh.
+					if (msg.includes('Backend timed out')) {
+						try { dropQuestionDetail(e.paperId, e.number); } catch { /* ignore */ }
+					}
+					details[e.blockId] = { error: msg };
 				}
 			}));
 		})();
@@ -66,12 +73,23 @@
 	});
 
 	function retryAll() {
-		for (const e of ordered) if (details[e.blockId]?.error) delete details[e.blockId];
+		for (const e of ordered) {
+			const k = details[e.blockId];
+			if (!k) continue;
+			const stale = k.loading && Date.now() - (k.at ?? 0) > 10000;
+			if (k.error || stale) {
+				try { dropQuestionDetail(e.paperId, e.number); } catch { /* ignore */ }
+				delete details[e.blockId];
+			}
+		}
 		rev++;
 	}
 
-	const allFailed = $derived(
-		ordered.length > 0 && ordered.every((e) => details[e.blockId]?.error)
+	const failedIds = $derived(
+		ordered.filter((e) => details[e.blockId]?.error).map((e) => e.blockId)
+	);
+	const failedMsg = $derived(
+		failedIds.length > 0 ? details[failedIds[0]]?.error ?? '' : ''
 	);
 
 	function reload(bid) {
@@ -128,11 +146,11 @@
 	});
 </script>
 
-{#if allFailed}
+{#if failedIds.length > 0}
 	<div class="loadfail" role="alert">
-		<strong>Preview can't reach solution data.</strong>
-		<span class="pl-sub">{details[ordered[0].blockId]?.error ?? ''}</span>
-		<button type="button" class="retry" onclick={retryAll}>Retry all</button>
+		<strong>Preview can't reach {failedIds.length} of {ordered.length} solutions.</strong>
+		<span class="pl-sub">{failedMsg}</span>
+		<button type="button" class="retry" onclick={retryAll}>Retry failed</button>
 	</div>
 {/if}
 <PagedSheet {rows} row={arow} />

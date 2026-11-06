@@ -344,14 +344,21 @@ export function validateDraft(raw) {
 		});
 	}
 	if (mode === 'assignment') {
-		// Exactly one locked section; orphan blocks (lost refs) reattach.
+		// Exactly one locked section; every placed block survives (doc order,
+		// deduped) plus orphans reattach. Never drop blocks from sections[1..].
 		const all = sections.flatMap((s) => s.blockIds);
-		const orphans = Object.keys(blocks).filter((id) => !all.includes(id));
+		const seen = new Set();
+		const merged = [];
+		for (const id of [...all, ...Object.keys(blocks).filter((id) => !all.includes(id))]) {
+			if (!blocks[id] || seen.has(id)) continue;
+			seen.add(id);
+			merged.push(id);
+		}
 		const first = sections.find((s) => s.locked) ?? sections[0];
 		const kept = {
 			id: first?.id ?? newSectionId(),
 			title: 'Assignment', atype: 'mixed', locked: true,
-			blockIds: [...(first?.blockIds ?? []), ...orphans]
+			blockIds: merged
 		};
 		const keyOverride = pruneOverrides(raw.keyOverride, blocks);
 		return { ok: true, draft: { version: BUILDER_SCHEMA_VERSION, mode, title: String(raw.title ?? ''), sections: [kept], blocks, keyOverride, createdAt: raw.createdAt ?? now(), updatedAt: raw.updatedAt ?? now() } };

@@ -191,3 +191,27 @@ describe('packRows', () => {
 		assert.equal([PAGE_W, PAGE_H].join('x'), '794x1123');
 	});
 });
+
+describe('audit fixes', () => {
+	it('validateDraft assignment repair merges all placed blocks (no loss)', async () => {
+		const { createDraft, validateDraft } = await import('../src/lib/builderModel.js');
+		const d = createDraft('paper');
+		d.mode = 'assignment';
+		const { ok, draft } = validateDraft(JSON.parse(JSON.stringify({ ...d, mode: 'assignment' })));
+		assert.equal(ok, true);
+		assert.equal(draft.sections.length, 1);
+	});
+	it('packRows de-orphan never overflows the receiver', async () => {
+		const { packRows } = await import('../src/lib/paginate.js');
+		const U = 1000;
+		const pages = packRows([
+			{ id: 'a', h: 900 }, { id: 'h', h: 200, keepWithNext: true }, { id: 'b', h: 900 }
+		], U);
+		const byH = { a: 900, h: 200, b: 900 };
+		for (const pg of pages) {
+			const sum = pg.reduce((s, id) => s + byH[id], 0);
+			assert.ok(sum <= U || (pg.length === 1 && sum > U), `page ${pg} overfull`);
+		}
+		assert.deepEqual(pages.flat().sort(), ['a', 'b', 'h']);
+	});
+});

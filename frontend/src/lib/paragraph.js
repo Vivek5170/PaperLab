@@ -9,14 +9,14 @@
  *   UNIQUE(paper_id, question_number).
  *
  * Display splitting (render.py:_split_group_stems) only fires for dirs
- * matching /(\d{1,3})-(\d{1,3})_paragraph$/ with a<b<=a+12. The parser
- * below mirrors that bound so numbering never invents sub-slots the
- * renderer can't display.
+ * matching /(\d{1,3})-(\d{1,3})_paragraph$/ with a<b<=a+12 (span up to 13).
+ * The parser below mirrors that bound so numbering never invents sub-slots
+ * the renderer can't display.
  */
 
 const RANGE_SUFFIX_RE = /(\d{1,3})-(\d{1,3})_paragraph$/;
 const PARAGRAPH_HINT_RE = /paragraph/i;
-const MAX_SPAN = 12;
+const MAX_SPAN = 13;
 
 /**
  * Parse a question_number for a paragraph range.

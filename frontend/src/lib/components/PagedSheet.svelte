@@ -27,7 +27,7 @@
 	const pages = $derived.by(() => {
 		const items = rows.map((r) => ({
 			id: r.id,
-			h: heights[r.id] ?? 280,
+			h: heights[r.id] ?? 140,
 			keepWithNext: !!r.keepWithNext,
 			breakBefore: !!r.breakBefore
 		}));

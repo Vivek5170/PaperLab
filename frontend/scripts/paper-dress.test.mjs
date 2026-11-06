@@ -12,6 +12,7 @@ import { toRoman } from '../src/lib/numbering.js';
 import { sectionMeta } from '../src/lib/sectionMeta.js';
 import { splitTopBlocks } from '../src/lib/flowsplit.js';
 import { withTimeout } from '../src/lib/async.js';
+import { parseParagraphRange } from '../src/lib/paragraph.js';
 
 const T = (html) => ({ kind: 'text', html });
 const F = (url) => ({ kind: 'fig', url });
@@ -108,6 +109,14 @@ describe('dressSolution', () => {
 	});
 });
 
+describe('splitTopBlocks extras', () => {
+	it('emits bare <hr> and figure blocks; survives > in attributes', () => {
+		assert.deepEqual(splitTopBlocks('<p>A.</p><hr><p>B.</p>'), ['<p>A.</p>', '<hr>', '<p>B.</p>']);
+		assert.deepEqual(splitTopBlocks('<figure><img src="x"></figure><p>Cap.</p>'), ['<figure><img src="x"></figure>', '<p>Cap.</p>']);
+		assert.deepEqual(splitTopBlocks('<p title="a>b">X.</p>'), ['<p title="a>b">X.</p>']);
+	});
+});
+
 describe('splitTopBlocks', () => {
 	it('splits sequential paragraphs, keeps lists whole', () => {
 		assert.deepEqual(
@@ -134,5 +143,13 @@ describe('withTimeout', () => {
 	});
 	it('rejects slow work instead of hanging', async () => {
 		await assert.rejects(withTimeout(new Promise(() => {}), 20, 'slow?'), /slow\?/);
+	});
+});
+
+describe('paragraph span bound (mirrors render.py a<b<=a+12)', () => {
+	it('accepts 1-13 (13 sub-questions), rejects 1-14', () => {
+		assert.equal(parseParagraphRange('1-13_paragraph').count, 13);
+		assert.equal(parseParagraphRange('1-13_paragraph').valid, true);
+		assert.equal(parseParagraphRange('1-14_paragraph').valid, false);
 	});
 });

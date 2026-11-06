@@ -3,6 +3,8 @@
  * ever splitting a row. Oversized single rows get their own page.
  * Rows flagged keepWithNext never strand alone at a page bottom
  * (shifted forward): section headers, passage headings, question stems.
+ * The de-orphan pass runs to fixpoint with capacity checks, so the
+ * receiving page can never overflow into clipping.
  */
 export const PAGE_W = 794; // A4 width @96dpi (CSS px == print px)
 export const PAGE_H = 1123; // A4 height @96dpi
@@ -32,14 +34,32 @@ export function packRows(items, usable) {
 		used += h;
 	}
 	push();
-	// De-orphan: a page ending in a keepWithNext row hands it forward.
-	for (let p = 0; p < pages.length; p++) {
-		const page = pages[p];
-		const last = byId.get(page[page.length - 1]);
-		if (page.length > 1 && last && last.keepWithNext) {
+	// De-orphan to fixpoint: a page ending in a keepWithNext row hands it
+	// forward, cascading any overflow the receiver can't hold.
+	const heightOf = (ids) =>
+		ids.reduce((s, id) => s + Math.max(0, byId.get(id)?.h ?? 0), 0);
+	let moved = true;
+	while (moved) {
+		moved = false;
+		for (let p = 0; p < pages.length; p++) {
+			const page = pages[p];
+			if (page.length <= 1) continue;
+			const last = byId.get(page[page.length - 1]);
+			if (!(last && last.keepWithNext)) continue;
 			page.pop();
 			if (p + 1 < pages.length) pages[p + 1].unshift(last.id);
 			else pages.push([last.id]);
+			moved = true;
+			// Cascade: receiver over capacity pushes its own tail forward.
+			let q = p + 1;
+			while (q < pages.length && heightOf(pages[q]) > usable) {
+				const tail = pages[q].pop();
+				if (q + 1 < pages.length) pages[q + 1].unshift(tail);
+				else pages.push([tail]);
+				if (pages[q].length === 0) pages.splice(q, 1);
+				else q++;
+			}
+			break; // restart scan: new tail of page p may also orphan
 		}
 	}
 	return pages.filter((pg) => pg.length > 0);

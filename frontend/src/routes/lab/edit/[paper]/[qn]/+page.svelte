@@ -3,6 +3,7 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api.js';
+	import { dropQuestionDetail } from '$lib/questionCache.js';
 	import Segments from '$lib/components/Segments.svelte';
 
 	/**
@@ -175,6 +176,9 @@
 			}
 			const clean = drafts[savedPart] === savedText;
 			saveState = dirty ? 'dirty' : 'saved';
+			try {
+				dropQuestionDetail(paper, qn);
+			} catch { /* cache is best-effort */ }
 			showToast(
 				clean ? `Saved ${savedPart}.tex.` : `Saved ${savedPart}.tex — newer edits still unsaved.`
 			);
