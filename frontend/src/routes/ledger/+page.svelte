@@ -359,31 +359,37 @@
 			<div class="pdfpick">
 				<ul class="pdfpick-list" role="listbox" aria-label="Paper PDFs to delete" aria-multiselectable="true">
 					{#each pdfs.papers as g (g.id)}
-						{#if g.files.length}
-							<li class="pdfgrp" aria-hidden="true">#{g.id} {g.name}</li>
-							{#each g.files as f (f.stored)}
-								{@const all = f.storedAll ?? [f.stored]}
-								{@const on = all.every((s) => selPaths.includes(s))}
+						{@const live = g.files.filter((f) => f.exists)}
+						{@const all = [...new Set(live.flatMap((f) => f.storedAll ?? [f.stored]))]}
+						{@const on = all.length > 0 && all.every((s) => selPaths.includes(s))}
+						{#if live.length}
+							<li class="pdfgrp">
+								<button
+									type="button"
+									role="option"
+									aria-selected={on}
+									class="pdfgrp-btn"
+									class:on={on}
+									disabled={purging !== '' || deletingPdfs}
+									title={all.join(' + ')}
+									onclick={() => {
+										selPaths = on
+											? selPaths.filter((x) => !all.includes(x))
+											: [...new Set([...selPaths, ...all])];
+									}}
+								>
+									<span class="tick" aria-hidden="true">{#if on}✓{/if}</span>
+									<span class="pdfgrp-name">#{g.id} {g.name}</span>
+									<span class="opt-count">{live.length} file{live.length === 1 ? '' : 's'} · {fmtBytes(live.reduce((a, f) => a + (f.bytes ?? 0), 0))}</span>
+								</button>
+							</li>
+							{#each live as f (f.stored)}
 								<li>
-									<button
-										type="button"
-										role="option"
-										aria-selected={on}
-										class="pdfrow"
-										class:on={on}
-										disabled={!f.exists || purging !== '' || deletingPdfs}
-										title={f.exists ? all.join(' + ') : `${f.name} — file missing on disk`}
-										onclick={() => {
-											selPaths = on
-												? selPaths.filter((x) => !all.includes(x))
-												: [...new Set([...selPaths, ...all])];
-										}}
-									>
-										<span class="tick" aria-hidden="true">{#if on}✓{/if}</span>
+									<div class="pdfrow static">
 										<span class="kind">{f.kind === 'both' ? 'QP + Solution' : f.kind === 'question' ? 'QP' : 'Solution'}</span>
 										<span class="pdfname pl-mono">{f.name}</span>
-										<span class="opt-count">{f.exists ? `${fmtBytes(f.bytes)} · in use` : 'missing · in use'}</span>
-									</button>
+										<span class="opt-count">{fmtBytes(f.bytes)} · in use</span>
+									</div>
 								</li>
 							{/each}
 						{/if}
@@ -625,13 +631,57 @@
 		top: -6px;
 		background: var(--pl-surface);
 		z-index: 1;
-		font-weight: 700;
-		font-size: 0.78rem;
-		padding: 8px 10px 4px;
 		border-bottom: 1px solid var(--pl-line);
-		white-space: nowrap;
+	}
+	.pdfgrp-btn {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		border: none;
+		background: none;
+		padding: 8px 10px 6px;
+		font-size: 0.78rem;
+		font-weight: 700;
+		text-align: left;
+		cursor: pointer;
+		color: var(--pl-ink);
+		border-radius: var(--pl-radius-sm);
+	}
+	.pdfgrp-btn:hover:not(:disabled) {
+		background: var(--pl-raised);
+	}
+	.pdfgrp-btn:disabled {
+		cursor: default;
+	}
+	.pdfgrp-btn .tick {
+		width: 20px;
+		height: 20px;
+		flex-shrink: 0;
+		display: grid;
+		place-items: center;
+		border: 1px solid var(--pl-line);
+		border-radius: 6px;
+		font-size: 0.8rem;
+		font-weight: 400;
+		color: #fff;
+	}
+	.pdfgrp-btn.on .tick {
+		background: var(--pl-seal);
+		border-color: var(--pl-seal);
+	}
+	.pdfgrp-name {
+		flex: 1;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.pdfgrp-btn .opt-count {
+		color: var(--pl-ink-soft);
+		font-size: 0.75rem;
+		font-weight: 400;
+		flex-shrink: 0;
 	}
 	.pdfrow {
 		display: flex;
@@ -653,6 +703,12 @@
 	.pdfrow:disabled {
 		opacity: 0.55;
 		cursor: default;
+	}
+	.pdfrow.static {
+		cursor: default;
+	}
+	.pdfrow.static:hover {
+		background: none;
 	}
 	.pdfrow .tick {
 		width: 20px;
