@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { dressQuestion, dressSolution, isMissingSolutionText, extractAnswerKeys } from '../src/lib/paperDress.js';
 import { toRoman } from '../src/lib/numbering.js';
 import { sectionMeta } from '../src/lib/sectionMeta.js';
+import { splitTopBlocks } from '../src/lib/flowsplit.js';
 
 const T = (html) => ({ kind: 'text', html });
 const F = (url) => ({ kind: 'fig', url });
@@ -103,5 +104,25 @@ describe('dressSolution', () => {
 			extractAnswerKeys([T('<p><strong>Answer: 33) A</strong></p>'), T('<p><strong>Answer: 34) 4.00</strong></p>')]),
 			['A', '4.00']);
 		assert.deepEqual(extractAnswerKeys([T('<p>No key here.</p>')]), []);
+	});
+});
+
+describe('splitTopBlocks', () => {
+	it('splits sequential paragraphs, keeps lists whole', () => {
+		assert.deepEqual(
+			splitTopBlocks('<p>One.</p><p>Two.</p>'),
+			['<p>One.</p>', '<p>Two.</p>']);
+		assert.deepEqual(
+			splitTopBlocks('<ol start="33"> <li>A</li> <li>B</li> </ol>'),
+			['<ol start="33"> <li>A</li> <li>B</li> </ol>']);
+	});
+	it('does not split inside nested lists or tables', () => {
+		const nested = '<ol> <li>Stem <p>A) one</p> <p>B) two</p> </li> </ol><p>After.</p>';
+		assert.deepEqual(splitTopBlocks(nested), ['<ol> <li>Stem <p>A) one</p> <p>B) two</p> </li> </ol>', '<p>After.</p>']);
+	});
+	it('ignores void elements and keeps stray text', () => {
+		assert.deepEqual(splitTopBlocks('<p>A <img src="x"> B.</p>'), ['<p>A <img src="x"> B.</p>']);
+		assert.deepEqual(splitTopBlocks('bare text'), ['bare text']);
+		assert.deepEqual(splitTopBlocks(''), []);
 	});
 });

@@ -1,20 +1,29 @@
 <script>
 	/**
-	 * Live Question Sheet on real A4 pages: section headings, inline
-	 * generated numbers, passages headed Paragraph I/II. Pure function
-	 * of (ordered, numbering, draft title/mode) — no numbering of its own.
+	 * Live Question Sheet on real A4 pages. Each block loads once (shared
+	 * session cache), dresses to generated numbers, and flattens into
+	 * paragraph/figure rows so pages fill tightly. Only extremes are kept
+	 * together: doc/section/passage headers and each question's first row
+	 * never strand alone at a page bottom. Pure function of draft state.
 	 */
 	import { toRoman } from '$lib/numbering.js';
-	import { isParagraphId } from '$lib/paragraph.js';
+	import { isParagraphId, parseParagraphRange } from '$lib/paragraph.js';
 	import { sectionMeta } from '$lib/sectionMeta.js';
-	import QuestionSheetBlock from '$lib/components/QuestionSheetBlock.svelte';
+	import { dressQuestion } from '$lib/paperDress.js';
+	import { getQuestionDetail, dropQuestionDetail } from '$lib/questionCache.js';
+	import { splitTopBlocks } from '$lib/flowsplit.js';
+	import Segments from '$lib/components/Segments.svelte';
 	import PagedSheet from '$lib/components/PagedSheet.svelte';
 
 	let { title = '', ordered = [], numbering, sections = [], mode = 'paper' } = $props();
 
 	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-	// Paragraph I, II... in document order (no numbers in the header).
+	let details = $state({});
+	let rev = $state(0);
+
+	const idsKey = $derived(ordered.map((e) => e.blockId).join(','));
+
 	const paraIndex = $derived.by(() => {
 		const m = new Map();
 		let i = 0;
@@ -22,17 +31,101 @@
 		return m;
 	});
 
+	$effect(() => {
+		void idsKey;
+		void rev;
+		let cancelled = false;
+		(async () => {
+			for (const e of ordered) {
+				if (cancelled) continue;
+				const known = details[e.blockId];
+				if (known && (known.ready || known.loading)) continue;
+				details[e.blockId] = { loading: true };
+				try {
+					const d = await getQuestionDetail(e.paperId, e.number);
+					if (cancelled) return;
+					const nums = numbering.byBlock[e.blockId] ?? [];
+					const para = parseParagraphRange(e.number, e.qtype);
+					details[e.blockId] = {
+						ready: true,
+						segs: dressQuestion(d.question ?? [], { numbers: nums, para })
+					};
+				} catch (err) {
+					if (!cancelled) details[e.blockId] = { error: String(err?.message ?? err) };
+				}
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	function reload(bid) {
+		const entry = ordered.find((o) => o.blockId === bid);
+		if (!entry) return;
+		dropQuestionDetail(entry.paperId, entry.number);
+		delete details[bid];
+		rev++;
+	}
+
+	/** Flatten one loaded block into measurable rows. */
+	function blockRows(entry) {
+		const d = details[entry.blockId];
+		if (!d || d.loading)
+			return [{ id: `${entry.blockId}:loading`, kind: 'loading' }];
+		if (d.error)
+			return [{ id: `${entry.blockId}:error`, kind: 'error', entry, message: d.error }];
+		const nums = numbering.byBlock[entry.blockId] ?? [];
+		const pl = paraIndex.get(entry.blockId);
+		const out = [];
+		if (pl) out.push({ id: `${entry.blockId}:para`, kind: 'parahead', label: pl, keepWithNext: true });
+		let first = true;
+		let n = 0;
+		const pushSeg = (seg) => {
+			if (seg.kind === 'text' && typeof seg.html === 'string') {
+				const parts = splitTopBlocks(seg.html);
+				if (parts.length === 0) return;
+				for (const piece of parts) {
+					out.push({
+						id: `${entry.blockId}:t${n++}`,
+						kind: 'seg',
+						seg: { kind: 'text', html: piece },
+						keepWithNext: first
+					});
+					first = false;
+				}
+				return;
+			}
+			out.push({ id: `${entry.blockId}:t${n++}`, kind: 'seg', seg, keepWithNext: first });
+			first = false;
+		};
+		for (const seg of d.segs) pushSeg(seg);
+		if (nums.length === 0 || out.length === (pl ? 1 : 0)) {
+			out.push({
+				id: `${entry.blockId}:empty`,
+				kind: 'seg',
+				seg: { kind: 'text', html: '<p>Nothing rendered for this question.</p>' },
+				keepWithNext: first
+			});
+		}
+		void nums;
+		return out;
+	}
+
 	const rows = $derived.by(() => {
-		const out = [{ id: 'doc', kind: 'doc', header: true }];
+		const out = [{ id: 'doc', kind: 'doc', keepWithNext: true }];
 		if (mode === 'assignment') {
-			for (const e of ordered) out.push({ id: e.blockId, kind: 'q' });
+			for (const e of ordered) out.push(...blockRows(e));
 			return out;
 		}
-		for (const s of sections) {
+		for (const [si, s] of sections.entries()) {
 			const bids = (s.blockIds ?? []).filter((bid) => (numbering.byBlock[bid] ?? []).length > 0);
 			if (!bids.length) continue;
-			out.push({ id: `sec:${s.id}`, kind: 'sec', header: true, si: sections.indexOf(s) });
-			for (const bid of bids) out.push({ id: bid, kind: 'q' });
+			out.push({ id: `sec:${s.id}`, kind: 'sec', si, keepWithNext: true });
+			for (const bid of bids) {
+				const entry = ordered.find((o) => o.blockId === bid);
+				if (entry) out.push(...blockRows(entry));
+			}
 		}
 		return out;
 	});
@@ -58,15 +151,19 @@
 				{/each}
 			</ul>
 		</div>
+	{:else if def.kind === 'parahead'}
+		<p class="parahead">Paragraph {def.label}</p>
+	{:else if def.kind === 'loading'}
+		<div class="skel" aria-hidden="true"></div>
+		<div class="skel short" aria-hidden="true"></div>
+	{:else if def.kind === 'error'}
+		<p class="pl-error" role="alert">Could not load this question: {def.message}</p>
+		<button
+			type="button" class="retry"
+			onclick={() => reload(def.entry.blockId)}
+		>Retry</button>
 	{:else}
-		{@const entry = ordered.find((o) => o.blockId === def.id)}
-		{#if entry}
-			<QuestionSheetBlock
-				block={entry}
-				numbers={numbering.byBlock[def.id] ?? []}
-				paraLabel={paraIndex.get(def.id) ?? null}
-			/>
-		{/if}
+		<Segments segments={[def.seg]} zoomable />
 	{/if}
 {/snippet}
 
@@ -75,7 +172,7 @@
 		text-align: center;
 		border-bottom: 2px solid #111;
 		padding-bottom: 10px;
-		margin-bottom: 14px;
+		margin-bottom: 12px;
 	}
 	.dochead h2 {
 		font-family: var(--pl-font-display);
@@ -87,7 +184,7 @@
 		margin: 0;
 	}
 	.sechead {
-		margin: 4px 0 10px;
+		margin: 2px 0 8px;
 		padding-bottom: 8px;
 		border-bottom: 1px solid #111;
 	}
@@ -110,5 +207,33 @@
 		padding-left: 18px;
 		font-size: 0.78rem;
 		line-height: 1.55;
+	}
+	.parahead {
+		margin: 2px 0 6px;
+		font-weight: 700;
+		font-size: 0.9rem;
+	}
+	.skel {
+		height: 1em;
+		border-radius: 4px;
+		background: var(--pl-raised);
+		margin: 0.9em 0;
+	}
+	.skel.short {
+		width: 55%;
+	}
+	.retry {
+		border: 1px solid var(--pl-line);
+		border-radius: 6px;
+		background: none;
+		padding: 4px 12px;
+		min-height: 32px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.retry:hover {
+		border-color: var(--pl-seal);
+		color: var(--pl-seal);
 	}
 </style>

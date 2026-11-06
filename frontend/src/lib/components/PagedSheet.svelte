@@ -28,7 +28,7 @@
 		const items = rows.map((r) => ({
 			id: r.id,
 			h: heights[r.id] ?? 280,
-			header: !!r.header,
+			keepWithNext: !!r.keepWithNext,
 			breakBefore: !!r.breakBefore
 		}));
 		return packRows(items, usableH);

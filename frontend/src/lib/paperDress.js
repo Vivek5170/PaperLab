@@ -112,7 +112,7 @@ export function extractAnswerKeys(segments) {
  * owns answers now) and relabel "Solution for A-17" (URL-encoded in
  * data-tex) to generated Q-numbers, preserving order of appearance.
  * Bodies reading "No solution provided." are left for the missing
- * placeholder (see SolutionBlock).
+ * placeholder (see AnswerSheetPreview).
  */
 export function dressSolution(segments, { numbers = [] } = {}) {
 	if (!numbers.length) return segments;

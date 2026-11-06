@@ -176,13 +176,16 @@ describe('packRows', () => {
 	it('packs greedily without splitting rows', () => {
 		assert.deepEqual(packRows([R('a', 400), R('b', 400), R('c', 400)], U), [['a', 'b'], ['c']]);
 	});
-	it('breakBefore starts a fresh page; headers never strand', () => {
+	it('breakBefore starts a fresh page; keepWithNext rows never strand', () => {
 		assert.deepEqual(
-			packRows([R('k', 200), R('h', 100, { header: true, breakBefore: true }), R('s', 400)], U),
+			packRows([R('k', 200), R('h', 100, { keepWithNext: true, breakBefore: true }), R('s', 400)], U),
 			[['k'], ['h', 's']]);
 		assert.deepEqual(
-			packRows([R('a', 900), R('h', 100, { header: true }), R('b', 100)], U),
+			packRows([R('a', 900), R('h', 100, { keepWithNext: true }), R('b', 100)], U),
 			[['a'], ['h', 'b']]);
+		assert.deepEqual(
+			packRows([R('a', 400), R('b', 400), R('c', 400)], U),
+			[['a', 'b'], ['c']]);
 	});
 	it('A4 constants are real A4 at 96dpi', () => {
 		assert.equal([PAGE_W, PAGE_H].join('x'), '794x1123');
