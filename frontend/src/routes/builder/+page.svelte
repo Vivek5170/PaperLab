@@ -24,10 +24,17 @@ import { cartStore } from '$lib/carts.js';
 	let collapsed = $state({});
 	let dragBid = $state(null);
 	let splitPct = $state(browser ? Number(sessionStorage.getItem('pl-split-v1')) || 38 : 38);
+	let figBoxed = $state(browser ? localStorage.getItem('pl-figbox-v1') === '1' : false);
 
 	function toggleSection(id) {
 		collapsed[id] = !collapsed[id];
 	}
+
+	$effect(() => {
+		try {
+			localStorage.setItem('pl-figbox-v1', figBoxed ? '1' : '0');
+		} catch { /* private mode: pref lasts the session */ }
+	});
 	function clampSplit(pct, w) {
 		const minL = Math.min(50, (280 / Math.max(w, 1)) * 100);
 		return Math.max(minL, Math.min(62, pct));
@@ -197,6 +204,14 @@ import { cartStore } from '$lib/carts.js';
 			</span>
 		{/if}
 		<div class="actions">
+			<button
+				type="button"
+				class="mini"
+				class:on={figBoxed}
+				aria-pressed={figBoxed}
+				title={figBoxed ? 'Hide boxes around figures' : 'Show boxes around figures'}
+				onclick={() => (figBoxed = !figBoxed)}
+			>Frames</button>
 			<button type="button" class="pl-btn" onclick={() => (confirmNew = true)}>New</button>
 			<button type="button" class="pl-btn pl-btn-primary" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
 		</div>
@@ -414,11 +429,11 @@ import { cartStore } from '$lib/carts.js';
 			</div>
 			<div class="previewscroll">
 				{#if previewMode === 'questions'}
-					<QuestionSheetPreview title={draft.title} ordered={order} numbering={num} sections={draft.sections} mode={draft.mode} />
+					<QuestionSheetPreview title={draft.title} ordered={order} numbering={num} sections={draft.sections} mode={draft.mode} bare={!figBoxed} />
 				{:else}
 					<AnswerSheetPreview
 						title={draft.title} numbering={num} blocks={draft.blocks}
-						overrides={draft.keyOverride} parsed={$parsedKeys} ordered={order}
+						overrides={draft.keyOverride} parsed={$parsedKeys} ordered={order} bare={!figBoxed}
 						onOverride={(bid, i, t) => builder.setOverride(bid, i, t)}
 					/>
 				{/if}
@@ -821,6 +836,11 @@ import { cartStore } from '$lib/carts.js';
 	.mini:disabled {
 		opacity: 0.4;
 		cursor: default;
+	}
+	.mini.on {
+		border-color: var(--pl-seal);
+		color: var(--pl-seal);
+		background: var(--pl-seal-soft);
 	}
 	.blocks {
 		display: flex;

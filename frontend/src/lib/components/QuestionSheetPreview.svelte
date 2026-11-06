@@ -17,7 +17,7 @@
 	import Segments from '$lib/components/Segments.svelte';
 	import PagedSheet from '$lib/components/PagedSheet.svelte';
 
-	let { title = '', ordered = [], numbering, sections = [], mode = 'paper' } = $props();
+	let { title = '', ordered = [], numbering, sections = [], mode = 'paper', bare = true } = $props();
 
 	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -207,7 +207,7 @@
 			onclick={() => reload(def.entry.blockId)}
 		>Retry</button>
 	{:else}
-		<Segments segments={[def.seg]} zoomable eager bare />
+		<Segments segments={[def.seg]} zoomable eager bare={bare} />
 	{/if}
 {/snippet}
 

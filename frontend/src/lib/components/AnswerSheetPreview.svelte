@@ -19,7 +19,7 @@
 	import KeyTable from '$lib/components/KeyTable.svelte';
 	import PagedSheet from '$lib/components/PagedSheet.svelte';
 
-	let { title = '', numbering, blocks = {}, overrides = {}, parsed = {}, ordered = [], onOverride } = $props();
+	let { title = '', numbering, blocks = {}, overrides = {}, parsed = {}, ordered = [], onOverride, bare = true } = $props();
 
 	let details = $state({});
 	let rev = $state(0);
@@ -187,7 +187,7 @@
 			onclick={() => reload(def.entry.blockId)}
 		>Retry</button>
 	{:else}
-		<Segments segments={[def.seg]} zoomable eager bare />
+		<Segments segments={[def.seg]} zoomable eager bare={bare} />
 	{/if}
 {/snippet}
 
