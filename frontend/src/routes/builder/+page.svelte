@@ -25,6 +25,11 @@ import { cartStore } from '$lib/carts.js';
 	let dragBid = $state(null);
 	let splitPct = $state(browser ? Number(sessionStorage.getItem('pl-split-v1')) || 38 : 38);
 	let figBoxed = $state(browser ? localStorage.getItem('pl-figbox-v1') === '1' : false);
+	let sheetFont = $state(
+		browser && ['paperlab', 'times', 'kokila', 'arial'].includes(localStorage.getItem('pl-sheetfont-v1'))
+			? localStorage.getItem('pl-sheetfont-v1')
+			: 'paperlab'
+	);
 
 	function toggleSection(id) {
 		collapsed[id] = !collapsed[id];
@@ -33,7 +38,8 @@ import { cartStore } from '$lib/carts.js';
 	$effect(() => {
 		try {
 			localStorage.setItem('pl-figbox-v1', figBoxed ? '1' : '0');
-		} catch { /* private mode: pref lasts the session */ }
+			localStorage.setItem('pl-sheetfont-v1', sheetFont);
+		} catch { /* private mode: prefs last the session */ }
 	});
 	function clampSplit(pct, w) {
 		const minL = Math.min(50, (280 / Math.max(w, 1)) * 100);
@@ -216,6 +222,17 @@ import { cartStore } from '$lib/carts.js';
 				<span>Frames</span>
 				<span class="track" aria-hidden="true"><span class="knob"></span></span>
 			</button>
+			<select
+				class="fontsel"
+				bind:value={sheetFont}
+				aria-label="Sheet body font"
+				title="Sheet body font: PaperLab, Times (GTA/Chaitanya), Kokila (Allen), Arial (FITJEE)"
+			>
+				<option value="paperlab">PaperLab</option>
+				<option value="times">Times (GTA)</option>
+				<option value="kokila">Kokila (Allen)</option>
+				<option value="arial">Arial (FITJEE)</option>
+			</select>
 			<button type="button" class="pl-btn" onclick={() => (confirmNew = true)}>New</button>
 			<button type="button" class="pl-btn pl-btn-primary" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
 		</div>
@@ -433,11 +450,11 @@ import { cartStore } from '$lib/carts.js';
 			</div>
 			<div class="previewscroll">
 				{#if previewMode === 'questions'}
-					<QuestionSheetPreview title={draft.title} ordered={order} numbering={num} sections={draft.sections} mode={draft.mode} bare={!figBoxed} />
+					<QuestionSheetPreview title={draft.title} ordered={order} numbering={num} sections={draft.sections} mode={draft.mode} bare={!figBoxed} font={sheetFont} />
 				{:else}
 					<AnswerSheetPreview
 						title={draft.title} numbering={num} blocks={draft.blocks}
-						overrides={draft.keyOverride} parsed={$parsedKeys} ordered={order} bare={!figBoxed}
+						overrides={draft.keyOverride} parsed={$parsedKeys} ordered={order} bare={!figBoxed} font={sheetFont}
 						onOverride={(bid, i, t) => builder.setOverride(bid, i, t)}
 					/>
 				{/if}
@@ -840,6 +857,18 @@ import { cartStore } from '$lib/carts.js';
 	.mini:disabled {
 		opacity: 0.4;
 		cursor: default;
+	}
+	.fontsel {
+		min-height: 0;
+		font-size: 0.78rem;
+		font-weight: 600;
+		padding: 4px 6px;
+		border-radius: 6px;
+		border: 1px solid var(--pl-line);
+		background: var(--pl-surface);
+		color: var(--pl-ink);
+		max-width: 132px;
+		cursor: pointer;
 	}
 	.frameswitch {
 		display: inline-flex;

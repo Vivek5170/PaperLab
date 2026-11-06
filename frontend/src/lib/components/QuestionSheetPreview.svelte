@@ -17,7 +17,7 @@
 	import Segments from '$lib/components/Segments.svelte';
 	import PagedSheet from '$lib/components/PagedSheet.svelte';
 
-	let { title = '', ordered = [], numbering, sections = [], mode = 'paper', bare = true } = $props();
+	let { title = '', ordered = [], numbering, sections = [], mode = 'paper', bare = true, font = 'paperlab' } = $props();
 
 	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -175,7 +175,7 @@
 		<button type="button" class="retry" onclick={retryAll}>Retry failed</button>
 	</div>
 {/if}
-<PagedSheet {rows} row={qrow} />
+<PagedSheet {rows} row={qrow} font={font} />
 {#snippet qrow(def)}
 	{#if def.kind === 'doc'}
 		<header class="dochead">

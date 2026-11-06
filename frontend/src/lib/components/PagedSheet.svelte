@@ -19,7 +19,7 @@
 	import { tick, onMount } from 'svelte';
 	import { packRows, PAGE_W, PAGE_H, PAD_TOP, PAD_BOTTOM, usableHeight } from '$lib/paginate.js';
 
-	let { rows = [], row, gap = 20 } = $props();
+	let { rows = [], row, gap = 20, font = 'paperlab' } = $props();
 
 	// A few px of slack so late font/image settling moves breaks early
 	// rather than exactly at the edge.
@@ -173,7 +173,7 @@
 		<div class="pscale" bind:this={flowEl} style={`width: ${PAGE_W}px; transform: scale(${scale});`}>
 			{#each pages as page, pi (page[0] ?? pi)}
 				<div
-					class="apage"
+					class="apage font-{font}"
 					style={`width: ${PAGE_W}px; min-height: ${PAGE_H}px; padding: ${PAD_TOP}px 56px ${PAD_BOTTOM}px; margin-bottom: ${pi < pages.length - 1 ? gap : 0}px;`}
 				>
 					{#each page as id (id)}
@@ -218,6 +218,18 @@
 	.prow {
 		display: flow-root;
 		min-width: 0;
+	}
+	/* Publisher body faces: paperlab default inherits Inter; the rest
+	   mirror the measured originals (GTA/Chaitanya Times, Allen Kokila,
+	   FITJEE Arial). KaTeX math keeps its own fonts regardless. */
+	.apage.font-times {
+		font-family: 'Times New Roman', Times, Georgia, serif;
+	}
+	.apage.font-kokila {
+		font-family: Kokila, 'Times New Roman', Times, serif;
+	}
+	.apage.font-arial {
+		font-family: Arial, Helvetica, sans-serif;
 	}
 	.apage :global(.fig) {
 		margin: 12px 0 14px;

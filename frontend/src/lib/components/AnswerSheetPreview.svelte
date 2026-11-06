@@ -19,7 +19,7 @@
 	import KeyTable from '$lib/components/KeyTable.svelte';
 	import PagedSheet from '$lib/components/PagedSheet.svelte';
 
-	let { title = '', numbering, blocks = {}, overrides = {}, parsed = {}, ordered = [], onOverride, bare = true } = $props();
+	let { title = '', numbering, blocks = {}, overrides = {}, parsed = {}, ordered = [], onOverride, bare = true, font = 'paperlab' } = $props();
 
 	let details = $state({});
 	let rev = $state(0);
@@ -161,7 +161,7 @@
 		<button type="button" class="retry" onclick={retryAll}>Retry failed</button>
 	</div>
 {/if}
-<PagedSheet {rows} row={arow} />
+<PagedSheet {rows} row={arow} font={font} />
 {#snippet arow(def)}
 	{#if def.kind === 'doc'}
 		<header class="dochead">
