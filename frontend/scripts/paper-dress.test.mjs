@@ -11,6 +11,7 @@ import { dressQuestion, dressSolution, isMissingSolutionText, extractAnswerKeys 
 import { toRoman } from '../src/lib/numbering.js';
 import { sectionMeta } from '../src/lib/sectionMeta.js';
 import { splitTopBlocks } from '../src/lib/flowsplit.js';
+import { withTimeout } from '../src/lib/async.js';
 
 const T = (html) => ({ kind: 'text', html });
 const F = (url) => ({ kind: 'fig', url });
@@ -124,5 +125,14 @@ describe('splitTopBlocks', () => {
 		assert.deepEqual(splitTopBlocks('<p>A <img src="x"> B.</p>'), ['<p>A <img src="x"> B.</p>']);
 		assert.deepEqual(splitTopBlocks('bare text'), ['bare text']);
 		assert.deepEqual(splitTopBlocks(''), []);
+	});
+});
+
+describe('withTimeout', () => {
+	it('passes fast values through', async () => {
+		assert.equal(await withTimeout(Promise.resolve(7), 500), 7);
+	});
+	it('rejects slow work instead of hanging', async () => {
+		await assert.rejects(withTimeout(new Promise(() => {}), 20, 'slow?'), /slow\?/);
 	});
 });

@@ -12,6 +12,7 @@
 	import { dressQuestion } from '$lib/paperDress.js';
 	import { getQuestionDetail, dropQuestionDetail } from '$lib/questionCache.js';
 	import { splitTopBlocks } from '$lib/flowsplit.js';
+	import { withTimeout } from '$lib/async.js';
 	import Segments from '$lib/components/Segments.svelte';
 	import PagedSheet from '$lib/components/PagedSheet.svelte';
 
@@ -35,14 +36,17 @@
 		void idsKey;
 		void rev;
 		let cancelled = false;
+		const missing = ordered.filter((e) => {
+			const k = details[e.blockId];
+			return !(k && (k.ready || k.loading));
+		});
+		if (missing.length === 0) return;
+		for (const e of missing) details[e.blockId] = { loading: true };
 		(async () => {
-			for (const e of ordered) {
-				if (cancelled) continue;
-				const known = details[e.blockId];
-				if (known && (known.ready || known.loading)) continue;
-				details[e.blockId] = { loading: true };
+			await Promise.all(missing.map(async (e) => {
 				try {
-					const d = await getQuestionDetail(e.paperId, e.number);
+					const d = await withTimeout(
+						getQuestionDetail(e.paperId, e.number), 20000, 'Backend timed out — is it running on port 8000?');
 					if (cancelled) return;
 					const nums = numbering.byBlock[e.blockId] ?? [];
 					const para = parseParagraphRange(e.number, e.qtype);
@@ -53,12 +57,21 @@
 				} catch (err) {
 					if (!cancelled) details[e.blockId] = { error: String(err?.message ?? err) };
 				}
-			}
+			}));
 		})();
 		return () => {
 			cancelled = true;
 		};
 	});
+
+	function retryAll() {
+		for (const e of ordered) if (details[e.blockId]?.error) delete details[e.blockId];
+		rev++;
+	}
+
+	const allFailed = $derived(
+		ordered.length > 0 && ordered.every((e) => details[e.blockId]?.error)
+	);
 
 	function reload(bid) {
 		const entry = ordered.find((o) => o.blockId === bid);
@@ -131,6 +144,13 @@
 	});
 </script>
 
+{#if allFailed}
+	<div class="loadfail" role="alert">
+		<strong>Preview can't reach question data.</strong>
+		<span class="pl-sub">{details[ordered[0].blockId]?.error ?? ''}</span>
+		<button type="button" class="retry" onclick={retryAll}>Retry all</button>
+	</div>
+{/if}
 <PagedSheet {rows} row={qrow} />
 {#snippet qrow(def)}
 	{#if def.kind === 'doc'}
@@ -221,6 +241,17 @@
 	}
 	.skel.short {
 		width: 55%;
+	}
+	.loadfail {
+		border: 1px solid var(--pl-seal);
+		border-radius: var(--pl-radius-sm);
+		background: var(--pl-seal-soft);
+		padding: 10px 12px;
+		margin-bottom: 10px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		font-size: 0.82rem;
 	}
 	.retry {
 		border: 1px solid var(--pl-line);
