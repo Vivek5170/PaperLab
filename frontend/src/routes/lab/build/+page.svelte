@@ -174,9 +174,6 @@ import { cartStore } from '$lib/carts.js';
 				<hr class="seprule" />
 				<div class="importlabel">
 					<span>Import from cart</span>
-					{#if activeCart}
-						<span class="pl-sub">{activeCart.name} · {activeCart.items.length}</span>
-					{/if}
 				</div>
 				<div class="importrow">
 					<select bind:value={cartId} aria-label="Source cart">
@@ -185,7 +182,7 @@ import { cartStore } from '$lib/carts.js';
 						{/each}
 					</select>
 					<button type="button" class="pl-btn" disabled={!activeCart || activeCart.items.length === 0} onclick={() => doImport(false)}>
-						Import{activeCart ? ` ${activeCart.items.length}` : ''}
+						Import
 					</button>
 				</div>
 				{#if draft.mode === 'paper'}
