@@ -184,7 +184,6 @@ import { cartStore } from '$lib/carts.js';
 
 <div class="page">
 	<header class="topbar">
-		<a class="back" href="/cart">← Back</a>
 		<span class="ident">Paper builder</span>
 		<div class="seg" role="group" aria-label="Preview mode">
 			<button type="button" class:active={previewMode === 'questions'} aria-pressed={previewMode === 'questions'} onclick={() => (previewMode = 'questions')}>Question Sheet</button>
@@ -445,11 +444,6 @@ import { cartStore } from '$lib/carts.js';
 		padding: 8px 16px;
 		background: var(--pl-surface);
 		border-bottom: 1px solid var(--pl-line);
-	}
-	.back {
-		font-weight: 600;
-		font-size: 0.82rem;
-		white-space: nowrap;
 	}
 	.ident {
 		font-size: 0.9rem;
