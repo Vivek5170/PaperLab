@@ -52,7 +52,7 @@
 </script>
 
 <section class="sol" aria-label={heading()}>
-	<h4>{heading()} <span class="src">· Paper {block.paperId} · Q{block.number}</span></h4>
+	<h4>{heading()}</h4>
 	{#if state === 'loading'}
 		<div class="skel" aria-hidden="true"></div>
 		<div class="skel short" aria-hidden="true"></div>
@@ -78,11 +78,6 @@
 	.sol h4 {
 		margin: 0 0 8px;
 		font-size: 0.92rem;
-	}
-	.src {
-		font-weight: 400;
-		font-size: 0.78rem;
-		color: var(--pl-ink-soft);
 	}
 	.skel {
 		height: 1em;

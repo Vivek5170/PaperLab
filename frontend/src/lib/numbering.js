@@ -5,7 +5,8 @@
  * (paper: section order then block order; assignment: flat block order)
  * and owns every generated number. BuilderBlock, KeyTable and
  * SolutionsList all consume this one result — no component may number
- * anything on its own.
+ * anything on its own. QuestionSheetPreview and AnswerSheetPreview
+ * render from it; SolutionsList was folded into the answer sheet.
  *
  * Paragraph groups stay indivisible: one block consumes k consecutive
  * numbers (k from parseParagraphRange, bound-mirrored with render.py).

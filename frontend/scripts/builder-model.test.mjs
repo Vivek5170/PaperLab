@@ -6,6 +6,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { assignNumbers, flattenDraft, numberLabel } from '../src/lib/numbering.js';
+import { packRows, PAGE_W, PAGE_H } from '../src/lib/paginate.js';
 import {
 	createDraft, importBlocks, autoGroup, addSection, deleteSection,
 	setSectionAtype, moveSection, moveBlock, moveBlockToSection,
@@ -166,5 +167,24 @@ describe('builderModel', () => {
 		assert.deepEqual(draft.sections[0].blockIds, ['b1']);
 		assert.deepEqual(draft.keyOverride, { 'b1:0': 'A' });
 		assert.ok(draft.blocks.b1);
+	});
+});
+
+describe('packRows', () => {
+	const U = 1000;
+	const R = (id, h, extra = {}) => ({ id, h, ...extra });
+	it('packs greedily without splitting rows', () => {
+		assert.deepEqual(packRows([R('a', 400), R('b', 400), R('c', 400)], U), [['a', 'b'], ['c']]);
+	});
+	it('breakBefore starts a fresh page; headers never strand', () => {
+		assert.deepEqual(
+			packRows([R('k', 200), R('h', 100, { header: true, breakBefore: true }), R('s', 400)], U),
+			[['k'], ['h', 's']]);
+		assert.deepEqual(
+			packRows([R('a', 900), R('h', 100, { header: true }), R('b', 100)], U),
+			[['a'], ['h', 'b']]);
+	});
+	it('A4 constants are real A4 at 96dpi', () => {
+		assert.equal([PAGE_W, PAGE_H].join('x'), '794x1123');
 	});
 });

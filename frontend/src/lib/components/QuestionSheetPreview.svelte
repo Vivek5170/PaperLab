@@ -1,18 +1,20 @@
 <script>
+	/**
+	 * Live Question Sheet on real A4 pages: section headings, inline
+	 * generated numbers, passages headed Paragraph I/II. Pure function
+	 * of (ordered, numbering, draft title/mode) — no numbering of its own.
+	 */
 	import { toRoman } from '$lib/numbering.js';
 	import { isParagraphId } from '$lib/paragraph.js';
 	import { sectionMeta } from '$lib/sectionMeta.js';
 	import QuestionSheetBlock from '$lib/components/QuestionSheetBlock.svelte';
-
-	/**
-	 * Live Question Sheet: the actual paper output — section headings,
-	 * inline generated numbers, passages headed Paragraph I/II with
-	 * per-question sub-numbers, real segments, figures via existing URLs.
-	 * Pure function of (ordered, numbering, draft title/mode). */
+	import PagedSheet from '$lib/components/PagedSheet.svelte';
 
 	let { title = '', ordered = [], numbering, sections = [], mode = 'paper' } = $props();
 
-	// Paragraph I, II... in document order (JEE convention, no numbers).
+	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+	// Paragraph I, II... in document order (no numbers in the header).
 	const paraIndex = $derived.by(() => {
 		const m = new Map();
 		let i = 0;
@@ -20,89 +22,74 @@
 		return m;
 	});
 
-	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+	const rows = $derived.by(() => {
+		const out = [{ id: 'doc', kind: 'doc', header: true }];
+		if (mode === 'assignment') {
+			for (const e of ordered) out.push({ id: e.blockId, kind: 'q' });
+			return out;
+		}
+		for (const s of sections) {
+			const bids = (s.blockIds ?? []).filter((bid) => (numbering.byBlock[bid] ?? []).length > 0);
+			if (!bids.length) continue;
+			out.push({ id: `sec:${s.id}`, kind: 'sec', header: true, si: sections.indexOf(s) });
+			for (const bid of bids) out.push({ id: bid, kind: 'q' });
+		}
+		return out;
+	});
 </script>
 
-<div class="sheet" aria-label="Question sheet preview">
-	<header class="dochead">
-		<h2>{title?.trim() || 'Untitled paper'}</h2>
-		<p class="pl-sub">{mode === 'paper' ? 'Question paper' : 'Assignment'} · {numbering.total} question{numbering.total === 1 ? '' : 's'}</p>
-	</header>
-	{#if ordered.length === 0}
-		<p class="pl-sub">Nothing to preview yet — import a cart in the editor.</p>
-	{:else if mode === 'assignment'}
-		{#each ordered as entry (entry.blockId)}
-			<QuestionSheetBlock block={entry} numbers={numbering.byBlock[entry.blockId] ?? []} paraLabel={paraIndex.get(entry.blockId) ?? null} />
-		{/each}
-	{:else}
-				{#each sections as s, si (s.id)}
-					{@const secNums = (s.blockIds ?? []).flatMap((bid) => numbering.byBlock[bid] ?? [])}
-					{#if secNums.length > 0}
-						{@const meta = sectionMeta(s.atype, secNums.length, (s.blockIds ?? []).length)}
-						<div class="sechead">
-							<h3>SECTION–{(LETTERS[si] ?? `X${si + 1}`)}</h3>
-							<p class="seckind">({meta.kind})</p>
-							<ul>
-								{#each meta.lines as line (line)}
-									<li>{line}</li>
-								{/each}
-							</ul>
-						</div>
-				{#each s.blockIds as bid (bid)}
-					{@const entry = ordered.find((o) => o.blockId === bid)}
-					{#if entry}
-						<QuestionSheetBlock block={entry} numbers={numbering.byBlock[bid] ?? []} paraLabel={paraIndex.get(bid) ?? null} />
-					{/if}
+<PagedSheet {rows} row={qrow} />
+{#snippet qrow(def)}
+	{#if def.kind === 'doc'}
+		<header class="dochead">
+			<h2>{title?.trim() || 'Untitled paper'}</h2>
+			<p class="pl-sub">{mode === 'paper' ? 'Question paper' : 'Assignment'} · {numbering.total} questions</p>
+		</header>
+	{:else if def.kind === 'sec'}
+		{@const s = sections[def.si]}
+		{@const secNums = (s.blockIds ?? []).flatMap((bid) => numbering.byBlock[bid] ?? [])}
+		{@const meta = sectionMeta(s.atype, secNums.length, (s.blockIds ?? []).length)}
+		<div class="sechead">
+			<h3>SECTION–{(LETTERS[def.si] ?? `X${def.si + 1}`)}</h3>
+			<p class="seckind">({meta.kind})</p>
+			<ul>
+				{#each meta.lines as line (line)}
+					<li>{line}</li>
 				{/each}
-			{/if}
-		{/each}
+			</ul>
+		</div>
+	{:else}
+		{@const entry = ordered.find((o) => o.blockId === def.id)}
+		{#if entry}
+			<QuestionSheetBlock
+				block={entry}
+				numbers={numbering.byBlock[def.id] ?? []}
+				paraLabel={paraIndex.get(def.id) ?? null}
+			/>
+		{/if}
 	{/if}
-</div>
+{/snippet}
 
 <style>
-	.sheet {
-		font-size: 0.8125rem;
-		line-height: 1.6;
-		background: #ffffff;
-		color: #111111;
-		border: 1px solid var(--pl-line);
-		border-radius: 2px;
-		box-shadow: var(--pl-shadow-md);
-		padding: 44px 52px;
-		width: 100%;
-		max-width: 794px;
-		margin: 0 auto;
-	}
 	.dochead {
 		text-align: center;
-		border-bottom: 2px solid var(--pl-ink);
-		padding-bottom: 12px;
-		margin-bottom: 20px;
+		border-bottom: 2px solid #111;
+		padding-bottom: 10px;
+		margin-bottom: 14px;
 	}
 	.dochead h2 {
 		font-family: var(--pl-font-display);
 		font-size: 1.3rem;
 		margin: 0 0 2px;
+		color: #111;
 	}
 	.dochead .pl-sub {
 		margin: 0;
 	}
-	.sheet :global(.fig) {
-		margin: 12px 0 14px;
-	}
-	.sheet :global(.fig img) {
-		max-width: 250px;
-	}
-	.sheet :global(.pl-table img) {
-		max-width: 200px;
-	}
 	.sechead {
-		margin: 20px 0 12px;
+		margin: 4px 0 10px;
 		padding-bottom: 8px;
-		border-bottom: 1px solid var(--pl-line);
-	}
-	.sechead:first-of-type {
-		margin-top: 0;
+		border-bottom: 1px solid #111;
 	}
 	.sechead h3 {
 		font-family: var(--pl-font-display);
@@ -110,6 +97,7 @@
 		text-align: center;
 		margin: 0 0 2px;
 		letter-spacing: 0.04em;
+		color: #111;
 	}
 	.seckind {
 		text-align: center;

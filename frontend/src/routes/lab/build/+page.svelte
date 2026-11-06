@@ -233,6 +233,7 @@
 					<button type="button" class:active={previewMode === 'answers'} aria-pressed={previewMode === 'answers'} onclick={() => (previewMode = 'answers')}>Answer Sheet</button>
 				</div>
 				<span class="pl-sub">{num.total} numbers · live</span>
+				<button type="button" class="mini" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
 			</div>
 			<div class="previewscroll">
 				{#if previewMode === 'questions'}
