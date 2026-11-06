@@ -7,7 +7,7 @@
 	 * placeholders (<span class="pl-math[data-tex]">) produced by the exact
 	 * Streamlit splitting rules; this component only fills them with KaTeX.
 	 */
-	let { segments = [], bust = '', zoomable = false, eager = false } = $props();
+	let { segments = [], bust = '', zoomable = false, eager = false, bare = false } = $props();
 
 	/** Click-to-zoom lightbox. Opt-in (zoomable) so existing uses are unaffected. */
 
@@ -163,7 +163,7 @@
 	});
 </script>
 
-<div class="segs" bind:this={el}>
+<div class="segs" class:bare bind:this={el}>
 	{#each segments as seg, i (i)}
 		{#if seg.kind === 'text'}
 			<div class="md">{@html seg.html || ''}</div>
@@ -253,6 +253,14 @@
 		border: 1px solid var(--pl-line);
 		border-radius: var(--pl-radius-sm);
 		background: var(--pl-surface);
+	}
+	/* Bare sheets (builder previews + print): images float on the paper
+	   with no boxes — matches the original paper look. */
+	.segs.bare .fig img,
+	.segs.bare .pl-table img {
+		border: none;
+		border-radius: 0;
+		background: none;
 	}
 	.figbtn {
 		border: none;

@@ -187,7 +187,7 @@
 			onclick={() => reload(def.entry.blockId)}
 		>Retry</button>
 	{:else}
-		<Segments segments={[def.seg]} zoomable eager />
+		<Segments segments={[def.seg]} zoomable eager bare />
 	{/if}
 {/snippet}
 
