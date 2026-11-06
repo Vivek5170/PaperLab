@@ -18,9 +18,12 @@ import {
 	setSectionAtype,
 	moveSection,
 	moveBlock,
+	moveBlockTo,
 	moveBlockToSection,
+	moveBlockToSectionAt,
 	removeBlock,
 	restoreBlock,
+	restoreSectionOrder,
 	setKeyOverride,
 	validateDraft
 } from './builderModel.js';
@@ -175,6 +178,33 @@ export const builder = {
 			return r.draft;
 		});
 		return moved;
+	},
+	moveBlockTo(id, index) {
+		let moved = false;
+		builderStore.update((d) => {
+			const r = moveBlockTo(d, id, index);
+			moved = r.moved;
+			return r.draft;
+		});
+		return moved;
+	},
+	moveBlockToSectionAt(id, targetId, index) {
+		let r0 = { moved: false };
+		builderStore.update((d) => {
+			const r = moveBlockToSectionAt(d, id, targetId, index);
+			r0 = r;
+			return r.draft;
+		});
+		return r0;
+	},
+	restoreSectionOrder(order) {
+		let restored = false;
+		builderStore.update((d) => {
+			const r = restoreSectionOrder(d, order);
+			restored = r.restored;
+			return r.draft;
+		});
+		return restored;
 	},
 	moveBlockToSection(id, targetId) {
 		let r0 = { moved: false };

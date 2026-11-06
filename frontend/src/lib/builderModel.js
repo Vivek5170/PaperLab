@@ -237,6 +237,56 @@ export function moveBlock(draft, blockId, dir) {
 	return { draft: touch({ ...draft, sections }), moved: true };
 }
 
+/** Move a block to an arbitrary index within its own section. */
+export function moveBlockTo(draft, blockId, toIndex) {
+	const at = locate(draft, blockId);
+	if (!at) return { draft, moved: false };
+	const ids = draft.sections[at.si].blockIds.filter((id) => id !== blockId);
+	const ix = Math.max(0, Math.min(ids.length, toIndex | 0));
+	ids.splice(ix, 0, blockId);
+	if (ids.every((id, i) => draft.sections[at.si].blockIds[i] === id)) return { draft, moved: false };
+	const sections = draft.sections.map((s) => ({ ...s, blockIds: [...s.blockIds] }));
+	sections[at.si].blockIds = ids;
+	return { draft: touch({ ...draft, sections }), moved: true };
+}
+
+/** Move a block into another section at an index; rejects type mismatches. */
+export function moveBlockToSectionAt(draft, blockId, targetId, toIndex) {
+	const at = locate(draft, blockId);
+	const target = draft.sections.find((s) => s.id === targetId);
+	const block = draft.blocks?.[blockId];
+	if (!at || !target || !block) return { draft, moved: false, reason: 'not-found' };
+	if (!sectionAccepts(target, block)) return { draft, moved: false, reason: 'type-mismatch' };
+	const sections = draft.sections.map((s) => ({ ...s, blockIds: [...s.blockIds] }));
+	sections[at.si].blockIds = sections[at.si].blockIds.filter((id) => id !== blockId);
+	const dest = sections.find((s) => s.id === targetId).blockIds.filter((id) => id !== blockId);
+	const ix = Math.max(0, Math.min(dest.length, toIndex | 0));
+	dest.splice(ix, 0, blockId);
+	sections.find((s) => s.id === targetId).blockIds = dest;
+	// Keep sections derived: prune a paper section left empty by the move.
+	const pruned = draft.mode === 'paper'
+		? sections.filter((s) => s.locked || s.blockIds.length > 0)
+		: sections;
+	return { draft: touch({ ...draft, sections: pruned }), moved: true };
+}
+
+/**
+ * Restore a section-order snapshot (undo for reorders): section array
+ * order plus each section's block list. Unknown sections stay last;
+ * blocks added after the snapshot append at the end of their section.
+ */
+export function restoreSectionOrder(draft, order) {
+	if (!order || !Array.isArray(order.sectionIds) || !order.blocks) return { draft, restored: false };
+	const rank = new Map(order.sectionIds.map((id, i) => [id, i]));
+	const sections = draft.sections.map((s) => {
+		const want = Array.isArray(order.blocks[s.id]) ? order.blocks[s.id].filter((id) => draft.blocks[id]) : [...s.blockIds];
+		for (const id of s.blockIds) if (!want.includes(id)) want.push(id);
+		return { ...s, blockIds: want };
+	});
+	sections.sort((a, b) => (rank.has(a.id) ? rank.get(a.id) : 1e9) - (rank.has(b.id) ? rank.get(b.id) : 1e9));
+	return { draft: touch({ ...draft, sections }), restored: true };
+}
+
 /** Move a block into another section; rejects normalized-type mismatches. */
 export function moveBlockToSection(draft, blockId, targetId) {
 	const at = locate(draft, blockId);

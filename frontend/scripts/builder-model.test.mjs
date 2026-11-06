@@ -9,8 +9,9 @@ import { assignNumbers, flattenDraft, numberLabel } from '../src/lib/numbering.j
 import { packRows, PAGE_W, PAGE_H } from '../src/lib/paginate.js';
 import {
 	createDraft, importBlocks, autoGroup, addSection, deleteSection,
-	setSectionAtype, moveSection, moveBlock, moveBlockToSection,
-	removeBlock, restoreBlock, setKeyOverride, sectionAccepts, validateDraft
+	setSectionAtype, moveSection, moveBlock, moveBlockTo, moveBlockToSection,
+	moveBlockToSectionAt, removeBlock, restoreBlock, restoreSectionOrder,
+	setKeyOverride, sectionAccepts, validateDraft
 } from '../src/lib/builderModel.js';
 
 const B = (blockId, paperId, number, qtype = 'scq') => ({ blockId, paperId, number, qtype });
@@ -213,5 +214,56 @@ describe('audit fixes', () => {
 			assert.ok(sum <= U || (pg.length === 1 && sum > U), `page ${pg} overfull`);
 		}
 		assert.deepEqual(pages.flat().sort(), ['a', 'b', 'h']);
+	});
+});
+
+describe('drag reorder (Stage 2)', () => {
+	const draftOf = () => ({
+		version: 3, mode: 'assignment', title: '', createdAt: '', updatedAt: '',
+		sections: [{ id: 's', title: 'Assignment', atype: 'mixed', locked: true, blockIds: ['a', 'b', 'c'] }],
+		blocks: {
+			a: { id: 'a', paperId: 1, number: '1', qtype: 'scq' },
+			b: { id: 'b', paperId: 1, number: '2', qtype: 'scq' },
+			c: { id: 'c', paperId: 1, number: '3', qtype: 'scq' }
+		},
+		keyOverride: {}
+	});
+	it('moveBlockTo jumps to an arbitrary index, clamped', () => {
+		const r = moveBlockTo(draftOf(), 'a', 2);
+		assert.ok(r.moved);
+		assert.deepEqual(r.draft.sections[0].blockIds, ['b', 'c', 'a']);
+		const end = moveBlockTo(draftOf(), 'c', 99);
+		assert.deepEqual(end.draft.sections[0].blockIds, ['a', 'b', 'c']);
+		assert.ok(!moveBlockTo(draftOf(), 'zzz', 0).moved);
+	});
+	it('moveBlockToSectionAt respects type guard + index', () => {
+		const d = {
+			version: 3, mode: 'paper', title: '', createdAt: '', updatedAt: '',
+			sections: [
+				{ id: 's1', title: 'A', atype: 'scq', locked: false, blockIds: ['a', 'b'] },
+				{ id: 's2', title: 'B', atype: 'msq', locked: false, blockIds: [] }
+			],
+			blocks: {
+				a: { id: 'a', paperId: 1, number: '1', qtype: 'scq' },
+				b: { id: 'b', paperId: 1, number: '2', qtype: 'scq' }
+			},
+			keyOverride: {}
+		};
+		const bad = moveBlockToSectionAt(d, 'a', 's2', 0);
+		assert.ok(!bad.moved);
+		assert.equal(bad.reason, 'type-mismatch');
+		const same = moveBlockToSectionAt(
+			{ ...d, sections: [{ id: 's1', title: 'A', atype: 'scq', locked: false, blockIds: ['a', 'b'] }] },
+			'a', 's1', 1);
+		assert.ok(same.moved);
+		assert.deepEqual(same.draft.sections[0].blockIds, ['b', 'a']);
+	});
+	it('restoreSectionOrder undoes a reorder exactly', () => {
+		const d = draftOf();
+		const snap = { sectionIds: ['s'], blocks: { s: ['a', 'b', 'c'] } };
+		const moved = moveBlockTo(d, 'a', 2).draft;
+		const back = restoreSectionOrder(moved, snap);
+		assert.ok(back.restored);
+		assert.deepEqual(back.draft.sections[0].blockIds, ['a', 'b', 'c']);
 	});
 });

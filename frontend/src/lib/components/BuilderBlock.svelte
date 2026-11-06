@@ -8,15 +8,95 @@
 	import { qtypeLabel } from '$lib/qtypes.js';
 	import { parseParagraphRange } from '$lib/paragraph.js';
 	import { numberLabel } from '$lib/numbering.js';
+	import { onMount } from 'svelte';
 
-	let { block, numbers = [], showType = true, onUp, onDown, onRemove } = $props();
+	let { block, numbers = [], showType = true, onUp, onDown, onRemove, onDragStart, onDropRow, canDrop } = $props();
 
 	const para = $derived(parseParagraphRange(block.number, block.qtype));
 	const label = $derived(numberLabel(numbers));
+
+	// Grip-armed native drag: the row is draggable only while the grip is
+	// held, so text stays selectable and clicks stay clicks everywhere else.
+	let armed = $state(false);
+	let rowEl = $state(null);
+
+	onMount(() => {
+		// Pressing the grip without dragging must not leave the row armed.
+		const up = () => {
+			armed = false;
+		};
+		window.addEventListener('mouseup', up);
+		return () => window.removeEventListener('mouseup', up);
+	});
+
+	function clearHints() {
+		rowEl?.classList?.remove('drop-above', 'drop-below', 'dragging');
+	}
+	function disarm() {
+		armed = false;
+		clearHints();
+	}
+	function handleDragStart(e) {
+		if (!armed || !onDropRow) {
+			e.preventDefault();
+			return;
+		}
+		try {
+			e.dataTransfer.setData('text/plain', block.id);
+			e.dataTransfer.effectAllowed = 'move';
+		} catch { /* ignore */ }
+		rowEl?.classList?.add('dragging');
+		onDragStart?.(block.id);
+	}
+	function handleDragOver(e) {
+		if (!onDropRow) return;
+		e.preventDefault();
+		e.stopPropagation();
+		if (canDrop?.(block.id) === false) {
+			try {
+				e.dataTransfer.dropEffect = 'none';
+			} catch { /* ignore */ }
+			clearHints();
+			return;
+		}
+		try {
+			e.dataTransfer.dropEffect = 'move';
+		} catch { /* ignore */ }
+		if (!rowEl || rowEl.classList.contains('dragging')) return;
+		const r = rowEl.getBoundingClientRect();
+		const above = (e.clientY - r.top) < r.height / 2;
+		rowEl.classList.toggle('drop-above', above);
+		rowEl.classList.toggle('drop-below', !above);
+	}
+	function handleDrop(e) {
+		if (!onDropRow) return;
+		e.preventDefault();
+		e.stopPropagation();
+		if (!rowEl) return;
+		const r = rowEl.getBoundingClientRect();
+		const pos = (e.clientY - r.top) < r.height / 2 ? 'before' : 'after';
+		clearHints();
+		disarm();
+		onDropRow(block.id, pos);
+	}
 </script>
 
-<div class="qrow" data-block={block.id}>
-	<span class="grip" aria-hidden="true" title="Drag to reorder">
+<div
+	class="qrow"
+	data-block={block.id}
+	bind:this={rowEl}
+	draggable={armed}
+	ondragstart={handleDragStart}
+	ondragend={disarm}
+	ondragover={handleDragOver}
+	ondragleave={clearHints}
+	ondrop={handleDrop}
+>
+	<span
+		class="grip" aria-hidden="true" title="Drag to reorder"
+		onmousedown={() => (armed = true)}
+		ontouchstart={() => (armed = true)}
+	>
 		<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
 	</span>
 	<span class="qnum" title="Generated number — independent of the original extraction">{label}</span>
@@ -60,6 +140,15 @@
 	}
 	.qrow:hover {
 		background: var(--pl-raised);
+	}
+	.qrow.dragging {
+		opacity: 0.45;
+	}
+	.qrow.drop-above {
+		box-shadow: 0 -2px 0 var(--pl-seal);
+	}
+	.qrow.drop-below {
+		box-shadow: 0 2px 0 var(--pl-seal);
 	}
 	.grip {
 		display: inline-flex;

@@ -19,10 +19,10 @@ import { cartStore } from '$lib/carts.js';
 	let confirmNew = $state(false);
 	let previewMode = $state('questions'); // questions | answers
 	let mobileTab = $state('edit'); // edit | preview (narrow screens only)
-	let undoSnap = $state(null);
-	let undoLabel = $state('');
+	let undo = $state(null);
 	let undoTimer = null;
 	let collapsed = $state({});
+	let dragBid = $state(null);
 	let splitPct = $state(browser ? Number(sessionStorage.getItem('pl-split-v1')) || 38 : 38);
 
 	function toggleSection(id) {
@@ -83,20 +83,100 @@ import { cartStore } from '$lib/carts.js';
 	function removeWithUndo(bid, label) {
 		const snap = builder.removeBlock(bid);
 		if (!snap) return;
-		undoSnap = snap;
-		undoLabel = label;
-		clearTimeout(undoTimer);
-		undoTimer = setTimeout(() => (undoSnap = null), 12000);
+		showUndo({ kind: 'remove', label: `Removed ${label}`, snap });
 	}
 
-	function undoRemove() {
-		if (!undoSnap) return;
-		const fallback = draft.sections.find((s) => sectionAccepts(s, undoSnap.block))?.id
-			?? draft.sections[0]?.id ?? null;
-		const ok = builder.restoreBlock(undoSnap, fallback);
-		undoSnap = null;
+	function captureOrder() {
+		return {
+			sectionIds: draft.sections.map((s) => s.id),
+			blocks: Object.fromEntries(draft.sections.map((s) => [s.id, [...s.blockIds]]))
+		};
+	}
+
+	function showUndo(entry) {
+		undo = entry;
 		clearTimeout(undoTimer);
-		if (!ok) importStatus = { added: 0, skipped: 0, cartName: '', error: 'Could not undo — the section is gone. Re-import the question from its cart.' };
+		undoTimer = setTimeout(() => (undo = null), 12000);
+	}
+
+	function reorderWithUndo(label, fn) {
+		const order = captureOrder();
+		const changed = fn();
+		if (changed !== false) showUndo({ kind: 'order', label: `Moved ${label}`, order });
+	}
+
+	function blockLabel(bid) {
+		const b = draft.blocks[bid];
+		if (!b) return 'question';
+		return `${(num.byBlock[bid] ?? []).map((n) => `Q${n}`).join('–')} (Paper ${b.paperId} · ${b.number})`;
+	}
+
+	function stepWithUndo(bid, dir) {
+		reorderWithUndo(blockLabel(bid), () => builder.moveBlock(bid, dir));
+	}
+
+	function doUndo() {
+		if (!undo) return;
+		if (undo.kind === 'remove') {
+			const fallback = draft.sections.find((s) => sectionAccepts(s, undo.snap.block))?.id
+				?? draft.sections[0]?.id ?? null;
+			const ok = builder.restoreBlock(undo.snap, fallback);
+			undo = null;
+			clearTimeout(undoTimer);
+			if (!ok) importStatus = { added: 0, skipped: 0, cartName: '', error: 'Could not undo — the section is gone. Re-import the question from its cart.' };
+		} else {
+			builder.restoreSectionOrder(undo.order);
+			undo = null;
+			clearTimeout(undoTimer);
+		}
+	}
+
+	function sectionOf(bid) {
+		return draft.sections.find((s) => s.blockIds.includes(bid)) ?? null;
+	}
+
+	function canDropSection(sectionId) {
+		if (!dragBid) return false;
+		const dst = draft.sections.find((s) => s.id === sectionId);
+		if (!dst) return false;
+		if (dst.blockIds.includes(dragBid)) return true;
+		const b = draft.blocks[dragBid];
+		return !!b && sectionAccepts(dst, b);
+	}
+
+	function dropOnRow(refBid, pos, refSectionId) {
+		const from = dragBid;
+		dragBid = null;
+		if (!from || from === refBid) return;
+		const dst = draft.sections.find((s) => s.id === refSectionId);
+		const src = sectionOf(from);
+		if (!dst || !src) return;
+		const label = blockLabel(from);
+		if (src.id === dst.id) {
+			const ids = dst.blockIds.filter((id) => id !== from);
+			let idx = ids.indexOf(refBid) + (pos === 'after' ? 1 : 0);
+			if (idx < 0 || refBid === undefined) idx = ids.length;
+			reorderWithUndo(label, () => builder.moveBlockTo(from, idx));
+		} else {
+			const b = draft.blocks[from];
+			if (!b || !sectionAccepts(dst, b)) return;
+			const ids = dst.blockIds.filter((id) => id !== from);
+			let idx = ids.indexOf(refBid) + (pos === 'after' ? 1 : 0);
+			if (idx < 0) idx = ids.length;
+			reorderWithUndo(label, () => builder.moveBlockToSectionAt(from, dst.id, idx).moved);
+		}
+	}
+
+	function dropOnSectionEnd(sectionId) {
+		const from = dragBid;
+		dragBid = null;
+		if (!from) return;
+		const dst = draft.sections.find((s) => s.id === sectionId);
+		if (!dst || !canDropSection(sectionId)) return;
+		reorderWithUndo(blockLabel(from), () => {
+			if (dst.blockIds.includes(from)) return builder.moveBlockTo(from, dst.blockIds.length);
+			return builder.moveBlockToSectionAt(from, dst.id, dst.blockIds.length).moved;
+		});
 	}
 </script>
 
@@ -111,10 +191,10 @@ import { cartStore } from '$lib/carts.js';
 			<button type="button" class:active={previewMode === 'answers'} aria-pressed={previewMode === 'answers'} onclick={() => (previewMode = 'answers')}>Answer Sheet</button>
 		</div>
 		<span class="docstatus" role="status">{empty ? 'Empty draft' : `${draft.mode === 'paper' ? 'Paper' : 'Assignment'} · ${nBlocks} blocks · ${num.total} numbers`}</span>
-		{#if undoSnap}
+		{#if undo}
 			<span class="undobar" role="status">
-				Removed {undoLabel}.
-				<button type="button" class="mini" onclick={undoRemove}>Undo</button>
+				{undo.label}.
+				<button type="button" class="mini" onclick={doUndo}>Undo</button>
 			</span>
 		{/if}
 		<div class="actions">
@@ -226,7 +306,12 @@ import { cartStore } from '$lib/carts.js';
 					<p class="pl-sub">No questions yet. Import a cart above — the draft stays independent of the cart afterwards.</p>
 				{:else if draft.mode === 'assignment'}
 					{@const s = draft.sections[0]}
-					<div class="blocks">
+					<div
+						class="blocks"
+						ondragover={(e) => { if (e.currentTarget === e.target && canDropSection(s.id)) { e.preventDefault(); e.currentTarget.classList.add('dropend'); } }}
+						ondragleave={(e) => e.currentTarget.classList.remove('dropend')}
+						ondrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove('dropend'); dropOnSectionEnd(s.id); }}
+					>
 						{#each s.blockIds as bid (bid)}
 							{@const b = draft.blocks[bid]}
 							{#if b}
@@ -234,9 +319,12 @@ import { cartStore } from '$lib/carts.js';
 									block={b}
 									numbers={num.byBlock[bid] ?? []}
 									showType
-									onUp={() => builder.moveBlock(bid, -1)}
-									onDown={() => builder.moveBlock(bid, 1)}
+									onUp={() => stepWithUndo(bid, -1)}
+									onDown={() => stepWithUndo(bid, 1)}
 									onRemove={() => removeWithUndo(bid, `Q${(num.byBlock[bid] ?? []).join(', Q')} (Paper ${b.paperId} · ${b.number})`)}
+									onDragStart={(id) => (dragBid = id)}
+									canDrop={(refBid) => refBid !== dragBid}
+									onDropRow={(refBid, pos) => dropOnRow(refBid, pos, s.id)}
 								/>
 							{/if}
 						{:else}
@@ -262,10 +350,10 @@ import { cartStore } from '$lib/carts.js';
 							<span class="pl-sub count">{secNums.length} q · {secRange}</span>
 							{#if draft.sections.length > 1}
 								<span class="secops" role="group" aria-label={`Reorder section ${secLetter}`}>
-									<button type="button" disabled={si === 0} onclick={() => builder.moveSection(si, si - 1)} title="Move section up" aria-label={`Move section ${secLetter} up`}>
+									<button type="button" disabled={si === 0} onclick={() => reorderWithUndo(`Section ${secLetter}`, () => builder.moveSection(si, si - 1))} title="Move section up" aria-label={`Move section ${secLetter} up`}>
 										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>
 									</button>
-									<button type="button" disabled={si === draft.sections.length - 1} onclick={() => builder.moveSection(si, si + 1)} title="Move section down" aria-label={`Move section ${secLetter} down`}>
+									<button type="button" disabled={si === draft.sections.length - 1} onclick={() => reorderWithUndo(`Section ${secLetter}`, () => builder.moveSection(si, si + 1))} title="Move section down" aria-label={`Move section ${secLetter} down`}>
 										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>
 									</button>
 								</span>
@@ -275,7 +363,12 @@ import { cartStore } from '$lib/carts.js';
 							{#if s.atype === 'passage' && s.blockIds.length > 0}
 								<p class="pl-sub passage-note">Passages stay whole; children keep their own types and numbers.</p>
 							{/if}
-							<div class="blocks">
+							<div
+								class="blocks"
+								ondragover={(e) => { if (e.currentTarget === e.target && canDropSection(s.id)) { e.preventDefault(); e.currentTarget.classList.add('dropend'); } }}
+								ondragleave={(e) => e.currentTarget.classList.remove('dropend')}
+								ondrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove('dropend'); dropOnSectionEnd(s.id); }}
+							>
 								{#each s.blockIds as bid (bid)}
 									{@const b = draft.blocks[bid]}
 									{#if b}
@@ -283,9 +376,12 @@ import { cartStore } from '$lib/carts.js';
 											block={b}
 											numbers={num.byBlock[bid] ?? []}
 											showType={false}
-											onUp={() => builder.moveBlock(bid, -1)}
-											onDown={() => builder.moveBlock(bid, 1)}
+											onUp={() => stepWithUndo(bid, -1)}
+											onDown={() => stepWithUndo(bid, 1)}
 											onRemove={() => removeWithUndo(bid, `${(num.byBlock[bid] ?? []).map((n) => `Q${n}`).join('–')} (Paper ${b.paperId} · ${b.number})`)}
+											onDragStart={(id) => (dragBid = id)}
+											canDrop={(refBid) => refBid !== dragBid && canDropSection(s.id)}
+											onDropRow={(refBid, pos) => dropOnRow(refBid, pos, s.id)}
 										/>
 									{/if}
 								{:else}
@@ -741,6 +837,12 @@ import { cartStore } from '$lib/carts.js';
 	}
 	.blocks .qrow:last-of-type {
 		border-bottom: none;
+	}
+	.blocks.dropend {
+		outline: 2px dashed var(--pl-seal);
+		outline-offset: -2px;
+		border-radius: 6px;
+		min-height: 40px;
 	}
 	/* Right: document pane. The sheet inside keeps readable width. */
 	.previewcol {
