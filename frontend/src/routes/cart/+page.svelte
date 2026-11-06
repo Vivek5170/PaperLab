@@ -29,7 +29,8 @@
 <h1>Question cart</h1>
 <p class="pl-sub">
 	Pick questions from Search or the reader. Carts live only in this browser —
-	no server changes, no uploads. Paragraph groups always move as one block.
+	no server changes, no uploads. A cart tracks which questions are in, not
+	their order — paragraph groups stay together as one block.
 </p>
 
 {#if $cartCorrupt}
@@ -140,12 +141,9 @@
 		</div>
 	{:else}
 		<div class="grid">
-			{#each cart.items as item, i (`${item.paperId}/${item.number}`)}
+			{#each cart.items as item (`${item.paperId}/${item.number}`)}
 				<CartCard
 					{item}
-					index={i}
-					total={cart.items.length}
-					onMove={(f, t) => carts.move(f, t)}
 					onRemove={() => carts.remove(item.paperId, item.number)}
 				/>
 			{/each}

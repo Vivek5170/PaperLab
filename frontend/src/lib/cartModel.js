@@ -84,23 +84,6 @@ export function removeItem(cart, paperId, number) {
 	return { cart: { ...cart, updatedAt: new Date().toISOString(), items }, removed: true };
 }
 
-/**
- * Reorder: move item from index `from` to index `to` (clamped).
- * Paragraph groups move as one row automatically — a group is a single
- * item, so there is no sub-move to preserve.
- */
-export function moveItem(cart, from, to) {
-	const n = cart.items.length;
-	if (n < 2) return { cart, moved: false };
-	const f = Math.max(0, Math.min(n - 1, from | 0));
-	const t = Math.max(0, Math.min(n - 1, to | 0));
-	if (f === t) return { cart, moved: false };
-	const items = cart.items.slice();
-	const [row] = items.splice(f, 1);
-	items.splice(t, 0, row);
-	return { cart: { ...cart, updatedAt: new Date().toISOString(), items }, moved: true };
-}
-
 /** Validate a parsed store blob; returns {ok, store} with repairs applied. */
 export function validateStore(raw) {
 	const fresh = () => {

@@ -11,7 +11,6 @@ import {
 	createCart,
 	addItem as _add,
 	removeItem as _remove,
-	moveItem as _move,
 	validateStore,
 	toCartItem
 } from './cartModel.js';
@@ -172,14 +171,5 @@ export const carts = {
 		});
 		unsub();
 		return found;
-	},
-	move(from, to) {
-		let moved = false;
-		patchActive((cart) => {
-			const r = _move(cart, from, to);
-			moved = r.moved;
-			return r.cart;
-		});
-		return moved;
 	}
 };

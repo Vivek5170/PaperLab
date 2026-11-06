@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { parseParagraphRange } from '../src/lib/paragraph.js';
 import { normalizeAnswerType } from '../src/lib/qtypes.js';
 import {
-	createCart, addItem, removeItem, moveItem, validateStore, toCartItem
+	createCart, addItem, removeItem, validateStore, toCartItem
 } from '../src/lib/cartModel.js';
 
 const Q = (paperId, number, extra = {}) => ({
@@ -96,15 +96,6 @@ describe('cartModel', () => {
 		const c = createCart('t');
 		const r = addItem(c, { paperId: null, number: '' });
 		assert.equal(r.added, false);
-	});
-	it('paragraph block is one row that moves whole', () => {
-		let c = createCart('t');
-		for (const [p, n] of [[11, '8'], [11, '15-17_paragraph'], [11, '9']]) {
-			c = addItem(c, Q(p, n, { qtype: n.includes('paragraph') ? 'par-scq' : 'scq' })).cart;
-		}
-		const r = moveItem(c, 1, 0);
-		assert.equal(r.moved, true);
-		assert.deepEqual(r.cart.items.map((i) => i.number), ['15-17_paragraph', '8', '9']);
 	});
 	it('remove + clear semantics', () => {
 		let c = createCart('t');

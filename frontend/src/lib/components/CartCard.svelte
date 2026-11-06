@@ -7,17 +7,10 @@
 	import { qtypeLabel } from '$lib/qtypes.js';
 	import { parseParagraphRange } from '$lib/paragraph.js';
 
-	let { item, index = 0, total = 0, onMove, onRemove } = $props();
+	let { item, onRemove } = $props();
 
 	const para = $derived(parseParagraphRange(item.number, item.qtype));
 	const qLabel = $derived(qtypeLabel(item.qtype).toUpperCase());
-
-	const arrows = {
-		top: '<path d="M12 19V5m-6 6 6-6 6 6"/><path d="M5 3h14"/>',
-		up: '<path d="M12 19V5m-6 6 6-6 6 6"/>',
-		down: '<path d="M12 5v14m-6-6 6 6 6-6"/>',
-		bottom: '<path d="M12 5v14m-6-6 6 6 6-6"/><path d="M5 21h14"/>'
-	};
 </script>
 
 <div class="card pl-card">
@@ -60,24 +53,6 @@
 	</div>
 
 	<div class="actions">
-		<div class="mv" role="group" aria-label={`Reorder question ${item.number}`}>
-			<button
-				type="button" disabled={index === 0} onclick={() => onMove?.(index, 0)}
-				title="Move to top" aria-label={`Move question ${item.number} to top`}
-			><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html arrows.top}</svg></button>
-			<button
-				type="button" disabled={index === 0} onclick={() => onMove?.(index, index - 1)}
-				title="Move up" aria-label={`Move question ${item.number} up`}
-			><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html arrows.up}</svg></button>
-			<button
-				type="button" disabled={index === total - 1} onclick={() => onMove?.(index, index + 1)}
-				title="Move down" aria-label={`Move question ${item.number} down`}
-			><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html arrows.down}</svg></button>
-			<button
-				type="button" disabled={index === total - 1} onclick={() => onMove?.(index, total - 1)}
-				title="Move to bottom" aria-label={`Move question ${item.number} to bottom`}
-			><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html arrows.bottom}</svg></button>
-		</div>
 		<button type="button" class="rm" onclick={() => onRemove?.()}>Remove</button>
 	</div>
 </div>
@@ -190,41 +165,10 @@
 	.actions {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
+		justify-content: flex-end;
 		border-top: 1px dashed var(--pl-line);
 		margin-top: 10px;
 		padding-top: 10px;
-	}
-	.mv {
-		display: flex;
-		gap: 4px;
-	}
-	.mv button {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 32px;
-		height: 32px;
-		min-height: 0;
-		border: 1px solid var(--pl-line);
-		border-radius: 6px;
-		background: none;
-		color: var(--pl-ink-soft);
-		cursor: pointer;
-		padding: 0;
-	}
-	.mv button:hover:not(:disabled) {
-		border-color: var(--pl-seal);
-		color: var(--pl-seal);
-	}
-	.mv button:disabled {
-		opacity: 0.35;
-		cursor: default;
-	}
-	.mv svg {
-		width: 15px;
-		height: 15px;
 	}
 	.rm {
 		border: 1px solid var(--pl-line);
