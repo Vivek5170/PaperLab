@@ -4,7 +4,7 @@
 	 * panel lists options with counts and checkmarks, footer clears the group.
 	 * Union within the group; the page intersects across groups.
 	 */
-	let { label, options = [], selected = $bindable([]) } = $props();
+	let { label, options = [], selected = $bindable([]), format = (v) => v } = $props();
 
 	let open = $state(false);
 	let panel = $state(null);
@@ -62,7 +62,7 @@
 								<span class="tick" aria-hidden="true">
 									{#if selected.includes(opt.value)}✓{/if}
 								</span>
-								<span class="opt-label">{opt.value}</span>
+								<span class="opt-label">{format(opt.value)}</span>
 								{#if opt.count != null}
 									<span class="opt-count pl-mono">{opt.count}</span>
 								{/if}

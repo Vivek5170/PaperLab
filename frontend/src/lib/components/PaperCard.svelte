@@ -1,4 +1,6 @@
 <script>
+	import { qtypeLabelAll } from '$lib/qtypes.js';
+
 	let { paper, questions = 0, types = '' } = $props();
 </script>
 
@@ -13,7 +15,7 @@
 		{#if types}
 			<p class="paper-types">
 				{#each types.split(' - ') as chip (chip)}
-					<span class="pl-chip">{chip}</span>
+					<span class="pl-chip">{qtypeLabelAll(chip)}</span>
 				{/each}
 			</p>
 		{/if}

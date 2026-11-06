@@ -12,6 +12,7 @@
 	import Segments from '$lib/components/Segments.svelte';
 	import ClassifyForm from '$lib/components/ClassifyForm.svelte';
 	import FigurePanel from '$lib/components/FigurePanel.svelte';
+	import { qtypeLabel } from '$lib/qtypes.js';
 
 	let { paperId, initialQ = null, backHref = '/archive', backLabel = 'Back to Archive' } = $props();
 
@@ -122,7 +123,7 @@
 			{#if currentQ}
 				<h2 class="qtitle">Question {currentQ.number}</h2>
 				<div class="meta-row">
-					<span class="typebadge">{currentQ.qtype}</span>
+					<span class="typebadge" title={currentQ.qtype}>{qtypeLabel(currentQ.qtype)}</span>
 					<span class="difftext">{currentQ.difficulty ?? 'Not graded'}</span>
 				</div>
 				{#if currentQ.topics?.length}

@@ -5,6 +5,7 @@
 	import Segments from '$lib/components/Segments.svelte';
 	import ClassifyForm from '$lib/components/ClassifyForm.svelte';
 	import FigurePanel from '$lib/components/FigurePanel.svelte';
+	import { qtypeLabel } from '$lib/qtypes.js';
 
 	/**
 	 * MOCK — Reading Desk UX trial. Sandbox for finalising:
@@ -106,7 +107,7 @@
 			}}
 		>
 			{#each questions as q (q.number)}
-				<option value={q.number}>{q.number} - {q.qtype}</option>
+				<option value={q.number}>{q.number} - {qtypeLabel(q.qtype)}</option>
 			{/each}
 		</select>
 	</label>
@@ -119,7 +120,7 @@
 {:else if detail}
 	<h2 class="qtitle">Question {detail.number}</h2>
 	<div class="meta-row">
-		<span class="typebadge">{detail.qtype}</span>
+		<span class="typebadge" title={detail.qtype}>{qtypeLabel(detail.qtype)}</span>
 		<span class="difftext">{detail.difficulty ?? 'Not graded'}</span>
 	</div>
 	{#if detail.topics?.length}

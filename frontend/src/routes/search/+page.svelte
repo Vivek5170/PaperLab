@@ -3,6 +3,7 @@
 	import { api } from '$lib/api.js';
 	import FilterDropdown from '$lib/components/FilterDropdown.svelte';
 	import TopicTreePicker from '$lib/components/TopicTreePicker.svelte';
+	import { qtypeLabel } from '$lib/qtypes.js';
 	import {
 		PAGE_SIZE,
 		activeFilterCount,
@@ -148,7 +149,7 @@
 <p class="pl-sub">Filter {total > 0 ? `${total} ` : ''}questions by type, topic, source, exam, year or difficulty.</p>
 
 <div class="bar" role="group" aria-label="Question filters">
-	<FilterDropdown label="Type" options={facetOpts.qtype} bind:selected={filters.qtype} />
+	<FilterDropdown label="Type" options={facetOpts.qtype} bind:selected={filters.qtype} format={qtypeLabel} />
 	<FilterDropdown label="Difficulty" options={facetOpts.difficulty} bind:selected={filters.difficulty} />
 	<FilterDropdown label="Source" options={facetOpts.institute} bind:selected={filters.institute} />
 	<FilterDropdown label="Exam" options={facetOpts.exam} bind:selected={filters.exam} />
@@ -207,7 +208,7 @@
 							{#if item.difficulty}
 								<span class={`chip diff-${item.difficulty.toLowerCase()}`}>{item.difficulty}</span>
 							{/if}
-							<span class="chip type">{item.qtype}</span>
+							<span class="chip type" title={item.qtype}>{qtypeLabel(item.qtype)}</span>
 						</span>
 					</span>
 				</a>

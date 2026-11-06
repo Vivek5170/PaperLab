@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api.js';
+	import { qtypeLabel } from '$lib/qtypes.js';
 	import TopicTreePicker from '$lib/components/TopicTreePicker.svelte';
 
 	/** One Save writes type + difficulty + topics + suggestion (PATCH). */
@@ -58,7 +59,7 @@
 		Question type
 		<select bind:value={qtype}>
 			{#each qtypes as qt (qt)}
-				<option value={qt}>{qt}</option>
+				<option value={qt}>{qtypeLabel(qt)}</option>
 			{/each}
 		</select>
 	</label>
