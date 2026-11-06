@@ -61,21 +61,38 @@
 
 <div class="page">
 	<header class="topbar">
-		<a class="back" href="/cart">← Cart</a>
-		<h1>Paper builder</h1>
-		<span class="pl-sub headsub">Auto-numbered draft · stays in this browser</span>
+		<a class="back" href="/cart">← Back</a>
+		<span class="ident">Paper builder</span>
+		<div class="seg" role="group" aria-label="Preview mode">
+			<button type="button" class:active={previewMode === 'questions'} aria-pressed={previewMode === 'questions'} onclick={() => (previewMode = 'questions')}>Question Sheet</button>
+			<button type="button" class:active={previewMode === 'answers'} aria-pressed={previewMode === 'answers'} onclick={() => (previewMode = 'answers')}>Answer Sheet</button>
+		</div>
+		<span class="docstatus" role="status">{empty ? 'Empty draft' : `${draft.mode === 'paper' ? 'Paper' : 'Assignment'} · ${nBlocks} blocks · ${num.total} numbers`}</span>
 		{#if undoSnap}
 			<span class="undobar" role="status">
 				Removed {undoLabel}.
 				<button type="button" class="mini" onclick={undoRemove}>Undo</button>
 			</span>
 		{/if}
+		<div class="actions">
+			<button type="button" class="pl-btn" onclick={() => (confirmNew = true)}>New</button>
+			<button type="button" class="pl-btn pl-btn-primary" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
+		</div>
 	</header>
 
 	{#if $builderCorrupt}
 		<div class="pl-error corrupt" role="alert">
 			<strong>Saved builder draft was corrupt.</strong>
 			<button type="button" class="pl-btn" onclick={() => builderCorrupt.set(false)}>Dismiss</button>
+		</div>
+	{/if}
+	{#if confirmNew}
+		<div class="confirmstrip" role="alert">
+			<span>Discard this draft and start empty?</span>
+			<span class="errbtns">
+				<button type="button" class="pl-btn pl-btn-primary" onclick={() => { builder.newDraft(draft.mode); confirmNew = false; }}>Discard draft</button>
+				<button type="button" class="pl-btn" onclick={() => (confirmNew = false)}>Keep</button>
+			</span>
 		</div>
 	{/if}
 
@@ -85,8 +102,13 @@
 	</nav>
 
 	<div class="workspace" data-view={mobileTab}>
-		<!-- ================= LEFT (~38%): editor ================= -->
+		<!-- ================= LEFT: editor ================= -->
 		<div class="editor">
+			<div class="panehead">
+				<span>Draft</span>
+				<span class="pl-sub">Auto-saved in this browser</span>
+			</div>
+			<div class="panebody">
 			<div class="panel pl-card">
 				<label class="title">
 					<span class="pl-sub">Title</span>
@@ -106,15 +128,7 @@
 						Assignment <span class="pl-sub">(flat)</span>
 					</label>
 				</div>
-				<div class="docfoot">
-					{#if confirmNew}
-						<span class="pl-sub">Discard this draft and start empty?</span>
-						<button type="button" class="mini danger" onclick={() => { builder.newDraft(draft.mode); confirmNew = false; }}>Discard draft</button>
-						<button type="button" class="mini" onclick={() => (confirmNew = false)}>Keep</button>
-					{:else}
-						<button type="button" class="minitext" onclick={() => (confirmNew = true)} title="Discard this draft and start empty">Start new draft</button>
-					{/if}
-				</div>
+
 			</div>
 
 			<div class="panel pl-card">
@@ -223,17 +237,14 @@
 					{/each}
 				{/if}
 			</div>
+			</div>
 		</div>
 
-		<!-- ================= RIGHT (~62%): document ================= -->
+		<!-- ================= RIGHT: document ================= -->
 		<div class="previewcol">
-			<div class="previewbar">
-				<div class="seg" role="group" aria-label="Preview mode">
-					<button type="button" class:active={previewMode === 'questions'} aria-pressed={previewMode === 'questions'} onclick={() => (previewMode = 'questions')}>Question Sheet</button>
-					<button type="button" class:active={previewMode === 'answers'} aria-pressed={previewMode === 'answers'} onclick={() => (previewMode = 'answers')}>Answer Sheet</button>
-				</div>
-				<span class="pl-sub">{num.total} numbers · live</span>
-				<button type="button" class="mini" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
+			<div class="panehead">
+				<span>Preview</span>
+				<span class="pl-sub">Live A4 · print exact</span>
 			</div>
 			<div class="previewscroll">
 				{#if previewMode === 'questions'}
@@ -256,14 +267,15 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		padding: 10px 16px 0;
 	}
+	/* Slim single-row chrome, mirrors the TeX edit page. */
 	.topbar {
 		display: flex;
-		align-items: baseline;
+		align-items: center;
 		gap: 12px;
 		flex-wrap: wrap;
-		padding-bottom: 8px;
+		padding: 8px 16px;
+		background: var(--pl-surface);
 		border-bottom: 1px solid var(--pl-line);
 	}
 	.back {
@@ -271,53 +283,128 @@
 		font-size: 0.82rem;
 		white-space: nowrap;
 	}
-	.topbar h1 {
-		font-size: 1.3rem;
-		margin: 0;
+	.ident {
+		font-size: 0.9rem;
+		font-weight: 700;
+		white-space: nowrap;
 	}
-	.headsub {
+	.seg {
+		display: inline-flex;
+		background: var(--pl-raised);
+		border-radius: var(--pl-radius-pill);
+		padding: 3px;
+		gap: 2px;
+	}
+	.seg button {
+		border: none;
+		background: none;
+		border-radius: var(--pl-radius-pill);
+		padding: 5px 14px;
+		min-height: 0;
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--pl-ink-soft);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.seg button.active {
+		background: var(--pl-surface);
+		color: var(--pl-ink);
+		box-shadow: var(--pl-shadow-sm);
+	}
+	.docstatus {
 		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--pl-ink-soft);
+		white-space: nowrap;
 	}
-	.undobar {
+	.actions {
 		margin-left: auto;
 		display: flex;
-		align-items: center;
 		gap: 8px;
+		align-items: center;
+	}
+	/* Compact 2-3 chrome buttons: beat the global 44px touch target. */
+	.topbar .pl-btn,
+	.confirmstrip .pl-btn,
+	.corrupt .pl-btn {
+		min-height: 0;
+		padding: 6px 14px;
 		font-size: 0.8rem;
 	}
+	.undobar {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 0.78rem;
+	}
 	.corrupt {
-		margin-top: 8px;
+		margin: 10px 16px 0;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+	.confirmstrip {
+		margin: 10px 16px 0;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex-wrap: wrap;
+		font-size: 0.82rem;
+	}
+	.errbtns {
+		display: inline-flex;
+		gap: 8px;
 	}
 	.mobtabs {
 		display: none;
 	}
-	/* Two independent scrolling columns: ~38% editor, rest document. */
+	/* Two panes, no gaps: divider border only, like the edit page. */
 	.workspace {
 		flex: 1;
 		min-height: 0;
 		display: grid;
-		grid-template-columns: minmax(340px, 38%) minmax(0, 1fr);
-		gap: 16px;
-		padding: 12px 0 0;
+		grid-template-columns: minmax(320px, 36%) minmax(0, 1fr);
 	}
 	.editor {
 		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		border-right: 1px solid var(--pl-line);
+	}
+	.panehead {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 10px 16px 6px;
+		font-size: 0.82rem;
+		font-weight: 600;
+		flex-shrink: 0;
+	}
+	.panehead .pl-sub {
+		font-weight: 400;
+	}
+	.panebody {
+		flex: 1;
+		min-height: 0;
 		overflow-y: auto;
-		padding-bottom: 24px;
+		padding: 4px 16px 24px;
 		display: flex;
 		flex-direction: column;
 	}
 	.panel {
-		margin-bottom: 12px;
-		padding: 14px;
+		margin-bottom: 10px;
+		padding: 12px;
 		flex-shrink: 0;
 	}
-	.editor .panel:last-child {
+	.panebody .panel:last-child {
 		margin-bottom: 0;
 	}
 	.panel h2 {
 		margin: 0 0 8px;
-		font-size: 1.05rem;
+		font-size: 0.95rem;
 	}
 	.title {
 		display: flex;
@@ -337,7 +424,7 @@
 		align-items: center;
 		font-weight: 600;
 		cursor: pointer;
-		font-size: 0.88rem;
+		font-size: 0.85rem;
 	}
 	.moderow label.off {
 		opacity: 0.55;
@@ -345,8 +432,8 @@
 	}
 	.moderow input[type='radio'] {
 		min-height: 0;
-		width: 18px;
-		height: 18px;
+		width: 16px;
+		height: 16px;
 		accent-color: var(--pl-seal);
 	}
 	.importrow {
@@ -377,29 +464,6 @@
 	}
 	.status strong {
 		font-size: 0.9rem;
-	}
-	.docfoot {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin-top: 12px;
-		padding-top: 10px;
-		border-top: 1px dashed var(--pl-line);
-	}
-	.minitext {
-		border: none;
-		background: none;
-		padding: 4px 2px;
-		min-height: 0;
-		font-size: 0.78rem;
-		font-weight: 600;
-		color: var(--pl-ink-soft);
-		cursor: pointer;
-	}
-	.minitext:hover {
-		color: var(--pl-seal);
-		text-decoration: underline;
-		text-underline-offset: 3px;
 	}
 	.sechead {
 		display: flex;
@@ -445,13 +509,13 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 30px;
-		height: 30px;
+		width: 26px;
+		height: 26px;
 		border-radius: 50%;
 		background: var(--pl-seal);
 		color: #fff;
 		font-weight: 700;
-		font-size: 0.85rem;
+		font-size: 0.8rem;
 		flex-shrink: 0;
 	}
 	.atype {
@@ -477,9 +541,9 @@
 		border: 1px solid var(--pl-line);
 		border-radius: var(--pl-radius-pill);
 		background: none;
-		min-height: 32px;
-		padding: 4px 12px;
-		font-size: 0.78rem;
+		min-height: 0;
+		padding: 5px 12px;
+		font-size: 0.76rem;
 		font-weight: 600;
 		color: var(--pl-ink);
 		cursor: pointer;
@@ -493,72 +557,33 @@
 		opacity: 0.4;
 		cursor: default;
 	}
-	.mini.danger {
-		color: var(--pl-seal);
-	}
 	.blocks {
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
 	}
-	/* Right: document workspace. Container is flexible; the sheet inside
-	   keeps a readable page width and centres itself. */
+	/* Right: document pane. The sheet inside keeps readable width. */
 	.previewcol {
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
 	}
-	.previewbar {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 10px;
-		margin-bottom: 10px;
-		flex-shrink: 0;
-	}
-	.seg {
-		display: inline-flex;
-		gap: 4px;
-		background: var(--pl-raised);
-		border: 1px solid var(--pl-line);
-		border-radius: var(--pl-radius-pill);
-		padding: 4px;
-	}
-	.seg button {
-		border: none;
-		background: none;
-		border-radius: var(--pl-radius-pill);
-		padding: 8px 18px;
-		min-height: 0;
-		font-size: 0.82rem;
-		font-weight: 600;
-		color: var(--pl-ink-soft);
-		cursor: pointer;
-		white-space: nowrap;
-	}
-	.seg button.active {
-		background: var(--pl-surface);
-		color: var(--pl-ink);
-		box-shadow: var(--pl-shadow-sm);
-	}
 	.previewscroll {
 		overflow-y: auto;
 		min-height: 0;
 		flex: 1;
-		padding: 4px 4px 32px;
+		padding: 4px 16px 32px;
 	}
 	@media print {
 		.page {
 			height: auto;
 			overflow: visible;
-			padding: 0;
 		}
-		.topbar, .editor, .previewbar, .mobtabs, .undobar, .corrupt {
+		.topbar, .mobtabs, .undobar, .corrupt, .confirmstrip, .editor {
 			display: none;
 		}
 		.workspace {
 			display: block;
-			padding: 0;
 		}
 		.previewcol {
 			max-height: none;
@@ -575,21 +600,21 @@
 		}
 		.mobtabs {
 			display: inline-flex;
-			gap: 4px;
+			gap: 2px;
 			background: var(--pl-raised);
 			border: 1px solid var(--pl-line);
 			border-radius: var(--pl-radius-pill);
-			padding: 4px;
-			margin: 10px 0 0;
+			padding: 3px;
+			margin: 10px 16px 0;
 			width: max-content;
 		}
 		.mobtabs button {
 			border: none;
 			background: none;
 			border-radius: var(--pl-radius-pill);
-			padding: 8px 18px;
+			padding: 6px 16px;
 			min-height: 0;
-			font-size: 0.82rem;
+			font-size: 0.8rem;
 			font-weight: 600;
 			color: var(--pl-ink-soft);
 			cursor: pointer;
@@ -607,7 +632,10 @@
 		.workspace[data-view='preview'] .editor {
 			display: none;
 		}
-		.editor,
+		.editor {
+			border-right: none;
+		}
+		.panebody,
 		.previewscroll {
 			overflow: visible;
 		}
