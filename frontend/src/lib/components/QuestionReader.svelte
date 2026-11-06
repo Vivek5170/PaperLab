@@ -33,6 +33,7 @@
 	let figRev = $state(0);
 	let loading = $state(true);
 	let error = $state('');
+	let mobTab = $state('question'); // mobile only: 'list' | 'question'
 
 	let currentQ = $state(null);
 
@@ -104,6 +105,7 @@
 		sImgOk = true;
 		editing = false;
 		showFigures = false;
+		mobTab = 'question';
 	}
 
 	onMount(async () => {
@@ -134,7 +136,12 @@
 		Paper #{paper.id} - {paper.exam || 'Unknown exam'} - {questions.length} questions
 	</p>
 
-	<div class="desk">
+	<div class="mobtabs" role="tablist" aria-label="Reader view">
+		<button type="button" role="tab" aria-selected={mobTab === 'list'} class:active={mobTab === 'list'} onclick={() => (mobTab = 'list')}>List</button>
+		<button type="button" role="tab" aria-selected={mobTab === 'question'} class:active={mobTab === 'question'} onclick={() => (mobTab = 'question')}>Question</button>
+	</div>
+
+	<div class="desk" data-view={mobTab}>
 		<nav class="index" aria-label="Questions">
 			{#if questions.length > 40}
 				<select
@@ -499,9 +506,60 @@
 		border-top: 1px solid var(--pl-line);
 		padding-top: 12px;
 	}
+	.mobtabs {
+		display: none;
+	}
 	@media (max-width: 760px) {
+		h1 {
+			font-size: 1.4rem;
+		}
+		.pane h2.qtitle {
+			font-size: 1.35rem;
+		}
+		.mobtabs {
+			display: inline-flex;
+			gap: 2px;
+			background: var(--pl-raised);
+			border: 1px solid var(--pl-line);
+			border-radius: var(--pl-radius-pill);
+			padding: 3px;
+			margin: 12px 0 0;
+			width: max-content;
+			max-width: 100%;
+		}
+		.mobtabs button {
+			border: none;
+			background: none;
+			border-radius: var(--pl-radius-pill);
+			padding: 6px 18px;
+			min-height: 0;
+			font-size: 0.82rem;
+			font-weight: 600;
+			color: var(--pl-ink-soft);
+			cursor: pointer;
+			white-space: nowrap;
+		}
+		.mobtabs button.active {
+			background: var(--pl-surface);
+			color: var(--pl-ink);
+			box-shadow: var(--pl-shadow-sm);
+		}
 		.desk {
 			grid-template-columns: 1fr;
+			margin-top: 12px;
+		}
+		.desk[data-view='list'] .pane {
+			display: none;
+		}
+		.desk[data-view='question'] .index {
+			display: none;
+		}
+		.index {
+			max-height: none;
+			overflow: visible;
+		}
+		.statement {
+			font-size: 16px;
 		}
 	}
 </style>
