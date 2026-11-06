@@ -1,0 +1,183 @@
+<script>
+	/**
+	 * One builder block row. Numbering arrives as a prop from the page's
+	 * single assignNumbers() result — this component never numbers.
+	 */
+	import { qtypeLabel, normalizeAnswerType } from '$lib/qtypes.js';
+	import { parseParagraphRange } from '$lib/paragraph.js';
+	import { numberLabel } from '$lib/numbering.js';
+
+	let {
+		block,
+		numbers = [],
+		sections = [],
+		currentSectionId = null,
+		showSectionMove = false,
+		onUp,
+		onDown,
+		onMoveTo,
+		onRemove
+	} = $props();
+
+	const para = $derived(parseParagraphRange(block.number, block.qtype));
+	const label = $derived(numberLabel(numbers));
+	const others = $derived(sections.filter((s) => s.id !== currentSectionId));
+
+	let moveNote = $state('');
+
+	function moveTo(e) {
+		const target = e.currentTarget.value;
+		if (!target) return;
+		e.currentTarget.value = '';
+		const r = onMoveTo?.(target);
+		moveNote = r?.moved
+			? ''
+			: r?.reason === 'type-mismatch'
+				? `Only ${normalizeAnswerType(block.qtype).toUpperCase()} accepted there`
+				: 'Could not move';
+		if (moveNote) setTimeout(() => (moveNote = ''), 2200);
+	}
+</script>
+
+<div class="block pl-card">
+	<div class="line">
+		<span class="qnum" title="Generated number — independent of the original extraction">{label}</span>
+		<span class="src">Paper {block.paperId} · Q{block.number}</span>
+		<span class="badges">
+			{#if para.isParagraph}
+				<span
+					class="chip para"
+					title={para.valid ? `Passage group: ${para.count} sub-questions` : para.warning}
+				>Passage · {para.valid ? para.count : '?'}</span>
+			{/if}
+			<span class="chip type" title={`Raw type ${block.qtype}`}>{qtypeLabel(block.qtype).toUpperCase()}</span>
+		</span>
+	</div>
+	{#if para.warning}
+		<span class="warn" role="note">{para.warning}</span>
+	{/if}
+	<div class="ops">
+		<div class="mv" role="group" aria-label={`Reorder block ${label}`}>
+			<button type="button" onclick={onUp} title="Move up" aria-label={`Move ${label} up`}>↑</button>
+			<button type="button" onclick={onDown} title="Move down" aria-label={`Move ${label} down`}>↓</button>
+			{#if showSectionMove && others.length > 0}
+				<select onchange={moveTo} aria-label={`Move ${label} to another section`} value="">
+					<option value="">Move to…</option>
+					{#each others as s (s.id)}
+						<option value={s.id}>{s.title}</option>
+					{/each}
+				</select>
+			{/if}
+		</div>
+		{#if moveNote}<span class="pl-sub note" role="status">{moveNote}</span>{/if}
+		<button type="button" class="rm" onclick={onRemove}>Remove</button>
+	</div>
+</div>
+
+<style>
+	.block {
+		padding: 10px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+	.qnum {
+		font-weight: 700;
+		font-size: 0.95rem;
+		background: var(--pl-raised);
+		border: 1px solid var(--pl-line);
+		border-radius: 6px;
+		padding: 2px 10px;
+		white-space: nowrap;
+	}
+	.src {
+		font-size: 0.78rem;
+		color: var(--pl-ink-soft);
+	}
+	.badges {
+		display: flex;
+		gap: 6px;
+		margin-left: auto;
+		align-items: center;
+	}
+	.chip {
+		border-radius: 6px;
+		padding: 2px 8px;
+		font-size: 0.72rem;
+		font-weight: 600;
+		line-height: 1.55;
+	}
+	.chip.type {
+		background: var(--pl-raised);
+		font-family: var(--pl-font-mono);
+		font-weight: 500;
+	}
+	.chip.para {
+		background: var(--pl-ochre-soft);
+		color: var(--pl-ochre);
+	}
+	.warn {
+		font-size: 0.76rem;
+		color: var(--pl-ochre);
+	}
+	.ops {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		border-top: 1px dashed var(--pl-line);
+		padding-top: 8px;
+	}
+	.mv {
+		display: flex;
+		gap: 4px;
+		align-items: center;
+	}
+	.mv button {
+		width: 32px;
+		height: 32px;
+		min-height: 0;
+		border: 1px solid var(--pl-line);
+		border-radius: 6px;
+		background: none;
+		color: var(--pl-ink-soft);
+		cursor: pointer;
+		font-size: 1rem;
+		line-height: 1;
+		padding: 0 0 2px;
+	}
+	.mv button:hover {
+		border-color: var(--pl-seal);
+		color: var(--pl-seal);
+	}
+	.mv select {
+		min-height: 32px;
+		font-size: 0.78rem;
+		padding: 0 6px;
+		max-width: 160px;
+	}
+	.note {
+		font-size: 0.75rem;
+	}
+	.rm {
+		margin-left: auto;
+		border: 1px solid var(--pl-line);
+		border-radius: 6px;
+		background: none;
+		padding: 6px 12px;
+		min-height: 32px;
+		font-size: 0.78rem;
+		font-weight: 600;
+		cursor: pointer;
+		color: var(--pl-seal);
+	}
+	.rm:hover {
+		border-color: var(--pl-seal);
+		background: var(--pl-seal-soft);
+	}
+</style>
