@@ -1,6 +1,7 @@
 <script>
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Topbar from '$lib/components/Topbar.svelte';
 	import LoginDialog from '$lib/components/LoginDialog.svelte';
@@ -10,6 +11,8 @@
 	let { children } = $props();
 	let counts = $state({ done: 0, queued: 0, running: 0, failed: 0 });
 	const inboxCount = $derived($inboxItems?.length ?? 0);
+	// Experimental fullscreen workspaces (e.g. /lab/...) render bare chrome.
+	const isLab = $derived($page.url.pathname.startsWith('/lab'));
 
 	$effect(() => {
 		document.documentElement.dataset.theme = $theme;
@@ -41,16 +44,22 @@
 	});
 </script>
 
-<div class="shell">
-	<Sidebar {counts} {inboxCount} />
-	<div class="main">
-		<Topbar crumbs={['Physics']} />
-		<main class="content">
-			{@render children()}
-		</main>
+{#if isLab}
+	<div class="labshell">
+		{@render children()}
 	</div>
-	<LoginDialog />
-</div>
+{:else}
+	<div class="shell">
+		<Sidebar {counts} {inboxCount} />
+		<div class="main">
+			<Topbar crumbs={['Physics']} />
+			<main class="content">
+				{@render children()}
+			</main>
+		</div>
+		<LoginDialog />
+	</div>
+{/if}
 
 <style>
 	.shell {
@@ -69,6 +78,11 @@
 		max-width: 1120px;
 		width: 100%;
 		margin: 0 auto;
+	}
+	.labshell {
+		min-height: 100dvh;
+		display: flex;
+		flex-direction: column;
 	}
 	@media (max-width: 900px) {
 		.main {

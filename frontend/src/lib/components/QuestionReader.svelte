@@ -35,6 +35,12 @@
 
 	let currentQ = $state(null);
 
+	const editHref = $derived(
+		currentQ
+			? `/lab/edit/${paperId}/${encodeURIComponent(currentQ.number)}?part=question&back=${encodeURIComponent(backHref)}`
+			: ''
+	);
+
 	function renderUrl(part) {
 		return `/api/papers/${paperId}/questions/${encodeURIComponent(current)}/render?part=${part}`;
 	}
@@ -121,7 +127,19 @@
 
 		<article class="pane">
 			{#if currentQ}
-				<h2 class="qtitle">Question {currentQ.number}</h2>
+				<div class="qtitle-row">
+					<h2 class="qtitle">Question {currentQ.number}</h2>
+					{#if isArchivist}
+						<a
+							class="editlink"
+							href={editHref}
+							title="Edit TeX (experimental)"
+							aria-label={`Edit TeX for question ${currentQ.number} (experimental)`}
+						>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+						</a>
+					{/if}
+				</div>
 				<div class="meta-row">
 					<span class="typebadge" title={currentQ.qtype}>{qtypeLabel(currentQ.qtype)}</span>
 					<span class="difftext">{currentQ.difficulty ?? 'Not graded'}</span>
@@ -297,6 +315,35 @@
 		font-size: 1.75rem;
 		font-weight: 600;
 		margin: 4px 0 10px;
+	}
+	.qtitle-row {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+	}
+	.qtitle-row .qtitle {
+		margin-top: 4px;
+	}
+	.editlink {
+		margin-left: auto;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-sm);
+		background: var(--pl-surface);
+		color: var(--pl-ink-soft);
+		flex-shrink: 0;
+	}
+	.editlink:hover {
+		color: var(--pl-seal);
+		border-color: var(--pl-seal);
+	}
+	.editlink svg {
+		width: 16px;
+		height: 16px;
 	}
 	.meta-row {
 		display: flex;
