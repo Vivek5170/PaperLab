@@ -37,9 +37,6 @@
 	let previewEl = $state(null);
 	let mobileTab = $state('edit'); // edit | preview (narrow screens only)
 	let pendingNav = $state(null); // { type: 'part', value } | { type: 'back' }
-	let renderOpen = $state(false);
-	let renderPhase = $state('idle'); // idle | working | done
-	let renderTimer = null;
 
 	function showToast(msg) {
 		toast = msg;
@@ -105,13 +102,6 @@
 		showToast('Draft reset to the mock original.');
 	}
 
-	function mockRender() {
-		renderOpen = true;
-		renderPhase = 'working';
-		clearTimeout(renderTimer);
-		renderTimer = setTimeout(() => (renderPhase = 'done'), 1200);
-	}
-
 	function onKey(e) {
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault();
@@ -175,7 +165,6 @@
 			{:else}Saved{/if}
 		</span>
 		<div class="actions">
-			<button type="button" class="pl-btn" onclick={mockRender}>Render as image</button>
 			<button type="button" class="pl-btn" disabled={!dirty} onclick={mockDiscard}>Discard</button>
 			<button type="button" class="pl-btn pl-btn-primary" disabled={!dirty || saveState === 'saving'} onclick={mockSave}>
 				{saveState === 'saving' ? 'Saving…' : 'Save'}
@@ -231,26 +220,6 @@
 				<div class="dialogrow">
 					<button type="button" class="pl-btn" onclick={() => (pendingNav = null)}>Keep editing</button>
 					<button type="button" class="pl-btn pl-btn-primary" onclick={confirmNav}>Discard changes</button>
-				</div>
-			</div>
-		</div>
-	{/if}
-
-	{#if renderOpen}
-		<div class="overlay" role="dialog" aria-modal="true" aria-label="Mock compiled render">
-			<div class="dialog renderdialog">
-				<h2>Compiled image <span class="mockbadge">Mock</span></h2>
-				{#if renderPhase === 'working'}
-					<p class="pl-sub">Compiling draft… (mock delay)</p>
-					<div class="spinner" aria-hidden="true"></div>
-				{:else}
-					<p class="pl-sub">What a real compile of the current draft could look like. Nothing was compiled or saved.</p>
-					<div class="renderpage">
-						{@html previewHtml}
-					</div>
-				{/if}
-				<div class="dialogrow">
-					<button type="button" class="pl-btn" onclick={() => (renderOpen = false)}>Close</button>
 				</div>
 			</div>
 		</div>
@@ -482,57 +451,6 @@
 		justify-content: flex-end;
 		gap: 8px;
 		flex-wrap: wrap;
-	}
-	.renderdialog {
-		max-width: 640px;
-		max-height: 88dvh;
-		overflow-y: auto;
-	}
-	.renderpage {
-		background: #fff;
-		color: #1c1e21;
-		border: 1px solid var(--pl-line);
-		border-radius: var(--pl-radius-sm);
-		padding: 28px 30px;
-		font-size: 16px;
-		line-height: 1.7;
-		margin-bottom: 16px;
-	}
-	.renderpage :global(.pl-math-block) {
-		display: block;
-		text-align: center;
-		margin: 0.75em 0;
-	}
-	.renderpage :global(.mockfig-box) {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		max-width: 320px;
-		height: 140px;
-		margin: 0 auto 6px;
-		border: 1px dashed #ccc;
-		background: #f6f6f6;
-		color: #666;
-		font-size: 0.85rem;
-	}
-	.renderpage :global(figcaption) {
-		font-size: 0.75rem;
-		color: #666;
-		text-align: center;
-	}
-	.spinner {
-		width: 28px;
-		height: 28px;
-		margin: 12px 0 20px;
-		border: 3px solid var(--pl-line);
-		border-top-color: var(--pl-seal);
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-	}
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
 	}
 	@media (max-width: 899px) {
 		.mobtabs {
