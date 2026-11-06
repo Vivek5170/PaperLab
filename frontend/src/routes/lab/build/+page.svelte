@@ -1,5 +1,6 @@
 <script>
-	import { cartStore } from '$lib/carts.js';
+	import { browser } from '$app/environment';
+import { cartStore } from '$lib/carts.js';
 	import {
 		builderStore, builder, docOrder, numbering, blockTotal, builderCorrupt, parsedKeys
 	} from '$lib/builder.js';
@@ -21,6 +22,48 @@
 	let undoSnap = $state(null);
 	let undoLabel = $state('');
 	let undoTimer = null;
+	let collapsed = $state({});
+	let splitPct = $state(browser ? Number(sessionStorage.getItem('pl-split-v1')) || 38 : 38);
+
+	function toggleSection(id) {
+		collapsed[id] = !collapsed[id];
+	}
+	function clampSplit(pct, w) {
+		const minL = Math.min(50, (280 / Math.max(w, 1)) * 100);
+		return Math.max(minL, Math.min(62, pct));
+	}
+	function persistSplit() {
+		try {
+			sessionStorage.setItem('pl-split-v1', String(Math.round(splitPct)));
+		} catch { /* private mode: session-only anyway */ }
+	}
+	function startSplit(e) {
+		e.preventDefault();
+		const el = e.currentTarget;
+		try {
+			el.setPointerCapture?.(e.pointerId);
+		} catch { /* ignore */ }
+		const move = (ev) => {
+			const host = el.closest('.workspace');
+			const r = host?.getBoundingClientRect();
+			if (!r || r.width <= 0) return;
+			splitPct = clampSplit(((ev.clientX - r.left) / r.width) * 100, r.width);
+		};
+		const up = () => {
+			persistSplit();
+			window.removeEventListener('pointermove', move);
+			window.removeEventListener('pointerup', up);
+		};
+		window.addEventListener('pointermove', move);
+		window.addEventListener('pointerup', up);
+	}
+	function splitKeys(e) {
+		if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+		e.preventDefault();
+		const w = e.currentTarget.closest('.workspace')?.getBoundingClientRect()?.width ?? 1200;
+		splitPct = clampSplit(splitPct + (e.key === 'ArrowRight' ? 2 : -2), w);
+		persistSplit();
+	}
 
 	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -101,7 +144,7 @@
 		<button type="button" role="tab" aria-selected={mobileTab === 'preview'} class:active={mobileTab === 'preview'} onclick={() => (mobileTab = 'preview')}>Preview</button>
 	</nav>
 
-	<div class="workspace" data-view={mobileTab}>
+	<div class="workspace" data-view={mobileTab} style:--lw={`${splitPct}%`}>
 		<!-- ================= LEFT: editor ================= -->
 		<div class="editor">
 			<div class="panehead">
@@ -128,11 +171,13 @@
 						Assignment <span class="pl-sub">(flat)</span>
 					</label>
 				</div>
-
-			</div>
-
-			<div class="panel pl-card">
-				<h2>Import from cart</h2>
+				<hr class="seprule" />
+				<div class="importlabel">
+					<span>Import from cart</span>
+					{#if activeCart}
+						<span class="pl-sub">{activeCart.name} · {activeCart.items.length}</span>
+					{/if}
+				</div>
 				<div class="importrow">
 					<select bind:value={cartId} aria-label="Source cart">
 						{#each $cartStore.carts as c (c.id)}
@@ -190,7 +235,8 @@
 							{#if b}
 								<BuilderBlock
 									block={b}
-								numbers={num.byBlock[bid] ?? []}
+									numbers={num.byBlock[bid] ?? []}
+									showType
 									onUp={() => builder.moveBlock(bid, -1)}
 									onDown={() => builder.moveBlock(bid, 1)}
 									onRemove={() => removeWithUndo(bid, `Q${(num.byBlock[bid] ?? []).join(', Q')} (Paper ${b.paperId} · ${b.number})`)}
@@ -204,16 +250,31 @@
 					{#each draft.sections as s, si (s.id)}
 						{@const secLetter = LETTERS[si] ?? `X${si + 1}`}
 					{@const secNums = s.blockIds.flatMap((bid) => num.byBlock[bid] ?? [])}
+					{@const secRange = secNums.length > 1 ? `Q${secNums[0]}–Q${secNums[secNums.length - 1]}` : secNums.length === 1 ? `Q${secNums[0]}` : 'empty'}
 					<section class="section" aria-label={`Section ${secLetter}`}>
 						<div class="stitle">
+							<button type="button" class="twisty" aria-expanded={!collapsed[s.id]} aria-label={`${collapsed[s.id] ? 'Expand' : 'Collapse'} section ${secLetter}`} title={collapsed[s.id] ? 'Expand' : 'Collapse'} onclick={() => toggleSection(s.id)}>
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={collapsed[s.id] ? 'm9 6 6 6-6 6' : 'm6 9 6 6 6-6'} /></svg>
+							</button>
 							<span class="secletter" title="Auto section">{secLetter}</span>
 							{#if s.atype === 'passage'}
 								<span class="atype passage" title="Structural group: passages stay whole, children keep their own types">PASSAGES</span>
 							{:else}
 								<span class="atype" title={`Auto-grouped ${s.atype}`}>{s.atype.toUpperCase()}</span>
 							{/if}
-							<span class="pl-sub count">{secNums.length} question{secNums.length === 1 ? '' : 's'}</span>
+							<span class="pl-sub count">{secNums.length} q · {secRange}</span>
+							{#if draft.sections.length > 1}
+								<span class="secops" role="group" aria-label={`Reorder section ${secLetter}`}>
+									<button type="button" disabled={si === 0} onclick={() => builder.moveSection(si, si - 1)} title="Move section up" aria-label={`Move section ${secLetter} up`}>
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>
+									</button>
+									<button type="button" disabled={si === draft.sections.length - 1} onclick={() => builder.moveSection(si, si + 1)} title="Move section down" aria-label={`Move section ${secLetter} down`}>
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>
+									</button>
+								</span>
+							{/if}
 						</div>
+						{#if !collapsed[s.id]}
 							{#if s.atype === 'passage' && s.blockIds.length > 0}
 								<p class="pl-sub passage-note">Passages stay whole; children keep their own types and numbers.</p>
 							{/if}
@@ -224,21 +285,34 @@
 										<BuilderBlock
 											block={b}
 											numbers={num.byBlock[bid] ?? []}
+											showType={false}
 											onUp={() => builder.moveBlock(bid, -1)}
 											onDown={() => builder.moveBlock(bid, 1)}
 											onRemove={() => removeWithUndo(bid, `${(num.byBlock[bid] ?? []).map((n) => `Q${n}`).join('–')} (Paper ${b.paperId} · ${b.number})`)}
 										/>
 									{/if}
 								{:else}
-									<p class="pl-sub">Empty section — excluded from numbering until it holds a block.</p>
+									<p class="pl-sub">Empty section — excluded from numbering until it holds a block. Import a cart to fill it.</p>
 								{/each}
 							</div>
+						{/if}
 						</section>
 					{/each}
 				{/if}
 			</div>
 			</div>
 		</div>
+
+		<div
+			class="splitter"
+			role="separator"
+			aria-orientation="vertical"
+			aria-label="Resize editor and preview panels"
+			tabindex="0"
+			title="Drag to resize panels"
+			onpointerdown={startSplit}
+			onkeydown={splitKeys}
+		></div>
 
 		<!-- ================= RIGHT: document ================= -->
 		<div class="previewcol">
@@ -365,7 +439,31 @@
 		flex: 1;
 		min-height: 0;
 		display: grid;
-		grid-template-columns: minmax(320px, 36%) minmax(0, 1fr);
+		grid-template-columns: minmax(280px, var(--lw, 38%)) 8px minmax(0, 1fr);
+	}
+	.splitter {
+		position: relative;
+		cursor: col-resize;
+		min-width: 0;
+		border-radius: 4px;
+	}
+	.splitter::after {
+		content: '';
+		position: absolute;
+		inset: 0 3px;
+		border-radius: 2px;
+		background: transparent;
+		transition: background 120ms;
+	}
+	.splitter:hover::after,
+	.splitter:active::after,
+	.splitter:focus-visible::after {
+		background: var(--pl-seal);
+		opacity: 0.45;
+	}
+	.splitter:focus-visible {
+		outline: 2px solid var(--pl-focus);
+		outline-offset: -2px;
 	}
 	.editor {
 		min-height: 0;
@@ -382,6 +480,10 @@
 		font-size: 0.82rem;
 		font-weight: 600;
 		flex-shrink: 0;
+		position: sticky;
+		top: 0;
+		z-index: 5;
+		background: var(--pl-paper);
 	}
 	.panehead .pl-sub {
 		font-weight: 400;
@@ -436,6 +538,20 @@
 		height: 16px;
 		accent-color: var(--pl-seal);
 	}
+	.seprule {
+		border: none;
+		border-top: 1px dashed var(--pl-line);
+		margin: 10px 0;
+	}
+	.importlabel {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+		font-weight: 600;
+		font-size: 0.85rem;
+		margin-bottom: 6px;
+	}
 	.importrow {
 		display: flex;
 		flex-wrap: wrap;
@@ -446,6 +562,11 @@
 		max-width: 100%;
 		flex: 1;
 		min-width: 140px;
+	}
+	.importrow .pl-btn {
+		min-height: 0;
+		padding: 7px 14px;
+		font-size: 0.8rem;
 	}
 	.hint {
 		margin: 8px 0 0;
@@ -505,6 +626,62 @@
 		align-items: center;
 		margin-bottom: 8px;
 	}
+	.twisty {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		min-height: 0;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		background: none;
+		color: var(--pl-ink-soft);
+		cursor: pointer;
+		padding: 0;
+		flex-shrink: 0;
+	}
+	.twisty:hover {
+		border-color: var(--pl-line);
+		background: var(--pl-raised);
+		color: var(--pl-ink);
+	}
+	.twisty svg {
+		width: 14px;
+		height: 14px;
+	}
+	.secops {
+		margin-left: auto;
+		display: inline-flex;
+		gap: 2px;
+	}
+	.secops button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 26px;
+		height: 26px;
+		min-height: 0;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		background: none;
+		color: var(--pl-ink-soft);
+		cursor: pointer;
+		padding: 0;
+	}
+	.secops button:hover:not(:disabled) {
+		border-color: var(--pl-line);
+		background: var(--pl-raised);
+		color: var(--pl-ink);
+	}
+	.secops button:disabled {
+		opacity: 0.3;
+		cursor: default;
+	}
+	.secops svg {
+		width: 13px;
+		height: 13px;
+	}
 	.secletter {
 		display: inline-flex;
 		align-items: center;
@@ -560,7 +737,13 @@
 	.blocks {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: 0;
+	}
+	.blocks .qrow {
+		border-bottom: 1px solid var(--pl-line);
+	}
+	.blocks .qrow:last-of-type {
+		border-bottom: none;
 	}
 	/* Right: document pane. The sheet inside keeps readable width. */
 	.previewcol {
@@ -627,6 +810,9 @@
 		.workspace {
 			grid-template-columns: 1fr;
 			flex: none;
+		}
+		.splitter {
+			display: none;
 		}
 		.workspace[data-view='edit'] .previewcol,
 		.workspace[data-view='preview'] .editor {
