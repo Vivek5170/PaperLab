@@ -3,8 +3,7 @@
 	import {
 		builderStore, builder, docOrder, numbering, blockTotal, builderCorrupt
 	} from '$lib/builder.js';
-	import { SECTION_TYPES, sectionAccepts } from '$lib/builderModel.js';
-	import { normalizeAnswerType } from '$lib/qtypes.js';
+	import { sectionAccepts } from '$lib/builderModel.js';
 	import BuilderBlock from '$lib/components/BuilderBlock.svelte';
 	import QuestionSheetPreview from '$lib/components/QuestionSheetPreview.svelte';
 	import AnswerSheetPreview from '$lib/components/AnswerSheetPreview.svelte';
@@ -17,17 +16,14 @@
 	let cartId = $state('');
 	let importNote = $state('');
 	let dupesNote = $state('');
-	let secTitle = $state('');
-	let secAtype = $state('scq');
-	let renameSid = $state(null);
-	let renameVal = $state('');
 	let confirmNew = $state(false);
-	let freshSid = $state(null);
 	let previewMode = $state('questions'); // questions | answers
 	let mobileTab = $state('edit'); // edit | preview (narrow screens only)
 	let undoSnap = $state(null);
 	let undoLabel = $state('');
 	let undoTimer = null;
+
+	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 	$effect(() => {
 		if (!cartId && $cartStore.carts.length > 0) cartId = $cartStore.activeId ?? $cartStore.carts[0].id;
@@ -46,22 +42,6 @@
 				: `Added ${r.added.length}; ${r.skipped.length} already in the draft (skipped).`;
 		if (!allowDupes && r.skipped.length > 0)
 			dupesNote = `${r.skipped.length} duplicate${r.skipped.length === 1 ? '' : 's'} skipped.`;
-	}
-
-	function addSection() {
-		if (!secTitle.trim()) return;
-		const id = builder.addSection({ title: secTitle.trim(), atype: secAtype });
-		secTitle = '';
-		if (id) {
-			freshSid = id;
-			setTimeout(() => (freshSid = null), 2600);
-			setTimeout(() => document.getElementById(`sec-${id}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60);
-		}
-	}
-
-	function saveRename(sid) {
-		if (renameVal.trim()) builder.renameSection(sid, renameVal);
-		renameSid = null;
 	}
 
 	function removeWithUndo(bid, label) {
@@ -157,7 +137,7 @@
 					{/if}
 				</div>
 				{#if draft.mode === 'paper'}
-					<p class="pl-sub">Singles group by answer type; passages — uniform or mixed — go to a Passage section, never split.</p>
+					<p class="pl-sub">Imports group automatically: singles by answer type, every passage into Passages — never split.</p>
 				{/if}
 				{#if importNote}<p class="pl-sub" role="status">{importNote}</p>{/if}
 				{#if dupesNote}
@@ -171,17 +151,6 @@
 			<div class="panel pl-card">
 				<div class="sechead">
 					<h2>{draft.mode === 'paper' ? 'Sections' : 'Questions'} · {nBlocks} → {num.total} nos.</h2>
-					{#if draft.mode === 'paper'}
-						<div class="addsec">
-							<input type="text" bind:value={secTitle} placeholder="New section title" maxlength="80" aria-label="New section title" />
-							<select bind:value={secAtype} aria-label="New section type">
-								{#each SECTION_TYPES as t (t)}
-									<option value={t}>{t.toUpperCase()}</option>
-								{/each}
-							</select>
-							<button type="button" class="pl-btn" disabled={!secTitle.trim()} onclick={addSection}>Add</button>
-						</div>
-					{/if}
 				</div>
 
 				{#if num.warnings.length > 0}
@@ -202,9 +171,7 @@
 							{#if b}
 								<BuilderBlock
 									block={b}
-									numbers={num.byBlock[bid] ?? []}
-									sections={[]}
-									showSectionMove={false}
+								numbers={num.byBlock[bid] ?? []}
 									onUp={() => builder.moveBlock(bid, -1)}
 									onDown={() => builder.moveBlock(bid, 1)}
 									onRemove={() => removeWithUndo(bid, `Q${(num.byBlock[bid] ?? []).join(', Q')} (Paper ${b.paperId} · ${b.number})`)}
@@ -216,49 +183,18 @@
 					</div>
 				{:else}
 					{#each draft.sections as s, si (s.id)}
-						<section class="section" class:fresh={freshSid === s.id} id={`sec-${s.id}`} aria-label={s.title}>
-							<div class="stitle">
-								{#if renameSid === s.id}
-									<input
-										type="text" value={renameVal} maxlength="80" aria-label="Section title"
-										oninput={(e) => (renameVal = e.currentTarget.value)}
-										onkeydown={(e) => {
-											if (e.key === 'Enter') saveRename(s.id);
-											else if (e.key === 'Escape') renameSid = null;
-										}}
-									/>
-									<button type="button" class="pl-btn" onclick={() => saveRename(s.id)}>Save</button>
-									<button type="button" class="pl-btn" onclick={() => (renameSid = null)}>Cancel</button>
-								{:else}
-									<strong>{s.title}</strong>
-									{#if s.blockIds.length === 0}
-										<select value={s.atype} onchange={(e) => builder.setSectionAtype(s.id, e.currentTarget.value)} aria-label={`Type for ${s.title}`}>
-											{#each SECTION_TYPES as t (t)}
-												<option value={t}>{t.toUpperCase()}</option>
-											{/each}
-										</select>
-									{:else if s.atype === 'passage'}
-										<span class="atype passage" title="Structural group: passages stay whole, children keep their own types">PASSAGE</span>
-									{:else}
-										<span class="atype" title={`Accepts ${s.atype} (par-${s.atype} merges here)`}>{s.atype.toUpperCase()}</span>
-									{/if}
-									<span class="pl-sub count">{s.blockIds.length}</span>
-									<span class="sops">
-										<button type="button" class="mini" onclick={() => { renameSid = s.id; renameVal = s.title; }}>Rename</button>
-										<button type="button" class="mini icon" disabled={si === 0} onclick={() => builder.moveSection(si, si - 1)} title="Move section up" aria-label={`Move ${s.title} up`}>
-											<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6-6"/></svg>
-										</button>
-										<button type="button" class="mini icon" disabled={si === draft.sections.length - 1} onclick={() => builder.moveSection(si, si + 1)} title="Move section down" aria-label={`Move ${s.title} down`}>
-											<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>
-										</button>
-										{#if s.blockIds.length === 0}
-											<button type="button" class="mini danger" onclick={() => builder.deleteSection(s.id)}>Delete</button>
-										{:else}
-											<button type="button" class="mini" disabled title="Move all blocks out first">Delete</button>
-										{/if}
-									</span>
-								{/if}
-							</div>
+						{@const secLetter = LETTERS[si] ?? `X${si + 1}`}
+					{@const secNums = s.blockIds.flatMap((bid) => num.byBlock[bid] ?? [])}
+					<section class="section" aria-label={`Section ${secLetter}`}>
+						<div class="stitle">
+							<span class="secletter" title="Auto section">{secLetter}</span>
+							{#if s.atype === 'passage'}
+								<span class="atype passage" title="Structural group: passages stay whole, children keep their own types">PASSAGES</span>
+							{:else}
+								<span class="atype" title={`Auto-grouped ${s.atype}`}>{s.atype.toUpperCase()}</span>
+							{/if}
+							<span class="pl-sub count">{secNums.length} question{secNums.length === 1 ? '' : 's'}</span>
+						</div>
 							{#if s.atype === 'passage' && s.blockIds.length > 0}
 								<p class="pl-sub passage-note">Passages stay whole; children keep their own types and numbers.</p>
 							{/if}
@@ -266,21 +202,13 @@
 								{#each s.blockIds as bid (bid)}
 									{@const b = draft.blocks[bid]}
 									{#if b}
-										{@const expected = s.atype === 'passage' ? null : normalizeAnswerType(b.qtype)}
 										<BuilderBlock
 											block={b}
 											numbers={num.byBlock[bid] ?? []}
-											sections={draft.sections}
-											currentSectionId={s.id}
-											showSectionMove={draft.sections.length > 1}
 											onUp={() => builder.moveBlock(bid, -1)}
 											onDown={() => builder.moveBlock(bid, 1)}
-											onMoveTo={(target) => builder.moveBlockToSection(bid, target)}
 											onRemove={() => removeWithUndo(bid, `${(num.byBlock[bid] ?? []).map((n) => `Q${n}`).join('–')} (Paper ${b.paperId} · ${b.number})`)}
 										/>
-										{#if expected && expected !== s.atype}
-											<p class="pl-error mini-note" role="note">Type drift: {b.qtype} no longer matches this {s.atype.toUpperCase()} section. Move it out.</p>
-										{/if}
 									{/if}
 								{:else}
 									<p class="pl-sub">Empty section — excluded from numbering until it holds a block.</p>
@@ -437,15 +365,6 @@
 	.sechead h2 {
 		margin: 0;
 	}
-	.addsec {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-	.addsec input {
-		min-width: 130px;
-		flex: 1;
-	}
 	.warns {
 		margin: 0 0 10px;
 		padding: 0;
@@ -468,19 +387,25 @@
 		background: var(--pl-paper);
 		scroll-margin-top: 12px;
 	}
-	.section.fresh {
-		border-color: var(--pl-seal);
-		box-shadow: 0 0 0 2px var(--pl-seal-soft);
-	}
 	.stitle {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 6px;
+		gap: 8px;
 		align-items: center;
 		margin-bottom: 8px;
 	}
-	.stitle strong {
-		font-size: 0.95rem;
+	.secletter {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 30px;
+		height: 30px;
+		border-radius: 50%;
+		background: var(--pl-seal);
+		color: #fff;
+		font-weight: 700;
+		font-size: 0.85rem;
+		flex-shrink: 0;
 	}
 	.atype {
 		font-size: 0.7rem;
@@ -500,11 +425,6 @@
 	.passage-note {
 		margin: -2px 0 8px;
 		font-size: 0.76rem;
-	}
-	.sops {
-		margin-left: auto;
-		display: flex;
-		gap: 4px;
 	}
 	.mini {
 		border: 1px solid var(--pl-line);
@@ -528,20 +448,6 @@
 	}
 	.mini.danger {
 		color: var(--pl-seal);
-	}
-	.mini.icon {
-		padding: 4px 10px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-	}
-	.mini.icon svg {
-		width: 14px;
-		height: 14px;
-	}
-	.mini-note {
-		font-size: 0.78rem;
-		margin: 6px 0 0;
 	}
 	.blocks {
 		display: flex;
@@ -637,9 +543,6 @@
 		.editor,
 		.previewscroll {
 			overflow: visible;
-		}
-		.sops {
-			margin-left: 0;
 		}
 	}
 </style>

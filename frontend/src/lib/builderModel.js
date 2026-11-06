@@ -82,59 +82,17 @@ function touch(draft) {
 }
 
 /**
- * Group incoming items into sections when the paper draft has none:
- * singles by normalized type, every paragraph block into a Passage
- * section. Passages are structural — never split, never typed.
- */
-export function sectionsForItems(items) {
-	const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-	const singles = new Map();
-	const passages = [];
-	for (const src of items ?? []) {
-		if (!src || typeof src !== 'object') continue;
-		if (isParagraphId(src.number, src.qtype)) {
-			passages.push(src);
-			continue;
-		}
-		const t = normalizeAnswerType(src.qtype);
-		if (!singles.has(t)) singles.set(t, []);
-		singles.get(t).push(src);
-	}
-	const sections = [];
-	let li = 0;
-	for (const t of SECTION_TYPES) {
-		if (t === 'passage' || !singles.has(t)) continue;
-		sections.push({ id: newSectionId(), title: `Section ${letters[li++] ?? `X${li}`} · ${t.toUpperCase()}`, atype: t, blockIds: [] });
-	}
-	if (passages.length > 0) {
-		sections.push({ id: newSectionId(), title: `Section ${letters[li] ?? `X${li}`} · Passages`, atype: 'passage', blockIds: [] });
-	}
-	return { sections, passages };
-}
-
-/**
  * Import items as fresh blocks. Dupes (identity already in draft) are
- * skipped unless allowDupes. Empty paper drafts gain generated sections
- * (typed + Passage); otherwise blocks land in the target/first accepting
- * section. Returns {draft, added:[blockIds], skipped:[{paperId,number}]}.
+ * skipped unless allowDupes. Paper drafts regroup automatically on every
+ * import — sections are derived (A, B, C…), never managed by hand.
+ * Assignment appends to its single flat list.
+ * Returns {draft, added:[blockIds], skipped:[{paperId,number}]}.
  */
-export function importBlocks(draft, items, { allowDupes = false, sectionId = null } = {}) {
+export function importBlocks(draft, items, { allowDupes = false } = {}) {
 	const seen = identitySet(draft);
-	let d = draft;
-	if (!d.sections || d.sections.length === 0) {
-		if (d.mode === 'assignment') {
-			d = createDraft('assignment', d.title);
-		} else {
-			d = { ...d, sections: sectionsForItems(items).sections };
-		}
-	}
-	let target = (d.sections.find((s) => s.id === sectionId) ?? d.sections[0]);
-	if (!target) return { draft: d, added: [], skipped: [] };
+	const blocks = { ...(draft?.blocks ?? {}) };
 	const added = [];
 	const skipped = [];
-	const blocks = { ...d.blocks };
-	const sections = d.sections.map((s) => ({ ...s, blockIds: [...s.blockIds] }));
-	const tsec = sections.find((s) => s.id === target.id);
 	for (const src of items ?? []) {
 		const b = toBlock(src);
 		if (!b) continue;
@@ -145,17 +103,15 @@ export function importBlocks(draft, items, { allowDupes = false, sectionId = nul
 		}
 		seen.add(k);
 		blocks[b.id] = b;
-		if (sectionAccepts(tsec, b)) {
-			tsec.blockIds.push(b.id);
-		} else {
-			// Target was explicitly picked but rejects: fall back to the
-			// first accepting section so no block is ever left unplaced.
-			const alt = sections.find((s) => sectionAccepts(s, b));
-			(alt ?? tsec).blockIds.push(b.id);
-		}
 		added.push(b.id);
 	}
-	return { draft: touch({ ...d, blocks, sections }), added, skipped };
+	if ((draft?.mode ?? 'paper') === 'assignment') {
+		const base = draft?.sections?.length > 0 ? draft : createDraft('assignment', draft?.title ?? '');
+		const sections = base.sections.map((s) => ({ ...s, blockIds: [...s.blockIds] }));
+		sections[0].blockIds.push(...added);
+		return { draft: touch({ ...base, blocks, sections }), added, skipped };
+	}
+	return { ...autoGroup({ ...draft, blocks }), added, skipped };
 }
 
 /**
@@ -171,9 +127,10 @@ export function sectionAccepts(section, block) {
 }
 
 /**
- * Rebuild paper sections: singles grouped by NORMALIZED type, every
- * paragraph block into Passage section(s). Mixed-type passages are never
- * split — the Passage section carries no question type.
+ * Rebuild paper sections deterministically: singles by NORMALIZED type,
+ * every paragraph block (uniform or mixed) into Passage section(s).
+ * Order inside each bucket follows current document order; brand-new
+ * blocks (no position yet) append at the end in arrival order.
  */
 export function autoGroup(draft) {
 	if (draft.mode !== 'paper') return { draft, grouped: false };
@@ -192,7 +149,7 @@ export function autoGroup(draft) {
 	const docOrder = [];
 	for (const s of draft.sections) for (const bid of s.blockIds) docOrder.push(bid);
 	const pos = new Map(docOrder.map((id, i) => [id, i]));
-	const byPos = (a, b) => (pos.get(a) ?? 0) - (pos.get(b) ?? 0);
+	const byPos = (a, b) => (pos.get(a) ?? Number.MAX_SAFE_INTEGER) - (pos.get(b) ?? Number.MAX_SAFE_INTEGER);
 	const sections = [];
 	let li = 0;
 	for (const t of SECTION_TYPES) {
@@ -303,7 +260,11 @@ export function moveBlockToSection(draft, blockId, targetId) {
 	const sections = draft.sections.map((s) => ({ ...s, blockIds: [...s.blockIds] }));
 	sections[at.si].blockIds.splice(at.bi, 1);
 	sections.find((s) => s.id === targetId).blockIds.push(blockId);
-	return { draft: touch({ ...draft, sections }), moved: true };
+	// Keep sections derived: prune a paper section left empty by the move.
+	const pruned = draft.mode === 'paper'
+		? sections.filter((s) => s.locked || s.blockIds.length > 0)
+		: sections;
+	return { draft: touch({ ...draft, sections: pruned }), moved: true };
 }
 
 /** Remove a block: section refs AND its key overrides go with it. */
@@ -319,12 +280,15 @@ export function removeBlock(draft, blockId) {
 	};
 	const blocks = { ...draft.blocks };
 	delete blocks[blockId];
-	const sections = draft.sections.map((s) => ({
-		...s, blockIds: s.blockIds.filter((id) => id !== blockId)
-	}));
 	const keyOverride = Object.fromEntries(
 		Object.entries(draft.keyOverride ?? {}).filter(([k]) => !k.startsWith(`${blockId}:`))
 	);
+	// Sections are fully derived: drop paper sections left empty (the
+	// locked assignment list always stays).
+	let sections = draft.sections.map((s) => ({
+		...s, blockIds: s.blockIds.filter((id) => id !== blockId)
+	}));
+	if (draft.mode === 'paper') sections = sections.filter((s) => s.locked || s.blockIds.length > 0);
 	return { draft: touch({ ...draft, blocks, sections, keyOverride }), removed: true, snapshot };
 }
 
@@ -373,7 +337,7 @@ export function validateDraft(raw) {
 		if (nb) blocks[id] = nb;
 	}
 	const seen = new Set();
-	const sections = [];
+	let sections = [];
 	for (const s of Array.isArray(raw.sections) ? raw.sections : []) {
 		if (!s || typeof s !== 'object') continue;
 		const ids = [];
@@ -405,8 +369,18 @@ export function validateDraft(raw) {
 		return { ok: true, draft: { version: BUILDER_SCHEMA_VERSION, mode, title: String(raw.title ?? ''), sections: [kept], blocks, keyOverride, createdAt: raw.createdAt ?? now(), updatedAt: raw.updatedAt ?? now() } };
 	}
 	const keyOverride = pruneOverrides(raw.keyOverride, blocks);
-	if (sections.length === 0 && Object.keys(blocks).length > 0) {
-		sections.push({ id: newSectionId(), title: 'Section A', atype: 'scq', blockIds: Object.keys(blocks) });
+	// Sections are derived: drop stale empties, regroup orphans by type.
+	sections = sections.filter((s) => s.locked || s.blockIds.length > 0);
+	if (Object.keys(blocks).length > 0) {
+		const placed = new Set(sections.flatMap((s) => s.blockIds));
+		const orphans = Object.keys(blocks).filter((id) => !placed.has(id));
+		if (orphans.length > 0 || sections.length === 0) {
+			const regrouped = autoGroup({
+				mode, title: '', sections, blocks,
+				keyOverride: {}, createdAt: '', updatedAt: ''
+			});
+			sections = regrouped.draft.sections;
+		}
 	}
 	return {
 		ok: true,

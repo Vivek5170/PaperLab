@@ -93,12 +93,21 @@ describe('builderModel', () => {
 		assert.equal(sectionAccepts(p, { qtype: 'par-scq', number: '15-17_paragraph' }), true);
 		assert.equal(sectionAccepts(p, { qtype: 'scq', number: '8' }), false);
 	});
-	it('import into an empty draft generates typed + Passage sections', () => {
+	it('import always regroups: new types gain sections, letters stay positional', () => {
 		let d = createDraft('paper');
-		const r = importBlocks(d, [C(11, '8', 'scq'), C(11, '15-17_paragraph', 'par-scq')]);
-		assert.equal(r.draft.sections.length, 2);
-		assert.ok(r.draft.sections.some((s) => s.atype === 'passage'));
-		assert.ok(r.added.length === 2 && r.skipped.length === 0);
+		d = importBlocks(d, [C(11, '8', 'scq')]).draft;
+		assert.deepEqual(d.sections.map((s) => s.atype), ['scq']);
+		d = importBlocks(d, [C(11, '9', 'msq'), C(11, '15-17_paragraph', 'par-scq')]).draft;
+		assert.deepEqual(d.sections.map((s) => s.atype), ['scq', 'msq', 'passage']);
+		assert.equal(d.sections[0].blockIds.length, 1);
+		assert.equal(d.sections[2].blockIds.length, 1);
+	});
+	it('removing the last block of a section prunes it', () => {
+		let d = createDraft('paper');
+		d = importBlocks(d, [C(11, '8', 'scq'), C(11, '9', 'msq')]).draft;
+		const scqBid = d.sections.find((s) => s.atype === 'scq').blockIds[0];
+		d = removeBlock(d, scqBid).draft;
+		assert.deepEqual(d.sections.map((s) => s.atype), ['msq']);
 	});
 	it('undo restores the same block id, position and overrides', () => {
 		let d = createDraft('paper');
@@ -118,15 +127,15 @@ describe('builderModel', () => {
 	});
 	it('section gate: normalized match passes, mismatch refuses', () => {
 		let d = createDraft('paper');
-		d = addSection(d, { title: 'S1', atype: 'scq' }).draft;
-		d = addSection(d, { title: 'S2', atype: 'msq' }).draft;
-		const [s1, s2] = d.sections.slice(-2);
-		assert.equal(sectionAccepts(s2, { qtype: 'par-msq' }), true);
-		assert.equal(sectionAccepts(s2, { qtype: 'scq' }), false);
-		const r1 = importBlocks(d, [C(11, '8', 'scq')], { sectionId: s1.id });
-		const r2 = moveBlockToSection(r1.draft, r1.added[0], s2.id);
-		assert.equal(r2.moved, false);
-		assert.equal(r2.reason, 'type-mismatch');
+		d = importBlocks(d, [C(11, '8', 'scq')]).draft;
+		const scqBid = d.sections[0].blockIds[0];
+		d = addSection(d, { title: 'Manual', atype: 'msq' }).draft;
+		const msq = d.sections[d.sections.length - 1];
+		assert.equal(sectionAccepts(msq, { qtype: 'par-msq', number: '1' }), true);
+		assert.equal(sectionAccepts(msq, { qtype: 'scq', number: '8' }), false);
+		const r = moveBlockToSection(d, scqBid, msq.id);
+		assert.equal(r.moved, false);
+		assert.equal(r.reason, 'type-mismatch');
 	});
 	it('reorder never regenerates ids; overrides follow blocks', () => {
 		let d = createDraft('paper');

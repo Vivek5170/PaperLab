@@ -2,41 +2,17 @@
 	/**
 	 * One builder block row. Numbering arrives as a prop from the page's
 	 * single assignNumbers() result — this component never numbers.
+	 * Sections are fully derived (auto A/B/C), so blocks only move
+	 * within their section or get removed (undoable).
 	 */
-	import { qtypeLabel, normalizeAnswerType } from '$lib/qtypes.js';
+	import { qtypeLabel } from '$lib/qtypes.js';
 	import { parseParagraphRange } from '$lib/paragraph.js';
 	import { numberLabel } from '$lib/numbering.js';
 
-	let {
-		block,
-		numbers = [],
-		sections = [],
-		currentSectionId = null,
-		showSectionMove = false,
-		onUp,
-		onDown,
-		onMoveTo,
-		onRemove
-	} = $props();
+	let { block, numbers = [], onUp, onDown, onRemove } = $props();
 
 	const para = $derived(parseParagraphRange(block.number, block.qtype));
 	const label = $derived(numberLabel(numbers));
-	const others = $derived(sections.filter((s) => s.id !== currentSectionId));
-
-	let moveNote = $state('');
-
-	function moveTo(e) {
-		const target = e.currentTarget.value;
-		if (!target) return;
-		e.currentTarget.value = '';
-		const r = onMoveTo?.(target);
-		moveNote = r?.moved
-			? ''
-			: r?.reason === 'type-mismatch'
-				? `Only ${normalizeAnswerType(block.qtype).toUpperCase()} accepted there`
-				: 'Could not move';
-		if (moveNote) setTimeout(() => (moveNote = ''), 2200);
-	}
 </script>
 
 <div class="block pl-card">
@@ -64,16 +40,7 @@
 			<button type="button" onclick={onDown} title="Move down" aria-label={`Move ${label} down`}>
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>
 			</button>
-			{#if showSectionMove && others.length > 0}
-				<select onchange={moveTo} aria-label={`Move ${label} to another section`} value="">
-					<option value="">Move to…</option>
-					{#each others as s (s.id)}
-						<option value={s.id}>{s.title}</option>
-					{/each}
-				</select>
-			{/if}
 		</div>
-		{#if moveNote}<span class="pl-sub note" role="status">{moveNote}</span>{/if}
 		<button type="button" class="rm" onclick={onRemove}>Remove</button>
 	</div>
 </div>
@@ -163,15 +130,6 @@
 	.mv svg {
 		width: 15px;
 		height: 15px;
-	}
-	.mv select {
-		min-height: 32px;
-		font-size: 0.78rem;
-		padding: 0 6px;
-		max-width: 160px;
-	}
-	.note {
-		font-size: 0.75rem;
 	}
 	.rm {
 		margin-left: auto;
