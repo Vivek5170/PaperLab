@@ -430,7 +430,8 @@ import { cartStore } from '$lib/carts.js';
 
 <style>
 	.page {
-		height: 100dvh;
+		flex: 1;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -878,7 +879,7 @@ import { cartStore } from '$lib/carts.js';
 	@media (max-width: 900px) {
 		.page {
 			height: auto;
-			min-height: 100dvh;
+			min-height: 0;
 			overflow: visible;
 		}
 		.mobtabs {

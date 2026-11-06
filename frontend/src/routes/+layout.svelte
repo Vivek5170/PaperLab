@@ -13,6 +13,8 @@
 	const inboxCount = $derived($inboxItems?.length ?? 0);
 	// Experimental fullscreen workspaces (e.g. /lab/...) render bare chrome.
 	const isLab = $derived($page.url.pathname.startsWith('/lab'));
+	// Full-bleed workspace routes fill the shell instead of the narrow column.
+	const isWide = $derived($page.url.pathname === '/builder');
 
 	$effect(() => {
 		document.documentElement.dataset.theme = $theme;
@@ -50,11 +52,11 @@
 		<LoginDialog />
 	</div>
 {:else}
-	<div class="shell">
+	<div class="shell" class:wide={isWide}>
 		<Sidebar {counts} {inboxCount} />
 		<div class="main">
 			<Topbar crumbs={['Physics']} />
-			<main class="content">
+			<main class="content" class:wide={isWide}>
 				{@render children()}
 			</main>
 		</div>
@@ -70,6 +72,7 @@
 	.main {
 		flex: 1;
 		min-width: 0;
+		min-height: 0;
 		margin-left: 264px;
 		display: flex;
 		flex-direction: column;
@@ -80,6 +83,19 @@
 		width: 100%;
 		margin: 0 auto;
 	}
+	.shell.wide {
+		height: 100dvh;
+		overflow: hidden;
+	}
+	.content.wide {
+		padding: 0;
+		max-width: none;
+		margin: 0;
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
 	.labshell {
 		min-height: 100dvh;
 		display: flex;
@@ -88,6 +104,10 @@
 	@media (max-width: 900px) {
 		.main {
 			margin-left: 0;
+		}
+		.shell.wide {
+			height: auto;
+			overflow: visible;
 		}
 	}
 </style>

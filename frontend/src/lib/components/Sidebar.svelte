@@ -25,6 +25,7 @@
 		{ href: '/archive', label: 'Archive', icon: 'book' },
 		{ href: '/search', label: 'Search Questions', icon: 'search' },
 		{ href: '/cart', label: 'Cart', icon: 'cart' },
+		{ href: '/builder', label: 'Paper Builder', icon: 'builder' },
 		{ href: '/inbox', label: 'Tagging Inbox', badge: props.inboxCount, admin: true, icon: 'tag' },
 		{ href: '/syllabus', label: 'Syllabus Map', admin: true, icon: 'map' },
 		{ href: '/intake', label: 'Intake & Pipeline', admin: true, icon: 'upload' },
@@ -39,7 +40,8 @@
 		map: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>',
 		upload:
 			'<path d="M12 16V4m0 0 4 4m-4-4-4 4"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/>',
-		ledger: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10h8M8 14h8M8 18h5"/>'
+		ledger: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10h8M8 14h8M8 18h5"/>',
+		builder: '<rect x="4" y="3" width="12" height="16" rx="2"/><path d="M8 7h5M8 11h5M8 15h3"/><path d="M16 17h4a1 1 0 0 0 1-1v-3"/>'
 	};
 </script>
 
