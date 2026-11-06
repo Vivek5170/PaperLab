@@ -342,7 +342,7 @@
 	}
 	.tree-search input {
 		width: 100%;
-		min-height: 40px;
+		min-height: 36px;
 	}
 	.tree-list {
 		list-style: none;
@@ -366,16 +366,16 @@
 		background: var(--pl-raised);
 	}
 	.row.leaf {
-		padding: 9px 10px;
+		padding: 6px 10px;
 		gap: 10px;
 		cursor: pointer;
 	}
 	.chev {
 		border: none;
 		background: none;
-		padding: 6px;
-		min-height: 44px;
-		min-width: 44px;
+		padding: 2px;
+		min-height: 32px;
+		min-width: 32px;
 		color: var(--pl-ink-soft);
 		display: grid;
 		place-items: center;
@@ -386,7 +386,7 @@
 		height: 16px;
 	}
 	.chev-sp {
-		width: 44px;
+		width: 32px;
 		flex-shrink: 0;
 	}
 	.box {
@@ -403,8 +403,8 @@
 		border: none;
 		background: none;
 		text-align: left;
-		padding: 10px 4px;
-		min-height: 44px;
+		padding: 5px 4px;
+		min-height: 32px;
 		font-size: 0.85rem;
 		overflow: hidden;
 	}
@@ -422,7 +422,7 @@
 		min-width: 0;
 		cursor: pointer;
 		margin: 0;
-		padding: 6px 4px;
+		padding: 3px 4px;
 		font-weight: 500;
 	}
 	.lbl input,
@@ -470,8 +470,8 @@
 		color: var(--pl-seal);
 		font-weight: 600;
 		font-size: 0.82rem;
-		padding: 8px 10px;
-		min-height: 44px;
+		padding: 6px 10px;
+		min-height: 32px;
 	}
 	.dd-clear:disabled {
 		color: var(--pl-ink-soft);
