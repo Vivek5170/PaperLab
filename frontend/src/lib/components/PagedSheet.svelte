@@ -254,7 +254,7 @@
 			box-shadow: none;
 			border: none;
 			border-radius: 0;
-			margin: 0;
+			margin: 0 !important;
 		}
 		.apage + .apage {
 			break-before: page;

@@ -762,7 +762,7 @@ import { cartStore } from '$lib/carts.js';
 			height: auto;
 			overflow: visible;
 		}
-		.topbar, .mobtabs, .undobar, .corrupt, .confirmstrip, .editor {
+		.topbar, .mobtabs, .undobar, .corrupt, .confirmstrip, .editor, .panehead, .splitter {
 			display: none;
 		}
 		.workspace {
@@ -773,6 +773,7 @@ import { cartStore } from '$lib/carts.js';
 		}
 		.previewscroll {
 			overflow: visible;
+			padding: 0;
 		}
 	}
 	@media (max-width: 900px) {
