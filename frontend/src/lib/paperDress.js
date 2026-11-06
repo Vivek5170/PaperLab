@@ -24,6 +24,17 @@
 
 const LEAD_TEXT_RE = /^(\s*(?:<p[^>]*>)?\s*)(?:<strong>\s*)?(?:[A-Za-z]+-)?\d+[a-z]?\.(?:\s*<\/strong>)?\s+/;
 const FIRST_OL_RE = /^(\s*)<ol([^>]*)>/;
+// Option paragraphs ("A) …") align under the stem text, not at the body
+// margin — see the measured FITJEE/GTA/ADV rhythm. Tagged with pl-opt so
+// sheet CSS can indent them exactly like list-item stems.
+function markOptionParas(html) {
+	return String(html ?? '').replace(/<p([^>]*)>([\s\S]*?)<\/p>/g, (m, attrs, inner) => {
+		if (/class\s*=/.test(attrs)) return m;
+		const text = inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+		if (!/^[A-D]\)/.test(text)) return m;
+		return `<p${attrs} class="pl-opt">${inner}</p>`;
+	});
+}
 // Passage headers arrive standalone (<p>Paragraph for Q Nos. 33 to 34:</p>,
 // <p>PARAGRAPH-II</p>) OR glued to the body in one <p> (paper 8:
 // <p>Paragraph for Question Nos. 33 to 34: Pitot tube is used...</p>).
@@ -74,6 +85,9 @@ export function dressQuestion(segments, { numbers = [], para = null } = {}) {
 		out.forEach((s, i) => {
 			if (s.kind === 'text') s.html = html[i];
 		});
+		for (const s of out) {
+			if (s.kind === 'text' && typeof s.html === 'string') s.html = markOptionParas(s.html);
+		}
 		return out;
 	}
 
@@ -86,6 +100,9 @@ export function dressQuestion(segments, { numbers = [], para = null } = {}) {
 		);
 	} else {
 		firstText.html = firstText.html.replace(LEAD_TEXT_RE, '$1');
+	}
+	for (const s of out) {
+		if (s.kind === 'text' && typeof s.html === 'string') s.html = markOptionParas(s.html);
 	}
 	return out;
 }
@@ -190,6 +207,9 @@ export function dressSolution(segments, { numbers = [] } = {}) {
 				si < numbers.length ? `Solution for Q${numbers[si++]}` : mm);
 			return `data-tex="${encodeURIComponent(dec)}"`;
 		});
+	}
+	for (const s of out) {
+		if (s.kind === 'text' && typeof s.html === 'string') s.html = markOptionParas(s.html);
 	}
 	return out;
 }

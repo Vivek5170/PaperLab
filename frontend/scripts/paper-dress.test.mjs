@@ -217,3 +217,17 @@ describe('key-only solutions', () => {
 		assert.deepEqual(dressSolution(segs, { numbers: [7, 8] }), []);
 	});
 });
+
+describe('option/stem margin rhythm (measured originals)', () => {
+	it('tags A)-led paragraphs pl-opt, leaves prose alone', async () => {
+		const { dressQuestion } = await import('../src/lib/paperDress.js');
+		const out = dressQuestion([
+			{ kind: 'text', html: '<ol start="4"><li>Stem text.</li></ol><p>A) one</p><p><strong>B)</strong> two</p><p>A ball of mass m.</p><p class="keep">C) keep</p>' }
+		], { numbers: [4], para: null });
+		const html = out.map(s => s.html ?? '').join(' ');
+		assert.match(html, /<p class="pl-opt">A\) one<\/p>/);
+		assert.match(html, /<p class="pl-opt"><strong>B\)<\/strong> two<\/p>/);
+		assert.doesNotMatch(html, /pl-opt">A ball/);
+		assert.match(html, /<p class="keep">C\) keep<\/p>/);
+	});
+});

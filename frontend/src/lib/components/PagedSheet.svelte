@@ -238,6 +238,20 @@
 	.apage :global(li) {
 		overflow-wrap: anywhere;
 	}
+	/* Measured original-paper rhythm (FITJEE/GTA/ADV): the question number
+	   hangs at the body margin, ALL text — stem, wrapped lines, options —
+	   aligns at one indent. Markers sit outside; text never double-indents. */
+	.apage :global(ol) {
+		margin: 0.5em 0;
+		padding-left: 2.75em;
+	}
+	.apage :global(ul) {
+		margin: 0.5em 0;
+		padding-left: 2.75em;
+	}
+	.apage :global(p.pl-opt) {
+		margin-left: 2.75em;
+	}
 	@media print {
 		.pframe {
 			width: auto !important;
