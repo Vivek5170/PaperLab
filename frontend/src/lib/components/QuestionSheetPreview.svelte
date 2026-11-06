@@ -1,6 +1,7 @@
 <script>
 	import { toRoman } from '$lib/numbering.js';
 	import { isParagraphId } from '$lib/paragraph.js';
+	import { sectionMeta } from '$lib/sectionMeta.js';
 	import QuestionSheetBlock from '$lib/components/QuestionSheetBlock.svelte';
 
 	/**
@@ -34,15 +35,23 @@
 			<QuestionSheetBlock block={entry} numbers={numbering.byBlock[entry.blockId] ?? []} paraLabel={paraIndex.get(entry.blockId) ?? null} />
 		{/each}
 	{:else}
-					{#each sections as s, si (s.id)}
-						{#if (s.blockIds ?? []).length > 0}
-						<h3 class="sechead">
-							Section {(LETTERS[si] ?? `X${si + 1}`)} · {s.atype.toUpperCase()}
-						</h3>
+				{#each sections as s, si (s.id)}
+					{@const secNums = (s.blockIds ?? []).flatMap((bid) => numbering.byBlock[bid] ?? [])}
+					{#if secNums.length > 0}
+						{@const meta = sectionMeta(s.atype, secNums.length, (s.blockIds ?? []).length)}
+						<div class="sechead">
+							<h3>SECTION–{(LETTERS[si] ?? `X${si + 1}`)}</h3>
+							<p class="seckind">({meta.kind})</p>
+							<ul>
+								{#each meta.lines as line (line)}
+									<li>{line}</li>
+								{/each}
+							</ul>
+						</div>
 				{#each s.blockIds as bid (bid)}
 					{@const entry = ordered.find((o) => o.blockId === bid)}
 					{#if entry}
-						<QuestionSheetBlock block={entry} numbers={numbering.byBlock[bid] ?? []} />
+						<QuestionSheetBlock block={entry} numbers={numbering.byBlock[bid] ?? []} paraLabel={paraIndex.get(bid) ?? null} />
 					{/if}
 				{/each}
 			{/if}
@@ -88,27 +97,30 @@
 		max-width: 200px;
 	}
 	.sechead {
-		font-family: var(--pl-font-display);
-		font-size: 1.05rem;
-		margin: 18px 0 10px;
-		padding-bottom: 6px;
+		margin: 20px 0 12px;
+		padding-bottom: 8px;
 		border-bottom: 1px solid var(--pl-line);
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: 10px;
 	}
 	.sechead:first-of-type {
 		margin-top: 0;
 	}
-	.tag {
-		font-family: var(--pl-font-ui);
-		font-size: 0.72rem;
+	.sechead h3 {
+		font-family: var(--pl-font-display);
+		font-size: 1rem;
+		text-align: center;
+		margin: 0 0 2px;
+		letter-spacing: 0.04em;
+	}
+	.seckind {
+		text-align: center;
 		font-weight: 700;
-		background: var(--pl-raised);
-		border: 1px solid var(--pl-line);
-		border-radius: 6px;
-		padding: 2px 8px;
-		color: var(--pl-ink-soft);
+		font-size: 0.82rem;
+		margin: 0 0 8px;
+	}
+	.sechead ul {
+		margin: 0;
+		padding-left: 18px;
+		font-size: 0.78rem;
+		line-height: 1.55;
 	}
 </style>

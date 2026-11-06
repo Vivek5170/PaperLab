@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { dressQuestion, dressSolution, isMissingSolutionText } from '../src/lib/paperDress.js';
 import { toRoman } from '../src/lib/numbering.js';
+import { sectionMeta } from '../src/lib/sectionMeta.js';
 
 const T = (html) => ({ kind: 'text', html });
 const F = (url) => ({ kind: 'fig', url });
@@ -103,5 +104,20 @@ describe('dressSolution', () => {
 describe('toRoman', () => {
 	it('numbers passages I, II, III...', () => {
 		assert.equal([1, 2, 3, 4, 9].map(toRoman).join(','), 'I,II,III,IV,IX');
+	});
+});
+
+describe('sectionMeta', () => {
+	it('describes each type without marks', () => {
+		assert.equal(sectionMeta('scq', 4).kind, 'SINGLE CORRECT ANSWER TYPE');
+		assert.equal(sectionMeta('msq', 3).kind, 'ONE OR MORE CORRECT ANSWER TYPE');
+		assert.equal(sectionMeta('int', 6).kind, 'INTEGER ANSWER TYPE');
+		assert.equal(sectionMeta('num', 6).kind, 'NUMERICAL VALUE TYPE');
+		assert.equal(sectionMeta('mtx', 2).kind, 'MATCHING ANSWER TYPE');
+		assert.equal(sectionMeta('par-num', 4, 2).kind, 'PARAGRAPH QUESTIONS');
+		assert.equal(sectionMeta('weird', 1).kind, 'GENERAL QUESTIONS');
+		for (const m of [sectionMeta('scq', 4), sectionMeta('par-num', 4, 2)]) {
+			assert.doesNotMatch(m.lines.join(' '), /Marks/i);
+		}
 	});
 });
