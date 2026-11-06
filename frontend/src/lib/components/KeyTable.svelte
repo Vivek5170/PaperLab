@@ -18,7 +18,6 @@
 					...ref,
 					block,
 					key: `${ref.blockId}:${ref.subIndex}`,
-					groupStart: n === 1 || numbering.byNumber[n - 1]?.blockId !== ref.blockId
 				};
 			})
 	);
@@ -35,11 +34,6 @@
 			</thead>
 			<tbody>
 				{#each rows as r (r.n)}
-					{#if r.groupStart && (numbering.byBlock[r.blockId]?.length ?? 1) > 1}
-						<tr class="pgroup">
-							<td colspan="2">Passage · {numbering.byBlock[r.blockId].length} questions</td>
-						</tr>
-					{/if}
 					<tr>
 						<td class="qn">Q{r.n}</td>
 						<td>
@@ -91,12 +85,6 @@
 	.src {
 		color: var(--pl-ink-soft);
 		font-size: 0.78rem;
-	}
-	.pgroup td {
-		background: var(--pl-ochre-soft);
-		color: var(--pl-ochre);
-		font-size: 0.78rem;
-		font-weight: 600;
 	}
 	td input {
 		width: 100%;

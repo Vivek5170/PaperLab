@@ -13,7 +13,9 @@
 
 	let { rows = [], row, gap = 20 } = $props();
 
-	const usableH = usableHeight();
+	// A few px of slack so late font/image settling never clips content.
+	const MEASURE_SLACK = 12;
+	const usableH = usableHeight() - MEASURE_SLACK;
 	let heights = $state({});
 	let scale = $state(1);
 	let viewEl = $state(null);
@@ -94,6 +96,14 @@
 		schedule();
 	});
 
+	// Late image/font growth is the main packing enemy: listen for it
+	// directly (capture phase) instead of relying on ResizeObserver alone,
+	// plus delayed safety passes for stragglers.
+	function onSettled() {
+		schedule();
+		setTimeout(schedule, 1500);
+		setTimeout(schedule, 4000);
+	}
 	onMount(() => {
 		fit();
 		ro = new ResizeObserver(() => {
@@ -101,11 +111,17 @@
 			schedule();
 		});
 		if (viewEl) ro.observe(viewEl);
-		if (flowEl) ro.observe(flowEl);
+		if (flowEl) {
+			ro.observe(flowEl);
+			flowEl.addEventListener('load', schedule, true);
+			flowEl.addEventListener('error', schedule, true);
+		}
 		if (document.fonts?.ready) document.fonts.ready.then(() => schedule()).catch(() => {});
-		schedule();
+		onSettled();
 		return () => {
 			ro?.disconnect();
+			flowEl?.removeEventListener('load', schedule, true);
+			flowEl?.removeEventListener('error', schedule, true);
 			clearTimeout(mtimer);
 		};
 	});
@@ -126,7 +142,6 @@
 							<div class="prow" use:track={id}>{@render row(def)}</div>
 						{/if}
 					{/each}
-					<span class="folio">Page {pi + 1}</span>
 				</div>
 			{/each}
 		</div>
@@ -159,15 +174,6 @@
 	}
 	.apage.tall {
 		overflow: visible;
-	}
-	.folio {
-		position: absolute;
-		bottom: 26px;
-		left: 0;
-		right: 0;
-		text-align: center;
-		font-size: 0.72rem;
-		color: var(--pl-ink-soft);
 	}
 	.apage :global(.fig) {
 		margin: 12px 0 14px;

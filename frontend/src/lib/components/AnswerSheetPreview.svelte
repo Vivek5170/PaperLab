@@ -13,8 +13,8 @@
 
 	const rows = $derived.by(() => {
 		const out = [
-			{ id: 'doc', kind: 'doc', header: true },
-			{ id: 'key', kind: 'key', header: true }
+			{ id: 'doc', kind: 'doc' },
+			{ id: 'key', kind: 'key' }
 		];
 		if (ordered.length > 0) out.push({ id: 'solshead', kind: 'solshead', header: true, breakBefore: true });
 		for (const e of ordered) out.push({ id: e.blockId, kind: 'sol' });
