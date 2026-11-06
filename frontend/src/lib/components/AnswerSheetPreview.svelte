@@ -100,7 +100,7 @@
 		rev++;
 	}
 
-	/** Flatten one solution block: heading row + flow rows + anchors. */
+	/** Flatten one solution block: heading row + flow rows. */
 	function blockRows(entry) {
 		const d = details[entry.blockId];
 		if (!d || d.loading)
@@ -131,7 +131,6 @@
 			}
 			out.push({ id: `${entry.blockId}:s${n++}`, kind: 'seg', seg });
 		}
-		if (nums.length > 1) out.push({ id: `${entry.blockId}:anchors`, kind: 'anchors', nums });
 		return out;
 	}
 
@@ -176,12 +175,6 @@
 			type="button" class="retry"
 			onclick={() => reload(def.entry.blockId)}
 		>Retry</button>
-	{:else if def.kind === 'anchors'}
-		<ul class="anchors" aria-label={`Sub-solutions for ${def.nums.map((n) => `Q${n}`).join(', ')}`}>
-			{#each def.nums as n (n)}
-				<li><span class="anch">Q{n}</span></li>
-			{/each}
-		</ul>
 	{:else}
 		<Segments segments={[def.seg]} zoomable />
 	{/if}
@@ -209,22 +202,6 @@
 	.solhead {
 		font-size: 0.92rem;
 		margin: 2px 0 6px;
-	}
-	.anchors {
-		list-style: none;
-		margin: 4px 0 8px;
-		padding: 0;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-	.anch {
-		font-weight: 700;
-		font-size: 0.8rem;
-		background: var(--pl-raised);
-		border: 1px solid var(--pl-line);
-		border-radius: 6px;
-		padding: 1px 8px;
 	}
 	.skel {
 		height: 1em;

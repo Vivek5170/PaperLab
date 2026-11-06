@@ -153,3 +153,32 @@ describe('paragraph span bound (mirrors render.py a<b<=a+12)', () => {
 		assert.equal(parseParagraphRange('1-14_paragraph').valid, false);
 	});
 });
+
+describe('glued passage headers', () => {
+	it('strips header prefix but keeps body in the same paragraph', async () => {
+		const { dressQuestion } = await import('../src/lib/paperDress.js');
+		const segs = [{ kind: 'text', html: '<p>Paragraph for Question Nos. 33 to 34: Pitot tube is used in wind tunnels.</p>' }];
+		const out = dressQuestion(segs, { numbers: [5, 6], para: { a: 33, b: 34, valid: true } });
+		assert.ok(!/Paragraph for Question Nos/i.test(out[0].html), 'header gone: ' + out[0].html);
+		assert.ok(/Pitot tube/.test(out[0].html), 'body kept');
+	});
+	it('drops standalone header paragraphs entirely', async () => {
+		const { dressQuestion } = await import('../src/lib/paperDress.js');
+		const segs = [
+			{ kind: 'text', html: '<p>Paragraph for Question Nos. 33 to 34:</p>' },
+			{ kind: 'text', html: '<p>Water is flowing.</p>' }
+		];
+		const out = dressQuestion(segs, { numbers: [5, 6], para: { a: 33, b: 34, valid: true } });
+		assert.ok(!/Paragraph for Question Nos/i.test(out.map(s => s.html ?? '').join(' ')));
+	});
+});
+
+describe('par section instructions', () => {
+	it('names the answer type for par-scq/par-int/par-num/par-msq', async () => {
+		const { sectionMeta } = await import('../src/lib/sectionMeta.js');
+		assert.match(sectionMeta('par-scq', 4, 2).kind, /SINGLE CORRECT/);
+		assert.match(sectionMeta('par-int', 2, 1).lines[1], /SINGLE DIGIT INTEGER/);
+		assert.match(sectionMeta('par-num', 2, 1).lines[1], /NUMERICAL VALUE/);
+		assert.match(sectionMeta('par-msq', 4, 2).kind, /ONE OR MORE/);
+	});
+});

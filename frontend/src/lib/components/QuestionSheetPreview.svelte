@@ -127,13 +127,13 @@
 						id: `${entry.blockId}:t${n++}`,
 						kind: 'seg',
 						seg: { kind: 'text', html: piece },
-						keepWithNext: first
+						keepWithNext: false
 					});
 					first = false;
 				}
 				return;
 			}
-			out.push({ id: `${entry.blockId}:t${n++}`, kind: 'seg', seg, keepWithNext: first });
+			out.push({ id: `${entry.blockId}:t${n++}`, kind: 'seg', seg, keepWithNext: false });
 			first = false;
 		};
 		for (const seg of dressed) pushSeg(seg);
@@ -142,7 +142,7 @@
 				id: `${entry.blockId}:empty`,
 				kind: 'seg',
 				seg: { kind: 'text', html: '<p>Nothing rendered for this question.</p>' },
-				keepWithNext: first
+				keepWithNext: false
 			});
 		}
 		void nums;

@@ -23,6 +23,17 @@
 	const els = new Map();
 	let mtimer = null;
 	let ro = null;
+	let rowRO = null;
+	function ensureRowRO() {
+		if (!rowRO) {
+			try {
+				rowRO = new ResizeObserver(() => schedule());
+			} catch {
+				rowRO = null;
+			}
+		}
+		return rowRO;
+	}
 
 	const pages = $derived.by(() => {
 		const items = rows.map((r) => ({
@@ -52,10 +63,20 @@
 
 	function track(node, id) {
 		els.set(id, node);
+		// Per-row observation: page containers are fixed-height with
+		// overflow hidden, so inner growth (late images, KaTeX) never
+		// resizes the outer flow element. Watching each row directly
+		// catches the growth that actually causes clipping.
+		try {
+			ensureRowRO()?.observe(node);
+		} catch { /* ignore */ }
 		schedule();
 		return {
 			destroy() {
 				if (els.get(id) === node) els.delete(id);
+				try {
+					rowRO?.unobserve(node);
+				} catch { /* ignore */ }
 			}
 		};
 	}
@@ -120,6 +141,10 @@
 		onSettled();
 		return () => {
 			ro?.disconnect();
+			try {
+				rowRO?.disconnect();
+			} catch { /* ignore */ }
+			rowRO = null;
 			flowEl?.removeEventListener('load', schedule, true);
 			flowEl?.removeEventListener('error', schedule, true);
 			clearTimeout(mtimer);
@@ -183,6 +208,16 @@
 	}
 	.apage :global(.pl-table img) {
 		max-width: 200px;
+	}
+	.apage :global(img) {
+		max-width: 100%;
+		height: auto;
+	}
+	.apage :global(p) {
+		overflow-wrap: anywhere;
+	}
+	.apage :global(li) {
+		overflow-wrap: anywhere;
 	}
 	@media print {
 		.pframe {

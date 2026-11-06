@@ -58,6 +58,46 @@ export function sectionMeta(atype, nq = 0, nstems = 0) {
 					'Match the entries across the lists/columns and choose the option with the correct combination.'
 				]
 			};
+		case 'par-scq':
+				return {
+					kind: 'PARAGRAPH — SINGLE CORRECT ANSWER TYPE',
+					lines: [
+						`This section contains ${wordOf(nq)} (${String(nq).padStart(2, '0')}) ${qword(nq)} grouped in ${wordOf(Math.max(nstems, 1))} passage stem${nstems === 1 ? '' : 's'}.`,
+						'Each question has FOUR options (A), (B), (C) and (D). ONLY ONE of these four options is the correct answer.'
+					]
+				};
+		case 'par-msq':
+			return {
+				kind: 'PARAGRAPH — ONE OR MORE CORRECT ANSWER TYPE',
+				lines: [
+						`This section contains ${wordOf(nq)} (${String(nq).padStart(2, '0')}) ${qword(nq)} grouped in ${wordOf(Math.max(nstems, 1))} passage stem${nstems === 1 ? '' : 's'}.`,
+						'Each question has FOUR options (A), (B), (C) and (D). ONE OR MORE THAN ONE of these four option(s) is(are) correct.'
+					]
+				};
+		case 'par-int':
+			return {
+				kind: 'PARAGRAPH — INTEGER ANSWER TYPE',
+				lines: [
+						`This section contains ${wordOf(nq)} (${String(nq).padStart(2, '0')}) ${qword(nq)} grouped in ${wordOf(Math.max(nstems, 1))} passage stem${nstems === 1 ? '' : 's'}.`,
+						'The answer to each question is a SINGLE DIGIT INTEGER ranging from 0 TO 9, BOTH INCLUSIVE.'
+					]
+				};
+		case 'par-num':
+			return {
+				kind: 'PARAGRAPH — NUMERICAL VALUE TYPE',
+				lines: [
+						`This section contains ${wordOf(nq)} (${String(nq).padStart(2, '0')}) ${qword(nq)} grouped in ${wordOf(Math.max(nstems, 1))} passage stem${nstems === 1 ? '' : 's'}.`,
+						'The answer to each question is a NUMERICAL VALUE.'
+					]
+				};
+		case 'par-mtx':
+			return {
+				kind: 'PARAGRAPH — MATCHING ANSWER TYPE',
+				lines: [
+						`This section contains ${wordOf(nq)} (${String(nq).padStart(2, '0')}) ${qword(nq)} grouped in ${wordOf(Math.max(nstems, 1))} passage stem${nstems === 1 ? '' : 's'}.`,
+						'Match the entries across the lists/columns and choose the option with the correct combination.'
+					]
+				};
 		default:
 			if (t.startsWith('par-')) {
 				const stems = Math.max(nstems, 1);

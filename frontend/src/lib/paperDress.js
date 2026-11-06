@@ -24,7 +24,12 @@
 
 const LEAD_TEXT_RE = /^(\s*(?:<p[^>]*>)?\s*)(?:<strong>\s*)?(?:[A-Za-z]+-)?\d+[a-z]?\.(?:\s*<\/strong>)?\s+/;
 const FIRST_OL_RE = /^(\s*)<ol([^>]*)>/;
-const PASSAGE_HEAD_RE = /^<p[^>]*>\s*(?:paragraph\s+for\s+questions?(?:\s+nos?\.?)?\s+[\d\s,\-–andto]+:?|paragraph\b[^<]*|PARAGRAPH\b[^<]*)\s*<\/p>\s*/i;
+// Passage headers arrive standalone (<p>Paragraph for Q Nos. 33 to 34:</p>,
+// <p>PARAGRAPH-II</p>) OR glued to the body in one <p> (paper 8:
+// <p>Paragraph for Question Nos. 33 to 34: Pitot tube is used...</p>).
+// So strip the header PREFIX inside the first paragraph, keeping the body.
+const PASSAGE_PREFIX_RE = /^(\s*<p[^>]*>\s*)(?:paragraph\s+for\s+questions?(?:\s+nos?\.?)?\s+[\d\s,.\-–andto]+:?\s*|paragraph\b[^<:\n]{0,60}:?\s*|PARAGRAPH\b[^<:\n]{0,40}:?\s*)/i;
+const EMPTY_P_RE = /^<p[^>]*>\s*(?:<br\s*\/?>\s*)*<\/p>\s*/i;
 
 /**
  * Dress question segments.
@@ -37,8 +42,9 @@ export function dressQuestion(segments, { numbers = [], para = null } = {}) {
 	if (!firstText || numbers.length === 0) return out;
 
 	if (para && para.valid && para.a != null) {
-		// Passage: drop the original-number header paragraph...
-		firstText.html = firstText.html.replace(PASSAGE_HEAD_RE, '');
+		// Passage: drop the header prefix (standalone or glued), keep body.
+		firstText.html = firstText.html.replace(PASSAGE_PREFIX_RE, '$1');
+		firstText.html = firstText.html.replace(EMPTY_P_RE, '');
 		// ...and relabel sub-stems a..b to generated numbers, in order.
 		// <ol start="NN"> stems:
 		const html = out.map((s) => (s.kind === 'text' ? s.html : null));
