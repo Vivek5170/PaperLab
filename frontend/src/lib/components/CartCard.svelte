@@ -16,7 +16,7 @@
 <div class="card pl-card">
 	<a
 		class="preview"
-		href={`/search/${item.paperId}/${encodeURIComponent(item.number)}`}
+		href={`/cart/${item.paperId}/${encodeURIComponent(item.number)}`}
 		aria-label={`Paper ${item.paperId}, question ${item.number}`}
 	>
 		<span class="ptext">{item.preview || 'No text preview available.'}</span>
