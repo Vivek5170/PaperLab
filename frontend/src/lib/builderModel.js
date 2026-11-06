@@ -12,18 +12,18 @@
  * - Reimport detects identity dupes (paperId+number already present) and
  *   skips them unless allowDupes is explicitly confirmed.
  *
- * Section validation uses the NORMALIZED answer type
- * (normalizeAnswerType: par-scq == scq) for typed sections. Passages are
- * STRUCTURAL groups, not types: any paragraph block — uniform or mixed —
- * belongs in a Passage section and is never split. Raw qtype stays on the
- * block for rendering. The assignment's locked section accepts everything.
+ * Sections group by RAW question type: scq, par-scq, msq, par-msq,
+ * int, num, mtx, ... each get their own section (A, B, C...). par-* is
+ * never merged into its base type. Passage blocks stay atomic — never
+ * split — but group strictly by their own type code.
  */
-import { normalizeAnswerType } from './qtypes.js';
-import { isParagraphId } from './paragraph.js';
+
 
 export const BUILDER_SCHEMA_VERSION = 1;
-/** Normalized types offered for manual paper sections. 'passage' is structural. */
-export const SECTION_TYPES = ['scq', 'msq', 'int', 'num', 'mtx', 'mix', 'unknown', 'passage'];
+/** Raw question types; paper sections follow this order. par-* codes
+ * are distinct sections, never merged into their base type. */
+export const SECTION_TYPES = ['scq', 'msq', 'int', 'num', 'mtx',
+  'par-scq', 'par-msq', 'par-int', 'par-num', 'par-mtx', 'par-mix', 'unknown'];
 
 export function newBlockId() {
 	try {
@@ -122,28 +122,24 @@ export function importBlocks(draft, items, { allowDupes = false } = {}) {
 export function sectionAccepts(section, block) {
 	if (!section || !block) return false;
 	if (section.locked) return true;
-	if (section.atype === 'passage') return isParagraphId(block.number, block.qtype);
-	return normalizeAnswerType(block.qtype) === section.atype;
+	return (block.qtype || 'unknown') === section.atype;
 }
 
 /**
- * Rebuild paper sections deterministically: singles by NORMALIZED type,
- * every paragraph block (uniform or mixed) into Passage section(s).
- * Order inside each bucket follows current document order; brand-new
- * blocks (no position yet) append at the end in arrival order.
+ * Rebuild paper sections deterministically: one section per RAW question
+ * type, in SECTION_TYPES order. par-scq is its own section, distinct from
+ * SCQ; no paragraph exception exists. Order inside each bucket follows
+ * current document order; brand-new blocks (no position yet) append at
+ * the end in arrival order.
  */
 export function autoGroup(draft) {
 	if (draft.mode !== 'paper') return { draft, grouped: false };
 	const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-	const singles = new Map();
-	const passages = [];
+	const buckets = new Map();
 	for (const b of Object.values(draft.blocks ?? {})) {
-		if (isParagraphId(b.number, b.qtype)) passages.push(b.id);
-		else {
-			const t = normalizeAnswerType(b.qtype);
-			if (!singles.has(t)) singles.set(t, []);
-			singles.get(t).push(b.id);
-		}
+		const t = (b.qtype || 'unknown').slice(0, 20);
+		if (!buckets.has(t)) buckets.set(t, []);
+		buckets.get(t).push(b.id);
 	}
 	// Preserve current document order inside each bucket.
 	const docOrder = [];
@@ -153,20 +149,12 @@ export function autoGroup(draft) {
 	const sections = [];
 	let li = 0;
 	for (const t of SECTION_TYPES) {
-		if (t === 'passage' || !singles.has(t)) continue;
+		if (!buckets.has(t)) continue;
 		sections.push({
 			id: newSectionId(),
 			title: `Section ${letters[li++] ?? `X${li}`} · ${t.toUpperCase()}`,
 			atype: t,
-			blockIds: singles.get(t).slice().sort(byPos)
-		});
-	}
-	if (passages.length > 0) {
-		sections.push({
-			id: newSectionId(),
-			title: `Section ${letters[li] ?? `X${li}`} · Passages`,
-			atype: 'passage',
-			blockIds: passages.slice().sort(byPos)
+			blockIds: buckets.get(t).slice().sort(byPos)
 		});
 	}
 	return { draft: touch({ ...draft, sections }), grouped: true };

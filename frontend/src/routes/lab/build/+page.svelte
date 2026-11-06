@@ -132,12 +132,9 @@
 					<button type="button" class="pl-btn" disabled={!activeCart || activeCart.items.length === 0} onclick={() => doImport(false)}>
 						Import{activeCart ? ` ${activeCart.items.length}` : ''}
 					</button>
-					{#if draft.mode === 'paper' && !empty}
-						<button type="button" class="pl-btn" onclick={() => builder.autoGroup()}>Auto-group</button>
-					{/if}
 				</div>
 				{#if draft.mode === 'paper'}
-					<p class="pl-sub">Imports group automatically: singles by answer type, every passage into Passages — never split.</p>
+					<p class="pl-sub">Imports group automatically — one section per question type.</p>
 				{/if}
 				{#if importNote}<p class="pl-sub" role="status">{importNote}</p>{/if}
 				{#if dupesNote}

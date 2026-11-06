@@ -8,6 +8,8 @@
 	import QuestionSheetBlock from '$lib/components/QuestionSheetBlock.svelte';
 
 	let { title = '', ordered = [], numbering, sections = [], mode = 'paper' } = $props();
+
+	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 </script>
 
 <div class="sheet" aria-label="Question sheet preview">
@@ -22,16 +24,11 @@
 			<QuestionSheetBlock block={entry} numbers={numbering.byBlock[entry.blockId] ?? []} />
 		{/each}
 	{:else}
-		{#each sections as s (s.id)}
-			{#if (s.blockIds ?? []).length > 0}
-				<h3 class="sechead">
-					{s.title}
-					{#if s.atype === 'passage'}
-						<span class="tag">Passages — kept whole, numbered per question</span>
-					{:else}
-						<span class="tag">{s.atype.toUpperCase()}</span>
-					{/if}
-				</h3>
+					{#each sections as s, si (s.id)}
+						{#if (s.blockIds ?? []).length > 0}
+						<h3 class="sechead">
+							Section {(LETTERS[si] ?? `X${si + 1}`)} · {s.atype.toUpperCase()}
+						</h3>
 				{#each s.blockIds as bid (bid)}
 					{@const entry = ordered.find((o) => o.blockId === bid)}
 					{#if entry}

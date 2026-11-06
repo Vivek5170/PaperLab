@@ -74,31 +74,23 @@ describe('builderModel', () => {
 		assert.equal(r.added.length, 1);
 		assert.equal(Object.keys(r.draft.blocks).length, 4);
 	});
-	it('autoGroup: passages go to a Passage section, never typed', () => {
+	it('autoGroup: one section per raw type, par-* kept distinct', () => {
 		let d = createDraft('paper');
 		d = importBlocks(d, [C(11, '8', 'scq'), C(11, '15-17_paragraph', 'par-scq'), C(11, '33-34_paragraph', 'par-mix'), C(11, '9', 'msq')]).draft;
 		d = autoGroup(d).draft;
-		const types = d.sections.map((s) => s.atype).sort();
-		assert.deepEqual(types, ['msq', 'passage', 'scq']);
-		const pas = d.sections.find((s) => s.atype === 'passage');
-		assert.equal(pas.blockIds.length, 2);
-		assert.ok(!d.sections.some((s) => s.atype === 'par-scq' || s.atype === 'par-mix'));
-		// Raw qtype preserved on every block.
-		assert.equal(d.blocks[pas.blockIds[0]].qtype, 'par-scq');
-		assert.equal(d.blocks[pas.blockIds[1]].qtype, 'par-mix');
-	});
-	it('passage sections accept any paragraph, refuse singles', () => {
-		const p = { id: 's', title: 'P', atype: 'passage', blockIds: [] };
-		assert.equal(sectionAccepts(p, { qtype: 'par-mix', number: '33-34_paragraph' }), true);
-		assert.equal(sectionAccepts(p, { qtype: 'par-scq', number: '15-17_paragraph' }), true);
-		assert.equal(sectionAccepts(p, { qtype: 'scq', number: '8' }), false);
+		assert.deepEqual(d.sections.map((s) => s.atype), ['scq', 'msq', 'par-scq', 'par-mix']);
+		// par-scq is its own section, never merged into SCQ.
+		const scq = d.sections.find((s) => s.atype === 'scq');
+		assert.equal(scq.blockIds.length, 1);
+		assert.equal(d.blocks[scq.blockIds[0]].qtype, 'scq');
+		assert.equal(d.sections.find((s) => s.atype === 'par-scq').blockIds.length, 1);
 	});
 	it('import always regroups: new types gain sections, letters stay positional', () => {
 		let d = createDraft('paper');
 		d = importBlocks(d, [C(11, '8', 'scq')]).draft;
 		assert.deepEqual(d.sections.map((s) => s.atype), ['scq']);
 		d = importBlocks(d, [C(11, '9', 'msq'), C(11, '15-17_paragraph', 'par-scq')]).draft;
-		assert.deepEqual(d.sections.map((s) => s.atype), ['scq', 'msq', 'passage']);
+		assert.deepEqual(d.sections.map((s) => s.atype), ['scq', 'msq', 'par-scq']);
 		assert.equal(d.sections[0].blockIds.length, 1);
 		assert.equal(d.sections[2].blockIds.length, 1);
 	});
@@ -125,14 +117,15 @@ describe('builderModel', () => {
 		// Second restore of the same snapshot refuses (id back in use).
 		assert.equal(restoreBlock(u.draft, r.snapshot).restored, false);
 	});
-	it('section gate: normalized match passes, mismatch refuses', () => {
+	it('section gate: exact raw-type match passes, par-scq refused in scq', () => {
 		let d = createDraft('paper');
 		d = importBlocks(d, [C(11, '8', 'scq')]).draft;
 		const scqBid = d.sections[0].blockIds[0];
 		d = addSection(d, { title: 'Manual', atype: 'msq' }).draft;
 		const msq = d.sections[d.sections.length - 1];
-		assert.equal(sectionAccepts(msq, { qtype: 'par-msq', number: '1' }), true);
-		assert.equal(sectionAccepts(msq, { qtype: 'scq', number: '8' }), false);
+		assert.equal(sectionAccepts(msq, { qtype: 'msq', number: '1' }), true);
+		assert.equal(sectionAccepts(msq, { qtype: 'par-msq', number: '1' }), false);
+		assert.equal(sectionAccepts(d.sections[0], { qtype: 'par-scq', number: '2' }), false);
 		const r = moveBlockToSection(d, scqBid, msq.id);
 		assert.equal(r.moved, false);
 		assert.equal(r.reason, 'type-mismatch');
