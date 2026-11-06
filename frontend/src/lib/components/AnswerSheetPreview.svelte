@@ -31,10 +31,11 @@
 		let cancelled = false;
 		const missing = ordered.filter((e) => {
 			const k = details[e.blockId];
-			return !(k && (k.ready || k.loading || k.missing));
+			const fresh = k && k.loading && Date.now() - (k.at ?? 0) < 25000;
+			return !(k && (k.ready || k.missing || fresh));
 		});
 		if (missing.length === 0) return;
-		for (const e of missing) details[e.blockId] = { loading: true };
+		for (const e of missing) details[e.blockId] = { loading: true, at: Date.now() };
 		(async () => {
 			await Promise.all(missing.map(async (e) => {
 				try {
