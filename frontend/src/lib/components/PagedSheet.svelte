@@ -5,21 +5,34 @@
 	 * to fit the column — like a PDF viewer. Print renders 1:1 via
 	 * @page A4 margin 0, so screen == export.
 	 *
-	 * Rows remount only when their page assignment actually changes;
-	 * typing inside a row re-measures without remounting.
+	 * Robustness rules (text cuts must be impossible, not just unlikely):
+	 * - Pages NEVER clip: min-height A4, height auto, overflow visible.
+	 *   Packing decides page breaks only; a stale/overfull page grows
+	 *   visibly instead of cutting text mid-line.
+	 * - The frame height comes from the measured flow element itself,
+	 *   so the scaled frame can never be shorter than its content.
+	 * - Rows are display:flow-root so child margins can't collapse out
+	 *   and measured sums match rendered flow exactly.
+	 * - First paint stays hidden until the first measure completes, so
+	 *   users never see the estimate-based pack (default heights).
 	 */
 	import { tick, onMount } from 'svelte';
 	import { packRows, PAGE_W, PAGE_H, PAD_TOP, PAD_BOTTOM, usableHeight } from '$lib/paginate.js';
 
 	let { rows = [], row, gap = 20 } = $props();
 
-	// A few px of slack so late font/image settling never clips content.
+	// A few px of slack so late font/image settling moves breaks early
+	// rather than exactly at the edge.
 	const MEASURE_SLACK = 12;
 	const usableH = usableHeight() - MEASURE_SLACK;
 	let heights = $state({});
 	let scale = $state(1);
 	let viewEl = $state(null);
 	let flowEl = $state(null);
+	// Exact frame height, measured from the flow itself (unscaled px).
+	let flowH = $state(0);
+	// First real measure done — gate first paint on this.
+	let measuredOnce = $state(false);
 	const els = new Map();
 	let mtimer = null;
 	let ro = null;
@@ -44,29 +57,16 @@
 		}));
 		return packRows(items, usableH);
 	});
-	const totalH = $derived.by(() => {
-		let t = 0;
-		pages.forEach((pg, pi) => {
-			t += tallPages.has(pi) ? PAD_TOP + (heights[pg[0]] ?? 0) + PAD_BOTTOM : PAGE_H;
-			if (pi < pages.length - 1) t += gap;
-		});
-		return t;
-	});
-	// A lone row taller than one page gets a growing page (never clipped).
-	const tallPages = $derived.by(() => {
-		const s = new Set();
-		pages.forEach((pg, pi) => {
-			if (pg.length === 1 && (heights[pg[0]] ?? 0) > usableH) s.add(pi);
-		});
-		return s;
-	});
+	// Estimate only (pre-measure fallback); the real frame height comes
+	// from flowH once measured.
+	const totalHEst = $derived(pages.length * PAGE_H + Math.max(0, pages.length - 1) * gap);
+	const frameH = $derived(flowH > 0 ? flowH : totalHEst);
 
 	function track(node, id) {
 		els.set(id, node);
-		// Per-row observation: page containers are fixed-height with
-		// overflow hidden, so inner growth (late images, KaTeX) never
-		// resizes the outer flow element. Watching each row directly
-		// catches the growth that actually causes clipping.
+		// Per-row observation catches late image/KaTeX/font growth that
+		// never resizes an ancestor (pages size to content, but a row's
+		// own box always reflects its growth).
 		try {
 			ensureRowRO()?.observe(node);
 		} catch { /* ignore */ }
@@ -106,6 +106,11 @@
 			}
 		}
 		if (changed) heights = nh;
+		if (flowEl) {
+			const fh = Math.ceil(flowEl.offsetHeight);
+			if (fh > 0 && fh !== flowH) flowH = fh;
+		}
+		if (!measuredOnce) measuredOnce = true;
 	}
 
 	function fit() {
@@ -138,9 +143,15 @@
 			flowEl.addEventListener('error', schedule, true);
 		}
 		if (document.fonts?.ready) document.fonts.ready.then(() => schedule()).catch(() => {});
+		try {
+			document.fonts?.addEventListener?.('loadingdone', schedule);
+		} catch { /* older browsers */ }
 		onSettled();
 		return () => {
 			ro?.disconnect();
+			try {
+				document.fonts?.removeEventListener?.('loadingdone', schedule);
+			} catch { /* ignore */ }
 			try {
 				rowRO?.disconnect();
 			} catch { /* ignore */ }
@@ -153,13 +164,17 @@
 </script>
 
 <div class="pview" bind:this={viewEl}>
-	<div class="pframe" style={`width: ${PAGE_W * scale}px; height: ${totalH * scale}px;`}>
+	<div
+		class="pframe"
+		class:pre={!measuredOnce}
+		style={`width: ${PAGE_W * scale}px; height: ${Math.ceil(frameH * scale)}px;`}
+		aria-busy={!measuredOnce}
+	>
 		<div class="pscale" bind:this={flowEl} style={`width: ${PAGE_W}px; transform: scale(${scale});`}>
-			{#each pages as page, pi (pi)}
+			{#each pages as page, pi (page[0] ?? pi)}
 				<div
 					class="apage"
-					class:tall={tallPages.has(pi)}
-					style={`width: ${PAGE_W}px; ${tallPages.has(pi) ? `min-height: ${PAGE_H}px;` : `height: ${PAGE_H}px;`} padding: ${PAD_TOP}px 56px ${PAD_BOTTOM}px; margin-bottom: ${pi < pages.length - 1 ? gap : 0}px;`}
+					style={`width: ${PAGE_W}px; min-height: ${PAGE_H}px; padding: ${PAD_TOP}px 56px ${PAD_BOTTOM}px; margin-bottom: ${pi < pages.length - 1 ? gap : 0}px;`}
 				>
 					{#each page as id (id)}
 						{@const def = rows.find((r) => r.id === id)}
@@ -182,6 +197,9 @@
 		overflow: hidden;
 		position: relative;
 	}
+	.pframe.pre {
+		visibility: hidden;
+	}
 	.pscale {
 		transform-origin: top left;
 	}
@@ -193,12 +211,13 @@
 		border-radius: 2px;
 		box-shadow: var(--pl-shadow-md);
 		box-sizing: border-box;
-		overflow: hidden;
+		overflow: visible;
 		font-size: 0.8125rem;
 		line-height: 1.6;
 	}
-	.apage.tall {
-		overflow: visible;
+	.prow {
+		display: flow-root;
+		min-width: 0;
 	}
 	.apage :global(.fig) {
 		margin: 12px 0 14px;
@@ -224,6 +243,9 @@
 			width: auto !important;
 			height: auto !important;
 			overflow: visible;
+		}
+		.pframe.pre {
+			visibility: visible;
 		}
 		.pscale {
 			transform: none !important;
