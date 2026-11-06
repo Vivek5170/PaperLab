@@ -4,8 +4,10 @@
 
 	let newName = $state('');
 	let renameValue = $state('');
+	let creating = $state(false);
+	let renaming = $state(false);
 	let confirmClear = $state(false);
-	let deleteId = $state(null);
+	let deleteArmed = $state(false);
 
 	const cart = $derived($activeCart);
 
@@ -13,8 +15,11 @@
 		renameValue = cart?.name ?? '';
 	});
 
-	function create() {
-		carts.create(newName.trim() || undefined);
+	function startCreate() {
+		creating = true;
+		renaming = false;
+		confirmClear = false;
+		deleteArmed = false;
 		newName = '';
 	}
 </script>
@@ -35,66 +40,103 @@
 	</div>
 {/if}
 
-<div class="bar">
-	<label class="pick">
-		<span class="pl-sub">Active cart</span>
-		<select
-			value={$cartStore.activeId}
-			onchange={(e) => carts.switch(e.currentTarget.value)}
-			aria-label="Active cart"
-		>
-			{#each $cartStore.carts as c (c.id)}
-				<option value={c.id}>{c.name} · {c.items.length}</option>
-			{/each}
-		</select>
-	</label>
-	<div class="newrow">
-		<input
-			type="text"
-			placeholder="New cart name"
-			bind:value={newName}
-			maxlength="80"
-			aria-label="New cart name"
-			onkeydown={(e) => e.key === 'Enter' && create()}
-		/>
-		<button type="button" class="pl-btn" onclick={create}>New cart</button>
+<div class="toolbar" role="toolbar" aria-label="Cart management">
+	<div class="tmain">
+		<label class="tselect">
+			<span class="tlabel">Cart</span>
+			<select
+				value={$cartStore.activeId}
+				onchange={(e) => carts.switch(e.currentTarget.value)}
+				aria-label="Active cart"
+			>
+				{#each $cartStore.carts as c (c.id)}
+					<option value={c.id}>{c.name} · {c.items.length}</option>
+				{/each}
+			</select>
+		</label>
+		{#if cart}
+			<span class="tname" aria-live="polite" title={cart.name}>
+				{cart.name} · <strong>{cart.items.length}</strong>
+				{cart.items.length === 1 ? 'question' : 'questions'}
+			</span>
+		{/if}
+		<div class="tactions">
+			<button type="button" class="tbtn" onclick={startCreate}>New</button>
+			{#if cart}
+				<button
+					type="button" class="tbtn"
+					onclick={() => { renaming = !renaming; creating = false; }}
+					aria-expanded={renaming}
+				>Rename</button>
+				<button type="button" class="tbtn" onclick={() => carts.duplicate(cart.id)}>Duplicate</button>
+				{#if $cartStore.carts.length > 1}
+					{#if deleteArmed}
+						<button
+							type="button" class="tbtn danger"
+							onclick={() => { carts.delete(cart.id); deleteArmed = false; }}
+						>Confirm delete</button>
+						<button type="button" class="tbtn" onclick={() => (deleteArmed = false)}>Keep</button>
+					{:else}
+						<button type="button" class="tbtn" onclick={() => { deleteArmed = true; confirmClear = false; }}>Delete</button>
+					{/if}
+				{/if}
+				{#if cart.items.length > 0}
+					{#if confirmClear}
+						<button
+							type="button" class="tbtn danger"
+							onclick={() => { carts.clear(); confirmClear = false; }}
+						>Confirm clear ({cart.items.length})</button>
+						<button type="button" class="tbtn" onclick={() => (confirmClear = false)}>Keep</button>
+					{:else}
+						<button
+							type="button" class="tbtn"
+							onclick={() => { confirmClear = true; deleteArmed = false; }}
+						>Clear</button>
+					{/if}
+				{/if}
+			{/if}
+		</div>
 	</div>
+	{#if creating}
+		<div class="tsub">
+			<input
+				type="text" placeholder="New cart name" bind:value={newName}
+				maxlength="80" aria-label="New cart name"
+				onkeydown={(e) => {
+					if (e.key === 'Enter' && newName.trim()) { carts.create(newName.trim()); creating = false; }
+					else if (e.key === 'Escape') creating = false;
+				}}
+			/>
+			<button
+				type="button" class="tbtn primary" disabled={!newName.trim()}
+				onclick={() => { carts.create(newName.trim()); creating = false; }}
+			>Create</button>
+			<button type="button" class="tbtn" onclick={() => (creating = false)}>Cancel</button>
+		</div>
+	{/if}
+	{#if renaming && cart}
+		<div class="tsub">
+			<input
+				type="text" bind:value={renameValue}
+				maxlength="80" aria-label="Rename cart"
+				onkeydown={(e) => {
+					if (e.key === 'Enter' && renameValue.trim()) { carts.rename(cart.id, renameValue); renaming = false; }
+					else if (e.key === 'Escape') renaming = false;
+				}}
+			/>
+			<button
+				type="button" class="tbtn primary" disabled={!renameValue.trim()}
+				onclick={() => { carts.rename(cart.id, renameValue); renaming = false; }}
+			>Save</button>
+			<button type="button" class="tbtn" onclick={() => (renaming = false)}>Cancel</button>
+		</div>
+	{/if}
 </div>
 
 {#if cart}
-	<div class="manage">
-		<input type="text" bind:value={renameValue} maxlength="80" aria-label="Rename cart" />
-		<button type="button" class="pl-btn" onclick={() => carts.rename(cart.id, renameValue)}>Rename</button>
-		<button type="button" class="pl-btn" onclick={() => carts.duplicate(cart.id)}>Duplicate</button>
-		{#if $cartStore.carts.length > 1}
-			{#if deleteId === cart.id}
-				<button type="button" class="pl-btn danger" onclick={() => { carts.delete(cart.id); deleteId = null; }}>
-					Confirm delete
-				</button>
-				<button type="button" class="pl-btn" onclick={() => (deleteId = null)}>Keep</button>
-			{:else}
-				<button type="button" class="pl-btn" onclick={() => (deleteId = cart.id)}>Delete</button>
-			{/if}
-		{/if}
-		{#if cart.items.length > 0}
-			{#if confirmClear}
-				<button type="button" class="pl-btn danger" onclick={() => { carts.clear(); confirmClear = false; }}>
-					Confirm clear ({cart.items.length})
-				</button>
-				<button type="button" class="pl-btn" onclick={() => (confirmClear = false)}>Keep</button>
-			{:else}
-				<button type="button" class="pl-btn" onclick={() => (confirmClear = true)}>Clear</button>
-			{/if}
-		{/if}
-	</div>
-
-	<p class="count" aria-live="polite">
-		<strong>{cart.items.length} question{cart.items.length === 1 ? '' : 's'}</strong> in {cart.name}
-	</p>
-
 	{#if cart.items.length === 0}
 		<div class="pl-card empty">
-			<p>This cart is empty. <a href="/search">Search questions</a> and press <strong>+ Cart</strong> on any card, or open a question and use the Cart button beside its title.</p>
+			<p>This cart is empty. <a href="/search">Search questions</a> and press the cart icon on any card, or open a question and use the cart button beside its title.</p>
 		</div>
 	{:else}
 		<div class="grid">
@@ -116,57 +158,115 @@
 		font-size: 2rem;
 		margin-bottom: 4px;
 	}
-	.bar {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 12px;
-		align-items: end;
-		margin: 16px 0 4px;
-	}
-	.pick {
+	/* 1 — compact toolbar: one row, conditional sub-row only */
+	.toolbar {
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-md);
+		background: var(--pl-surface);
+		padding: 10px 12px;
+		margin: 16px 0 16px;
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		gap: 10px;
+	}
+	.tmain {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 10px 14px;
+	}
+	.tselect {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 		font-size: 0.82rem;
 		font-weight: 600;
 	}
-	.pick select {
-		min-height: 40px;
-		border: 1px solid var(--pl-line);
-		border-radius: var(--pl-radius-sm);
-		background: var(--pl-surface);
-		padding: 0 10px;
-		max-width: 320px;
+	.tlabel {
+		color: var(--pl-ink-soft);
 	}
-	.newrow {
-		display: flex;
-		gap: 8px;
+	.tselect select {
+		min-height: 32px;
+		padding: 0 8px;
+		max-width: 240px;
+		font-size: 0.85rem;
 	}
-	.newrow input,
-	.manage input {
-		min-height: 40px;
-		border: 1px solid var(--pl-line);
-		border-radius: var(--pl-radius-sm);
-		background: var(--pl-surface);
-		padding: 0 10px;
+	.tname {
+		font-size: 0.9rem;
+		color: var(--pl-ink-soft);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 100%;
 	}
-	.manage {
+	.tname strong {
+		color: var(--pl-ink);
+	}
+	.tactions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 8px;
-		margin: 12px 0 4px;
+		gap: 6px;
+		margin-left: auto;
 	}
-	.danger {
+	.tbtn {
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-pill);
+		background: none;
+		padding: 4px 12px;
+		min-height: 32px;
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--pl-ink);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.tbtn:hover {
+		border-color: var(--pl-seal);
+		color: var(--pl-seal);
+	}
+	.tbtn.primary {
+		background: var(--pl-seal);
+		border-color: var(--pl-seal);
+		color: #fff;
+	}
+	.tbtn.primary:disabled {
+		opacity: 0.45;
+		cursor: default;
+	}
+	.tbtn.danger {
 		color: var(--pl-seal);
 		border-color: var(--pl-seal);
+		background: var(--pl-seal-soft);
 	}
-	.count {
-		margin: 14px 0 12px;
+	.tsub {
+		display: flex;
+		gap: 8px;
 	}
+	.tsub input {
+		flex: 1;
+		min-width: 0;
+		min-height: 32px;
+		padding: 4px 10px;
+		font-size: 0.85rem;
+	}
+	/* 4 — responsive grid: 3 / 2 / 1 */
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 12px;
+	}
+	@media (max-width: 1100px) {
+		.grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+	@media (max-width: 700px) {
+		.grid {
+			grid-template-columns: 1fr;
+		}
+		.tactions {
+			margin-left: 0;
+		}
 	}
 	.empty a {
 		font-weight: 600;

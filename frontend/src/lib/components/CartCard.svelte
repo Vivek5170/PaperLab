@@ -1,62 +1,82 @@
 <script>
 	/**
-	 * Cart row: visual clone of the search card (preview + thumb + chips)
-	 * plus source line, paragraph badge/warning, and cart actions.
-	 * Never renders stored HTML — preview is plain text only.
+	 * Cart row in three sections: (A) preview link, (B) metadata,
+	 * (C) actions. Paragraph groups are single items, so every
+	 * reorder/remove op moves the whole block atomically.
 	 */
 	import { qtypeLabel } from '$lib/qtypes.js';
-	import { normalizeAnswerType } from '$lib/qtypes.js';
 	import { parseParagraphRange } from '$lib/paragraph.js';
 
 	let { item, index = 0, total = 0, onMove, onRemove } = $props();
 
 	const para = $derived(parseParagraphRange(item.number, item.qtype));
-	const ansType = $derived(normalizeAnswerType(item.qtype));
+	const qLabel = $derived(qtypeLabel(item.qtype).toUpperCase());
+
+	const arrows = {
+		top: '<path d="M12 19V5m-6 6 6-6 6 6"/><path d="M5 3h14"/>',
+		up: '<path d="M12 19V5m-6 6 6-6 6 6"/>',
+		down: '<path d="M12 5v14m-6-6 6 6 6-6"/>',
+		bottom: '<path d="M12 5v14m-6-6 6 6 6-6"/><path d="M5 21h14"/>'
+	};
 </script>
 
 <div class="card pl-card">
 	<a
-		class="main"
+		class="preview"
 		href={`/search/${item.paperId}/${encodeURIComponent(item.number)}`}
 		aria-label={`Paper ${item.paperId}, question ${item.number}`}
 	>
-		<span class="top">
-			<span class="preview">{item.preview || 'No text preview available.'}</span>
-			{#if item.thumb}
-				<img class="thumb" src={item.thumb} alt="" loading="lazy" />
-			{/if}
+		<span class="ptext">{item.preview || 'No text preview available.'}</span>
+		{#if item.thumb}
+			<img class="thumb" src={item.thumb} alt="" loading="lazy" />
+		{/if}
+	</a>
+
+	<div class="metablock">
+		<span class="source">
+			Paper {item.paperId} · Q{item.number}{item.exam ? ` · ${item.exam}` : ''}{item.year
+				? ` · ${item.year}`
+				: ''}
 		</span>
-		<span class="meta">
-			<span class="paperline">
-				Paper {item.paperId} · Q{item.number}{item.exam ? ` · ${item.exam}` : ''}{item.year
-					? ` · ${item.year}`
-					: ''}
-			</span>
-			<span class="chips">
-				{#if item.difficulty}
-					<span class={`chip diff-${String(item.difficulty).toLowerCase()}`}>{item.difficulty}</span>
-				{/if}
-				<span class="chip type" title={item.qtype}>{qtypeLabel(item.qtype)}</span>
-				{#if para.isParagraph}
-					<span class="chip para" title={para.valid
-						? `Passage group: ${para.count} sub-questions`
-						: para.warning}>Passage · {para.valid ? para.count : '?'}</span>
-				{/if}
-			</span>
+		<span class="badges">
+			{#if para.isParagraph}
+				<span
+					class="chip para"
+					title={para.valid
+						? `Passage group with ${para.count} sub-questions`
+						: para.warning}
+				>Passage · {para.valid ? para.count : '?'}</span>
+			{/if}
+			<span class="chip type" title={`Raw type ${item.qtype}`}>{qLabel}</span>
+			{#if item.difficulty}
+				<span class={`chip diff-${String(item.difficulty).toLowerCase()}`}>{item.difficulty}</span>
+			{:else}
+				<span class="nograde">Not graded</span>
+			{/if}
 		</span>
 		{#if para.warning}
 			<span class="warn" role="note">{para.warning}</span>
 		{/if}
-		{#if ansType !== (item.qtype ?? '').toLowerCase()}
-			<span class="pl-sub norm">Groups under {ansType.toUpperCase()} in the builder</span>
-		{/if}
-	</a>
+	</div>
+
 	<div class="actions">
 		<div class="mv" role="group" aria-label={`Reorder question ${item.number}`}>
-			<button type="button" disabled={index === 0} onclick={() => onMove?.(index, 0)} title="Move to top">⇤</button>
-			<button type="button" disabled={index === 0} onclick={() => onMove?.(index, index - 1)} title="Move up">↑</button>
-			<button type="button" disabled={index === total - 1} onclick={() => onMove?.(index, index + 1)} title="Move down">↓</button>
-			<button type="button" disabled={index === total - 1} onclick={() => onMove?.(index, total - 1)} title="Move to bottom">⇥</button>
+			<button
+				type="button" disabled={index === 0} onclick={() => onMove?.(index, 0)}
+				title="Move to top" aria-label={`Move question ${item.number} to top`}
+			><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html arrows.top}</svg></button>
+			<button
+				type="button" disabled={index === 0} onclick={() => onMove?.(index, index - 1)}
+				title="Move up" aria-label={`Move question ${item.number} up`}
+			><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html arrows.up}</svg></button>
+			<button
+				type="button" disabled={index === total - 1} onclick={() => onMove?.(index, index + 1)}
+				title="Move down" aria-label={`Move question ${item.number} down`}
+			><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html arrows.down}</svg></button>
+			<button
+				type="button" disabled={index === total - 1} onclick={() => onMove?.(index, total - 1)}
+				title="Move to bottom" aria-label={`Move question ${item.number} to bottom`}
+			><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html arrows.bottom}</svg></button>
 		</div>
 		<button type="button" class="rm" onclick={() => onRemove?.()}>Remove</button>
 	</div>
@@ -66,23 +86,26 @@
 	.card {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
 		padding: 14px;
+		gap: 0;
 	}
-	.main {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		text-decoration: none;
-		color: inherit;
+	.card:hover {
+		box-shadow: var(--pl-shadow-sm);
+		border-color: var(--pl-seal);
 	}
-	.top {
+	.card:focus-within {
+		border-color: var(--pl-seal);
+	}
+	/* A — preview */
+	.preview {
 		display: flex;
 		gap: 10px;
 		align-items: flex-start;
-		min-height: 72px;
+		min-height: 88px;
+		text-decoration: none;
+		color: inherit;
 	}
-	.preview {
+	.ptext {
 		flex: 1;
 		min-width: 0;
 		font-size: 0.86rem;
@@ -101,34 +124,34 @@
 		background: var(--pl-raised);
 		flex-shrink: 0;
 	}
-	.meta {
+	/* B — metadata: secondary to content */
+	.metablock {
 		display: flex;
-		align-items: center;
-		justify-content: space-between;
+		flex-direction: column;
 		gap: 8px;
 		border-top: 1px solid var(--pl-line);
+		margin-top: 10px;
 		padding-top: 10px;
 	}
-	.paperline {
+	.source {
 		font-size: 0.75rem;
 		color: var(--pl-ink-soft);
-		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.chips {
+	.badges {
 		display: flex;
 		gap: 6px;
-		flex-shrink: 0;
 		flex-wrap: wrap;
-		justify-content: flex-end;
+		align-items: center;
 	}
 	.chip {
 		border-radius: 6px;
 		padding: 2px 8px;
 		font-size: 0.72rem;
 		font-weight: 600;
+		line-height: 1.55;
 	}
 	.chip.type {
 		background: var(--pl-raised);
@@ -151,6 +174,10 @@
 		background: var(--pl-seal-soft);
 		color: var(--pl-seal);
 	}
+	.nograde {
+		font-size: 0.75rem;
+		color: var(--pl-ink-soft);
+	}
 	.warn {
 		font-size: 0.76rem;
 		color: var(--pl-ochre);
@@ -159,15 +186,14 @@
 		border-radius: var(--pl-radius-sm);
 		padding: 6px 10px;
 	}
-	.norm {
-		font-size: 0.75rem;
-	}
+	/* C — actions */
 	.actions {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
 		border-top: 1px dashed var(--pl-line);
+		margin-top: 10px;
 		padding-top: 10px;
 	}
 	.mv {
@@ -175,26 +201,44 @@
 		gap: 4px;
 	}
 	.mv button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		min-height: 0;
 		border: 1px solid var(--pl-line);
-		background: none;
 		border-radius: 6px;
-		min-width: 32px;
-		min-height: 32px;
+		background: none;
+		color: var(--pl-ink-soft);
 		cursor: pointer;
+		padding: 0;
+	}
+	.mv button:hover:not(:disabled) {
+		border-color: var(--pl-seal);
+		color: var(--pl-seal);
 	}
 	.mv button:disabled {
 		opacity: 0.35;
 		cursor: default;
 	}
+	.mv svg {
+		width: 15px;
+		height: 15px;
+	}
 	.rm {
 		border: 1px solid var(--pl-line);
-		background: none;
 		border-radius: 6px;
+		background: none;
 		padding: 6px 12px;
 		min-height: 32px;
 		font-size: 0.78rem;
 		font-weight: 600;
 		cursor: pointer;
 		color: var(--pl-seal);
+	}
+	.rm:hover {
+		border-color: var(--pl-seal);
+		background: var(--pl-seal-soft);
 	}
 </style>
