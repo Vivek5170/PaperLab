@@ -37,6 +37,7 @@
 	let previewEl = $state(null);
 	let mobileTab = $state('edit'); // edit | preview (narrow screens only)
 	let pendingNav = $state(null); // { type: 'part', value } | { type: 'back' }
+	let figOpen = $state(false);
 
 	function showToast(msg) {
 		toast = msg;
@@ -121,7 +122,13 @@
 		if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
 			e.preventDefault();
 			mockSave();
+		} else if (e.key === 'Escape') {
+			figOpen = false;
 		}
+	}
+
+	function onWindowClick(e) {
+		if (figOpen && !(e.target instanceof Element && e.target.closest('.figdrop'))) figOpen = false;
 	}
 
 	$effect(() => {
@@ -159,7 +166,7 @@
 </script>
 
 <svelte:head><title>Mock TeX editor - Paper {paper} Q{qn} - PaperLab</title></svelte:head>
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} onclick={onWindowClick} />
 
 <div class="ws">
 	<header class="topbar">
@@ -174,20 +181,32 @@
 			<button type="button" class:active={part === 'question'} onclick={() => switchPart('question')}>Question</button>
 			<button type="button" class:active={part === 'solution'} onclick={() => switchPart('solution')}>Solution</button>
 		</div>
-		<div class="figstrip" aria-label="Figures in this question (mock)">
-			<span class="figlabel">Figures</span>
-			{#each MOCK_FIGURES as f (f)}
-				<button
-					type="button"
-					class="figchip"
-					title={`${f} — click to copy \\includegraphics`}
-					onclick={() => copyFig(f)}
-				>
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
-					<span>{f}</span>
-				</button>
-			{/each}
-			<a class="managelink" href={backHref} title="Open Manage figures in the reader">Manage figures</a>
+		<div class="figdrop">
+			<button
+				type="button"
+				class="pl-btn figbtn"
+				aria-haspopup="menu"
+				aria-expanded={figOpen}
+				title="Figures in this question — pick one to copy its \\includegraphics"
+				onclick={() => (figOpen = !figOpen)}
+			>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+				Figures · {MOCK_FIGURES.length}
+			</button>
+			{#if figOpen}
+				<ul class="figmenu" role="menu" aria-label="Figures in this question (mock)">
+					{#each MOCK_FIGURES as f (f)}
+						<li role="none">
+							<button
+								type="button"
+								role="menuitem"
+								title="Click to copy \\includegraphics"
+								onclick={() => { copyFig(f); figOpen = false; }}
+							>{f}</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 		</div>
 		<span class="status" data-state={saveState} role="status">
 			{#if saveState === 'saving'}Saving…
@@ -324,52 +343,53 @@
 		color: var(--pl-ink);
 		box-shadow: var(--pl-shadow-sm);
 	}
-	.figstrip {
+	.figdrop {
+		position: relative;
+	}
+	.figbtn {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		flex-wrap: wrap;
-		min-width: 0;
-	}
-	.figlabel {
-		font-size: 0.78rem;
-		font-weight: 600;
-		color: var(--pl-ink-soft);
 		white-space: nowrap;
 	}
-	.figchip {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		max-width: 190px;
-		border: 1px solid var(--pl-line);
-		border-radius: var(--pl-radius-pill);
+	.figbtn svg {
+		width: 14px;
+		height: 14px;
+	}
+	.figmenu {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 40;
+		list-style: none;
+		margin: 0;
+		padding: 4px;
+		min-width: 220px;
+		max-width: min(320px, 80vw);
 		background: var(--pl-surface);
-		padding: 4px 10px 4px 8px;
+		border: 1px solid var(--pl-line);
+		border-radius: var(--pl-radius-md);
+		box-shadow: var(--pl-shadow-md);
+	}
+	.figmenu button {
+		display: block;
+		width: 100%;
+		border: none;
+		background: none;
+		text-align: left;
+		padding: 8px 10px;
 		min-height: 0;
-		font-size: 0.76rem;
+		font-size: 0.8rem;
 		font-family: var(--pl-font-mono);
-		color: var(--pl-ink-soft);
+		color: var(--pl-ink);
+		border-radius: var(--pl-radius-sm);
 		cursor: pointer;
-		white-space: nowrap;
-	}
-	.figchip:hover {
-		color: var(--pl-seal);
-		border-color: var(--pl-seal);
-	}
-	.figchip svg {
-		width: 13px;
-		height: 13px;
-		flex-shrink: 0;
-	}
-	.figchip span {
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-	.managelink {
-		font-size: 0.78rem;
-		font-weight: 600;
 		white-space: nowrap;
+	}
+	.figmenu button:hover {
+		background: var(--pl-raised);
 	}
 	.status {
 		font-size: 0.8rem;
