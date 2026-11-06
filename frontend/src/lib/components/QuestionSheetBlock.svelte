@@ -9,7 +9,7 @@
 	import { parseParagraphRange } from '$lib/paragraph.js';
 	import Segments from '$lib/components/Segments.svelte';
 
-	let { block, numbers = [] } = $props();
+	let { block, numbers = [], paraLabel = null } = $props();
 
 	let state = $state('loading'); // loading | ready | missing-q | error
 	let segments = $state([]);
@@ -17,10 +17,6 @@
 
 	const para = $derived(parseParagraphRange(block.number, block.qtype));
 	const shown = $derived(dressQuestion(segments, { numbers, para }));
-
-	const rangeLabel = $derived(
-		numbers.length <= 1 ? `Q${numbers[0] ?? '—'}` : `Questions Q${numbers[0]}–Q${numbers[numbers.length - 1]}`
-	);
 
 	async function load() {
 		state = 'loading';
@@ -45,7 +41,9 @@
 </script>
 
 <div class="q">
-	<p class="qhead"><span class="qn">{rangeLabel}</span></p>
+	{#if paraLabel}
+		<p class="parahead">Paragraph {paraLabel}</p>
+	{/if}
 	{#if state === 'loading'}
 		<div class="skel" aria-hidden="true"></div>
 		<div class="skel short" aria-hidden="true"></div>
@@ -61,16 +59,14 @@
 
 <style>
 	.q {
-		margin: 0 0 16px;
-		font-size: 0.875rem;
-		line-height: 1.65;
+		margin: 0 0 14px;
+		font-size: 0.8125rem;
+		line-height: 1.6;
 	}
-	.qhead {
+	.parahead {
 		margin: 0 0 6px;
-	}
-	.qn {
 		font-weight: 700;
-		font-size: 0.92rem;
+		font-size: 0.9rem;
 	}
 	.skel {
 		height: 1em;

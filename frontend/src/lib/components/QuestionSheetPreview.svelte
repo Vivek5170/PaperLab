@@ -1,13 +1,23 @@
 <script>
-	/**
-	 * Live Question Sheet: the actual paper output — section headings,
-	 * continuous generated numbers, real segments (passages rendered once
-	 * with their range heading), figures via existing URLs. Pure function
-	 * of (ordered, numbering, draft title/mode): no numbering of its own.
-	 */
+	import { toRoman } from '$lib/numbering.js';
+	import { isParagraphId } from '$lib/paragraph.js';
 	import QuestionSheetBlock from '$lib/components/QuestionSheetBlock.svelte';
 
+	/**
+	 * Live Question Sheet: the actual paper output — section headings,
+	 * inline generated numbers, passages headed Paragraph I/II with
+	 * per-question sub-numbers, real segments, figures via existing URLs.
+	 * Pure function of (ordered, numbering, draft title/mode). */
+
 	let { title = '', ordered = [], numbering, sections = [], mode = 'paper' } = $props();
+
+	// Paragraph I, II... in document order (JEE convention, no numbers).
+	const paraIndex = $derived.by(() => {
+		const m = new Map();
+		let i = 0;
+		for (const e of ordered) if (isParagraphId(e.number, e.qtype)) m.set(e.blockId, toRoman(++i));
+		return m;
+	});
 
 	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 </script>
@@ -21,7 +31,7 @@
 		<p class="pl-sub">Nothing to preview yet — import a cart in the editor.</p>
 	{:else if mode === 'assignment'}
 		{#each ordered as entry (entry.blockId)}
-			<QuestionSheetBlock block={entry} numbers={numbering.byBlock[entry.blockId] ?? []} />
+			<QuestionSheetBlock block={entry} numbers={numbering.byBlock[entry.blockId] ?? []} paraLabel={paraIndex.get(entry.blockId) ?? null} />
 		{/each}
 	{:else}
 					{#each sections as s, si (s.id)}

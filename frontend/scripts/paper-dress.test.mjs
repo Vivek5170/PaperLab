@@ -8,6 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { dressQuestion, dressSolution, isMissingSolutionText } from '../src/lib/paperDress.js';
+import { toRoman } from '../src/lib/numbering.js';
 
 const T = (html) => ({ kind: 'text', html });
 const F = (url) => ({ kind: 'fig', url });
@@ -96,5 +97,11 @@ describe('dressSolution', () => {
 		assert.equal(isMissingSolutionText([T('<p>No solution provided.</p>')]), true);
 		assert.equal(isMissingSolutionText([T('<p><em>No solution provided.</em></p>')]), true);
 		assert.equal(isMissingSolutionText([T('<p><strong>Answer: 30) 3</strong></p><p>Real text.</p>')]), false);
+	});
+});
+
+describe('toRoman', () => {
+	it('numbers passages I, II, III...', () => {
+		assert.equal([1, 2, 3, 4, 9].map(toRoman).join(','), 'I,II,III,IV,IX');
 	});
 });

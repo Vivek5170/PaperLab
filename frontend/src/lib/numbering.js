@@ -55,6 +55,15 @@ export function flattenDraft(draft) {
 	return out;
 }
 
+/** I, II, III... for passage order. */
+export function toRoman(n) {
+	const table = [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']];
+	let out = '';
+	let v = Math.max(1, Math.min(3999, n | 0));
+	for (const [val, sym] of table) while (v >= val) { out += sym; v -= val; }
+	return out;
+}
+
 /** "Q5" or "Q5–Q7" label for a block's numbers. */
 export function numberLabel(nums) {
 	if (!nums || nums.length === 0) return '—';
