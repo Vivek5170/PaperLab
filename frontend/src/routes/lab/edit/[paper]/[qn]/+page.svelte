@@ -180,33 +180,33 @@
 		<div class="seg" role="group" aria-label="Choose file">
 			<button type="button" class:active={part === 'question'} onclick={() => switchPart('question')}>Question</button>
 			<button type="button" class:active={part === 'solution'} onclick={() => switchPart('solution')}>Solution</button>
-		</div>
-		<div class="figdrop">
-			<button
-				type="button"
-				class="pl-btn figbtn"
-				aria-haspopup="menu"
-				aria-expanded={figOpen}
-				title="Figures in this question — pick one to copy its \\includegraphics"
-				onclick={() => (figOpen = !figOpen)}
-			>
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
-				Figures · {MOCK_FIGURES.length}
-			</button>
-			{#if figOpen}
-				<ul class="figmenu" role="menu" aria-label="Figures in this question (mock)">
-					{#each MOCK_FIGURES as f (f)}
-						<li role="none">
-							<button
-								type="button"
-								role="menuitem"
-								title="Click to copy \\includegraphics"
-								onclick={() => { copyFig(f); figOpen = false; }}
-							>{f}</button>
-						</li>
-					{/each}
-				</ul>
-			{/if}
+			<div class="figdrop">
+				<button
+					type="button"
+					class:active={figOpen}
+					aria-haspopup="menu"
+					aria-expanded={figOpen}
+					title="Copy a figure's \\includegraphics into the editor"
+					onclick={() => (figOpen = !figOpen)}
+				>
+					<svg class="figico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+					Copy figures
+				</button>
+				{#if figOpen}
+					<ul class="figmenu" role="menu" aria-label="Figures in this question (mock)">
+						{#each MOCK_FIGURES as f (f)}
+							<li role="none">
+								<button
+									type="button"
+									role="menuitem"
+									title="Click to copy \\includegraphics"
+									onclick={() => { copyFig(f); figOpen = false; }}
+								>{f}</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
 		</div>
 		<span class="status" data-state={saveState} role="status">
 			{#if saveState === 'saving'}Saving…
@@ -326,7 +326,8 @@
 		padding: 3px;
 		gap: 2px;
 	}
-	.seg button {
+	.seg > button,
+	.figdrop > button {
 		border: none;
 		background: none;
 		border-radius: var(--pl-radius-pill);
@@ -338,23 +339,24 @@
 		cursor: pointer;
 		white-space: nowrap;
 	}
-	.seg button.active {
+	.seg > button.active,
+	.figdrop > button.active {
 		background: var(--pl-surface);
 		color: var(--pl-ink);
 		box-shadow: var(--pl-shadow-sm);
 	}
 	.figdrop {
 		position: relative;
+		display: inline-flex;
 	}
-	.figbtn {
+	.figdrop > button {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		white-space: nowrap;
 	}
-	.figbtn svg {
-		width: 14px;
-		height: 14px;
+	.figico {
+		width: 13px;
+		height: 13px;
 	}
 	.figmenu {
 		position: absolute;
