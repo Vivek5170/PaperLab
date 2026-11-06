@@ -265,6 +265,13 @@
 	.dd.tag .dd-btn {
 		width: 100%;
 		justify-content: space-between;
+		border-radius: var(--pl-radius-sm);
+		background: var(--pl-surface);
+		color: var(--pl-ink);
+		font-weight: 400;
+		font-size: 1rem;
+		padding: 10px 12px;
+		min-height: 44px;
 	}
 	.dd.tag .tree-panel {
 		width: 100%;
