@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { backoffDelay, pool, sleep, withTimeout, isUnsettled } from '../src/lib/async.js';
+import { backoffDelay, pool, sleep, withTimeout, isUnsettled, sweepUnsettled } from '../src/lib/async.js';
 import { BULK_SEED_MIN, bulkSeedPlan, applyBulkSeed } from '../src/lib/bulkSeed.js';
 
 describe('sleep', () => {
@@ -86,6 +86,22 @@ describe('isUnsettled (watchdog predicate)', () => {
 		assert.equal(isUnsettled({ loading: true, at: now - 36000 }, now), true);
 		assert.equal(isUnsettled({ waiting: true, at: now - 40000 }, now), true);
 		assert.equal(isUnsettled({ loading: true }, now, 1000), true); // missing `at` counts as stale
+	});
+});
+
+describe('sweepUnsettled (watchdog batch)', () => {
+	it('returns only stale loading/waiting ids, in order', () => {
+		const now = 100000;
+		const details = {
+			a: { loading: true, at: now - 40000 },
+			b: { ready: true },
+			c: { waiting: true, at: now - 50000 },
+			d: { error: 'x' },
+			e: { loading: true, at: now - 1000 }
+		};
+		assert.deepEqual(sweepUnsettled(Object.entries(details), now), ['a', 'c']);
+		assert.deepEqual(sweepUnsettled([], now), []);
+		assert.deepEqual(sweepUnsettled(null, now), []);
 	});
 });
 

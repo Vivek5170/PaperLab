@@ -6,14 +6,14 @@
 	 * together: doc/section/passage headers and each question's first row
 	 * never strand alone at a page bottom. Pure function of draft state.
 	 */
-	import { untrack } from 'svelte';
+	import { untrack, onDestroy } from 'svelte';
 	import { toRoman } from '$lib/numbering.js';
 	import { isParagraphId, parseParagraphRange } from '$lib/paragraph.js';
 	import { sectionMeta } from '$lib/sectionMeta.js';
 	import { dressQuestion } from '$lib/paperDress.js';
 	import { getQuestionDetail, dropQuestionDetail, seedQuestionDetail } from '$lib/questionCache.js';
 	import { splitTopBlocks } from '$lib/flowsplit.js';
-	import { withTimeout, backoffDelay, pool, sleep, isUnsettled } from '$lib/async.js';
+	import { withTimeout, backoffDelay, pool, sleep, isUnsettled, sweepUnsettled } from '$lib/async.js';
 	import { bulkSeedPlan, applyBulkSeed } from '$lib/bulkSeed.js';
 	import { api } from '$lib/api.js';
 	import Segments from '$lib/components/Segments.svelte';
@@ -24,6 +24,11 @@
 	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 	let details = $state({});
+	let runGen = 0;
+	let dead = false;
+	onDestroy(() => {
+		dead = true;
+	});
 
 	const idsKey = $derived(ordered.map((e) => `${e.blockId}:${e.paperId}:${e.number}`).join(','));
 
@@ -36,8 +41,10 @@
 
 	$effect(() => {
 		void idsKey;
-		let cancelled = false;
-		let alive = true;
+		// Generation counter, not a cancel flag: a superseded run's late
+		// results still land (entry still carries its generation), while a
+		// newer owner is never clobbered. Cancelling outright was the bug
+		// that discarded whole batches into silent skeletons.
 		// details reads are untracked: otherwise marking loading:true would
 		// retrigger this effect and cancel the in-flight fetches (eternal
 		// skeletons). idsKey is the only retrigger.
@@ -49,9 +56,23 @@
 				return !(k && (k.ready || k.missing || fresh));
 			})
 		);
-		if (missing.length === 0) return;
+		// Watchdog is armed on EVERY run over live entries — never the
+		// run's snapshot. A rerun that finds nothing to fetch must still
+		// cover entries orphaned by an earlier superseded run.
+		const myGen = ++runGen;
+		const wd = setTimeout(() => {
+			const now = Date.now();
+			for (const bid of sweepUnsettled(Object.entries(details), now)) {
+				const k = details[bid];
+				details[bid] = {
+					error: 'Still loading after 35s — the server may be busy. Use Retry below.',
+					attempts: (k?.attempts ?? 0) + 1
+				};
+			}
+		}, 35000);
+		if (missing.length === 0) return () => clearTimeout(wd);
 		for (const e of missing) {
-			details[e.blockId] = { loading: true, at: Date.now(), attempts: details[e.blockId]?.attempts ?? 0 };
+			details[e.blockId] = { loading: true, at: Date.now(), attempts: details[e.blockId]?.attempts ?? 0, run: myGen };
 		}
 		(async () => {
 			// Bulk-seed groups of 3+: one getQuestions per paper fills the
@@ -64,61 +85,45 @@
 					try {
 						const items = await withTimeout(
 							api.getQuestions(paperId), 20000, 'Backend timed out — is it running on port 8000?');
-						if (cancelled) return;
 						applyBulkSeed(seedQuestionDetail, paperId, items, numbers);
 					} catch {
 						/* fall through to individual fetches */
 					}
 				}));
-				if (cancelled) return;
 			}
 			// First load stays fully parallel; retries go through the
 			// bounded paths below (reload / retryAll).
-			await Promise.all(missing.map((e) => fetchOne(e, () => cancelled)));
+			await Promise.all(missing.map((e) => fetchOne(e, myGen)));
 		})();
-		// Watchdog: if anything is still unsettled after 35s (past every
-		// fetch timeout and retry backoff), degrade it into a retryable
-		// error instead of eternal skeletons. Late success still wins:
-		// fetchOne overwrites these entries on arrival.
-		const wd = setTimeout(() => {
-			if (!alive) return;
-			const now = Date.now();
-			for (const e of missing) {
-				const k = details[e.blockId];
-				if (isUnsettled(k, now)) {
-					details[e.blockId] = {
-						error: 'Still loading after 35s — the server may be busy. Use Retry below.',
-						attempts: (k.attempts ?? 0) + 1
-					};
-				}
-			}
-		}, 35000);
 		return () => {
-			cancelled = true;
-			alive = false;
 			clearTimeout(wd);
 		};
 	});
 
 	/** Fetch one block and record the outcome; shared by all paths. */
-	async function fetchOne(e, isCancelled = () => false) {
+	async function fetchOne(e, gen) {
 		try {
 			const d = await withTimeout(
 				getQuestionDetail(e.paperId, e.number), 20000, 'Backend timed out — is it running on port 8000?');
-			if (isCancelled()) return;
+			if (dead) return;
+			const cur = details[e.blockId];
+			// Only the owning generation writes: superseded runs never
+			// clobber, but a superseded run's late success still lands when
+			// nobody newer claimed the entry.
+			if (!cur || cur.run !== gen) return;
 			if (!ordered.some((o) => o.blockId === e.blockId)) return; // block gone meanwhile
 			// Store RAW; dressing happens in rows (pure, current numbering).
 			details[e.blockId] = { ready: true, data: d.question ?? [] };
 		} catch (err) {
-			if (isCancelled()) return;
+			if (dead) return;
+			const cur = details[e.blockId];
+			if (!cur || cur.run !== gen) return;
 			if (!ordered.some((o) => o.blockId === e.blockId)) return;
 			const msg = String(err?.message ?? err);
-			// Our 20s timeout leaves the shared cached promise pending
-			// until the 30s api abort; evict it so Retry fetches fresh.
-			if (msg.includes('Backend timed out')) {
-				try { dropQuestionDetail(e.paperId, e.number); } catch { /* ignore */ }
-			}
-			details[e.blockId] = { error: msg, attempts: (details[e.blockId]?.attempts ?? 0) + 1 };
+			// Evict unconditionally: the cache self-evicts rejections, so
+			// this only affects timeout-abandoned pendings (zombies).
+			try { dropQuestionDetail(e.paperId, e.number); } catch { /* ignore */ }
+			details[e.blockId] = { error: msg, attempts: (cur.attempts ?? 0) + 1 };
 		}
 	}
 
@@ -127,18 +132,20 @@
 		if (failed.length === 0) return;
 		// Retries run at most 3-wide with per-question backoff — never the
 		// all-at-once storm that wedges a weak server. Rows resolve in place.
+		const myGen = ++runGen;
 		const now = Date.now();
 		for (const e of failed) {
+			const prev = details[e.blockId];
 			try { dropQuestionDetail(e.paperId, e.number); } catch { /* ignore */ }
-			details[e.blockId] = { waiting: true, at: now, attempts: details[e.blockId]?.attempts ?? 0 };
+			details[e.blockId] = { waiting: true, at: now, attempts: prev?.attempts ?? 0, run: myGen };
 		}
 		await pool(failed, 3, async (e) => {
 			const cur = details[e.blockId];
-			if (!cur?.waiting) return; // superseded
+			if (!cur?.waiting || cur.run !== myGen) return; // superseded
 			await sleep(backoffDelay(cur.attempts ?? 0));
 			if (details[e.blockId] !== cur) return; // superseded mid-wait
 			if (!ordered.some((o) => o.blockId === e.blockId)) return;
-			await fetchOne(e);
+			await fetchOne(e, myGen);
 		});
 	}
 
@@ -154,14 +161,15 @@
 		if (!entry) return;
 		// Single-question retry with backoff; the row shows a skeleton
 		// while waiting and the shared effect leaves it alone.
+		const myGen = ++runGen;
 		const attempts = details[bid]?.attempts ?? 0;
 		try { dropQuestionDetail(entry.paperId, entry.number); } catch { /* ignore */ }
-		const mark = (details[bid] = { waiting: true, at: Date.now(), attempts });
+		const mark = (details[bid] = { waiting: true, at: Date.now(), attempts, run: myGen });
 		(async () => {
 			await sleep(backoffDelay(attempts));
 			if (details[bid] !== mark) return; // superseded meanwhile
 			if (!ordered.some((o) => o.blockId === bid)) return;
-			await fetchOne(entry);
+			await fetchOne(entry, myGen);
 		})();
 	}
 

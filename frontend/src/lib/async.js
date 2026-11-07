@@ -13,6 +13,18 @@ export function isUnsettled(entry, nowMs = Date.now(), maxAgeMs = 35000) {
 }
 
 /**
+ * Block ids whose loader entries are still unsettled (loading or waiting
+ * past the deadline). The watchdog degrades exactly these into errors.
+ */
+export function sweepUnsettled(entries, nowMs = Date.now(), maxAgeMs = 35000) {
+	const out = [];
+	for (const [bid, k] of entries ?? []) {
+		if (isUnsettled(k, nowMs, maxAgeMs)) out.push(bid);
+	}
+	return out;
+}
+
+/**
  * Race a promise against a timeout. The underlying work is NOT cancelled
  * (the cache keeps it); callers just stop waiting and can show Retry.
  */
