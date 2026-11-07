@@ -138,9 +138,41 @@ function isSolutionLabelPara(html) {
 
 // A paragraph that is nothing but a filed cross-reference note ("(Q.14-15):").
 // These duplicate the sheet's own "Solution Qn" heading — drop the para,
-// or strip the marker when it leads a content paragraph.
+// or strip the marker when it leads a content paragraph. Position within
+// the segment must not matter: markers ride mid-segment (paper 13 puts
+// Answer/label paras first), so this runs per paragraph, never anchored
+// to the segment start.
 const QREF_BARE_RE = /^\(?\s*Q\.?\s*[\d][\d\s,.\-–]*\)?\s*:?\s*$/i;
-const QREF_PREFIX_RE = /^(\s*<p[^>]*>\s*)(?:\(\s*)?Q\.?\s*[\d][\d\s,.\-–]*\)?\s*:?\s+/i;
+
+function stripQRefPrefix(inner) {
+	// Match the marker in TEXT space (tags skipped), then delete exactly
+	// those text chars from the HTML. Tags are never touched, so markup
+	// stays balanced whatever wraps the marker (<strong>, plain, ...).
+	// Paras starting with a math span have no leading text: untouched.
+	const text = inner.replace(/<[^>]*>/g, '');
+	const mm = /^((?:\(\s*)?Q\.?\s*[\d][\d\s,.\-–]*\)?\s*:?\s+)/i.exec(text);
+	if (!mm) return inner;
+	let take = mm[0].length;
+	let res = '';
+	let i = 0;
+	while (i < inner.length) {
+		if (inner[i] === '<') {
+			const j = inner.indexOf('>', i);
+			res += j < 0 ? inner.slice(i) : inner.slice(i, j + 1);
+			i = j < 0 ? inner.length : j + 1;
+			continue;
+		}
+		if (take > 0) {
+			take--;
+			i++;
+			continue;
+		}
+		res += inner[i];
+		i++;
+	}
+	// Tidy emptied wrappers (never math spans: those hold content).
+	return res.replace(/<(strong|em|b|i|u)(\s[^>]*)?>\s*<\/\1>/gi, '');
+}
 
 function isQRefPara(html) {
 	const m = /^[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>\s*$/.exec(html.trim());
@@ -195,12 +227,20 @@ export function dressSolution(segments, { numbers = [] } = {}) {
 		if (s.kind !== 'text' || typeof s.html !== 'string') continue;
 		s.html = s.html.replace(/<p[^>]*>[\s\S]*?<\/p>/g, (m) => {
 			if (isQRefPara(m)) return '';
-			if (!isSolutionLabelPara(m)) return m;
+			if (!isSolutionLabelPara(m)) {
+				// Cross-ref marker leading a content para: strip it, keep
+				// the rest. A para reduced to bare tags is dropped; one
+				// reduced to a lone math span is real content — kept.
+				const pm = /^<p([^>]*)>([\s\S]*?)<\/p>$/.exec(m);
+				if (!pm) return m;
+				const stripped = stripQRefPrefix(pm[2]);
+				if (stripped === pm[2]) return m;
+				if (stripped.replace(/<[^>]*>/g, '').trim() === '' && !/data-tex/.test(stripped)) return '';
+				return `<p${pm[1]}>${stripped}</p>`;
+			}
 			if (!labelSeen) { labelSeen = true; return ''; }
 			return '<hr class="sol-div">';
 		});
-		// Cross-reference marker leading a content paragraph: strip it.
-		s.html = s.html.replace(QREF_PREFIX_RE, '$1');
 	}
 	// Drop segments left with no content (key-only solutions surface as
 	// the explicit note in AnswerSheetPreview).

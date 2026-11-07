@@ -242,9 +242,28 @@ describe('filed cross-reference leaks (Q.14-15 regression)', () => {
 		const html = out.map(s => s.html ?? '').join(' ');
 		assert.doesNotMatch(html, /Answer:/);
 		assert.doesNotMatch(html, /Solution for/);
-		assert.doesNotMatch(html, /Q\.14-15\):</);
-		assert.doesNotMatch(html, /\(Q\.14-15\):</);
+		assert.doesNotMatch(html, /\(Q\.14-15\)/);
 		assert.match(html, /\.\.\.\(i\)/);
-		assert.match(html, /tail kept/);
+		assert.match(html, /<p>tail kept<\/p>/);
+	});
+	it('strips markers mid-segment, even wrapped in formatting tags', async () => {
+		const { dressSolution } = await import('../src/lib/paperDress.js');
+		// Exact paper-13 shape: marker rides 3rd in the segment, not first.
+		const segs = [{ kind: 'text', html: `<p>x</p><p>y</p><p>(Q.16-17): When</p><p>z</p>` }];
+		const html = dressSolution(segs, { numbers: [15, 16] }).map(s => s.html ?? '').join(' ');
+		assert.doesNotMatch(html, /\(Q\.16-17\)/);
+		assert.match(html, /<p>When<\/p>/);
+		const wrapped = [{ kind: 'text', html: `<p>a</p><p><strong>(Q.16-17):</strong> Then</p>` }];
+		const html2 = dressSolution(wrapped, { numbers: [15, 16] }).map(s => s.html ?? '').join(' ');
+		assert.doesNotMatch(html2, /\(Q\.16-17\)/);
+		assert.match(html2, /Then/);
+	});
+	it('never eats prose that merely mentions Q (no false positives)', async () => {
+		const { dressSolution } = await import('../src/lib/paperDress.js');
+		const segs = [{ kind: 'text', html: `<p>Q factor of the coil is high.</p><p>The charge Q5 stays.</p><p>See (Q.5) option above.</p>` }];
+		const html = dressSolution(segs, { numbers: [1] }).map(s => s.html ?? '').join(' ');
+		assert.match(html, /Q factor of the coil is high/);
+		assert.match(html, /charge Q5 stays/);
+		assert.match(html, /option above/);
 	});
 });
