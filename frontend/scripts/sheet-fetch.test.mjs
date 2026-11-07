@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { backoffDelay, pool, sleep, withTimeout } from '../src/lib/async.js';
+import { backoffDelay, pool, sleep, withTimeout, isUnsettled } from '../src/lib/async.js';
 import { BULK_SEED_MIN, bulkSeedPlan, applyBulkSeed } from '../src/lib/bulkSeed.js';
 
 describe('sleep', () => {
@@ -73,6 +73,19 @@ describe('pool', () => {
 	});
 	it('handles empty input', async () => {
 		assert.deepEqual(await pool([], 3, async () => 1), []);
+	});
+});
+
+describe('isUnsettled (watchdog predicate)', () => {
+	it('flags only stale loading/waiting entries', () => {
+		const now = 100000;
+		assert.equal(isUnsettled(undefined, now), false);
+		assert.equal(isUnsettled({ ready: true }, now), false);
+		assert.equal(isUnsettled({ error: 'x' }, now), false);
+		assert.equal(isUnsettled({ loading: true, at: now - 1000 }, now), false);
+		assert.equal(isUnsettled({ loading: true, at: now - 36000 }, now), true);
+		assert.equal(isUnsettled({ waiting: true, at: now - 40000 }, now), true);
+		assert.equal(isUnsettled({ loading: true }, now, 1000), true); // missing `at` counts as stale
 	});
 });
 

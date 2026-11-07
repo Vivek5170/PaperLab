@@ -3,6 +3,16 @@
  */
 
 /**
+ * True when a sheet loader entry has been unsettled longer than maxAgeMs.
+ * Watchdog predicate: guarantees eternal skeletons always degrade into a
+ * retryable error instead of hanging silently (wedged worker, stale cache
+ * entry, or any future stall the per-fetch timeouts somehow miss).
+ */
+export function isUnsettled(entry, nowMs = Date.now(), maxAgeMs = 35000) {
+	return !!entry && !!(entry.loading || entry.waiting) && nowMs - (entry.at ?? 0) > maxAgeMs;
+}
+
+/**
  * Race a promise against a timeout. The underlying work is NOT cancelled
  * (the cache keeps it); callers just stop waiting and can show Retry.
  */

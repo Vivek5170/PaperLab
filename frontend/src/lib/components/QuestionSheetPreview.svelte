@@ -13,7 +13,7 @@
 	import { dressQuestion } from '$lib/paperDress.js';
 	import { getQuestionDetail, dropQuestionDetail, seedQuestionDetail } from '$lib/questionCache.js';
 	import { splitTopBlocks } from '$lib/flowsplit.js';
-	import { withTimeout, backoffDelay, pool, sleep } from '$lib/async.js';
+	import { withTimeout, backoffDelay, pool, sleep, isUnsettled } from '$lib/async.js';
 	import { bulkSeedPlan, applyBulkSeed } from '$lib/bulkSeed.js';
 	import { api } from '$lib/api.js';
 	import Segments from '$lib/components/Segments.svelte';
@@ -37,6 +37,7 @@
 	$effect(() => {
 		void idsKey;
 		let cancelled = false;
+		let alive = true;
 		// details reads are untracked: otherwise marking loading:true would
 		// retrigger this effect and cancel the in-flight fetches (eternal
 		// skeletons). idsKey is the only retrigger.
@@ -75,8 +76,27 @@
 			// bounded paths below (reload / retryAll).
 			await Promise.all(missing.map((e) => fetchOne(e, () => cancelled)));
 		})();
+		// Watchdog: if anything is still unsettled after 35s (past every
+		// fetch timeout and retry backoff), degrade it into a retryable
+		// error instead of eternal skeletons. Late success still wins:
+		// fetchOne overwrites these entries on arrival.
+		const wd = setTimeout(() => {
+			if (!alive) return;
+			const now = Date.now();
+			for (const e of missing) {
+				const k = details[e.blockId];
+				if (isUnsettled(k, now)) {
+					details[e.blockId] = {
+						error: 'Still loading after 35s — the server may be busy. Use Retry below.',
+						attempts: (k.attempts ?? 0) + 1
+					};
+				}
+			}
+		}, 35000);
 		return () => {
 			cancelled = true;
+			alive = false;
+			clearTimeout(wd);
 		};
 	});
 
