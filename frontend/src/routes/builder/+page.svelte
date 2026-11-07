@@ -31,7 +31,7 @@ import { cartStore } from '$lib/carts.js';
 			: 'paperlab'
 	);
 	let figScale = $state(
-		browser && Number(localStorage.getItem('pl-figscale-v1')) >= 40 && Number(localStorage.getItem('pl-figscale-v1')) <= 120
+		browser && Number(localStorage.getItem('pl-figscale-v1')) >= 40 && Number(localStorage.getItem('pl-figscale-v1')) <= 150
 			? Number(localStorage.getItem('pl-figscale-v1'))
 			: 80
 	);
@@ -457,7 +457,7 @@ import { cartStore } from '$lib/carts.js';
 					<label class="figctl" title="Diagram size — pages reflow live, print matches">
 						Fig
 						<input
-							type="range" min="40" max="120" step="5"
+							type="range" min="40" max="150" step="5"
 							bind:value={figScale} aria-label="Figure size percent"
 						/>
 						<span class="pl-sub">{figScale}%</span>

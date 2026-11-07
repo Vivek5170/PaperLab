@@ -154,9 +154,14 @@
 		fig.appendChild(badge);
 		const update = () => {
 			const nat = node.naturalWidth;
-			if (!nat || node.clientWidth <= 0) return;
-			const pct = Math.round((node.clientWidth / nat) * 100);
+			if (!nat) return;
+			// getBoundingClientRect: layout width even mid-settle; clientWidth
+			// can lie if measured before caps apply.
+			const w = Math.round(node.getBoundingClientRect().width);
+			if (w <= 0) return;
+			const pct = Math.round((w / nat) * 100);
 			badge.textContent = `${pct}%`;
+			badge.title = `Shown ${w}px of ${nat}px natural`;
 			badge.classList.toggle('warn', pct < 50);
 			badge.hidden = false;
 		};
@@ -167,8 +172,12 @@
 			ro.observe(node);
 		} catch { /* ignore */ }
 		update();
+		// One delayed pass: catches any early measure taken before layout,
+		// fonts or the sheet scale settled. Idempotent — never loops.
+		const late = setTimeout(update, 1200);
 		return {
 			destroy() {
+				clearTimeout(late);
 				try {
 					ro?.disconnect();
 				} catch { /* ignore */ }
