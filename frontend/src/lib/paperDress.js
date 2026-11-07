@@ -181,10 +181,16 @@ function isQRefPara(html) {
 	return QREF_BARE_RE.test(text);
 }
 
-// A paragraph holding nothing but the filed answer line.
-function isAnswerPara(html) {
+// A paragraph holding nothing but the filed answer line. Two shapes on
+// the real corpus: "Answer: NN) KEY" (217 paras) and the plain-text repeat
+// "Correct answer is (X)" (5 paras, paper 11 — duplicates the key table).
+// The anchored "answer is" keeps prose like "Correct Step-by-Step
+// Analysis:" (8/27) safely out of reach.
+export function isAnswerPara(html) {
 	const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-	return /^Answer:\s*[^)]+\)\s*\S[^<>]*$/.test(text) || /^Answer:\s*[^)]+\)\s*$/.test(text);
+	return /^Answer:\s*[^)]+\)\s*\S[^<>]*$/.test(text)
+		|| /^Answer:\s*[^)]+\)\s*$/.test(text)
+		|| /^Correct answer is\s*\([^)]*\)\.?\s*$/i.test(text);
 }
 
 /**

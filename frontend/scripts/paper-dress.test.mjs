@@ -266,4 +266,14 @@ describe('filed cross-reference leaks (Q.14-15 regression)', () => {
 		assert.match(html, /charge Q5 stays/);
 		assert.match(html, /option above/);
 	});
+	it('drops "Correct answer is (X)" duplicates, keeps lookalike prose', async () => {
+		const { dressSolution, isAnswerPara } = await import('../src/lib/paperDress.js');
+		assert.ok(isAnswerPara('<p>Correct answer is (C)</p>'));
+		assert.ok(!isAnswerPara('<p>Correct Step-by-Step Analysis:</p>'));
+		// Exact paper-11 shape: Answer + label + duplicate, nothing else.
+		const enc = (s) => encodeURIComponent(s);
+		const segs = [{ kind: 'text', html: `<p><strong>Answer: 3) C</strong></p><p><span class="pl-math" data-tex="${enc('\\underline{\\textbf{Solution for 3}}')}"></span></p><p>Correct answer is (C)</p>` }];
+		const out = dressSolution(segs, { numbers: [3] });
+		assert.deepEqual(out, []);
+	});
 });
