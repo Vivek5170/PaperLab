@@ -225,14 +225,14 @@
 	.apage.font-times {
 		font-family: 'Times New Roman', Times, Georgia, serif;
 	}
-	.apage.font-kokila {
-		font-family: Kokila, 'Times New Roman', Times, serif;
-	}
 	.apage.font-arial {
 		font-family: Arial, Helvetica, sans-serif;
 	}
 	.apage.font-cambria {
 		font-family: Cambria, 'Cambria Math', Georgia, 'Times New Roman', serif;
+	}
+	.apage.font-stix {
+		font-family: 'STIX Two Text', Georgia, 'Times New Roman', serif;
 	}
 	.apage :global(.fig) {
 		margin: 12px 0 14px;
