@@ -231,6 +231,9 @@
 	.apage.font-arial {
 		font-family: Arial, Helvetica, sans-serif;
 	}
+	.apage.font-cambria {
+		font-family: Cambria, 'Cambria Math', Georgia, 'Times New Roman', serif;
+	}
 	.apage :global(.fig) {
 		margin: 12px 0 14px;
 	}

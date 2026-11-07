@@ -26,7 +26,7 @@ import { cartStore } from '$lib/carts.js';
 	let splitPct = $state(browser ? Number(sessionStorage.getItem('pl-split-v1')) || 38 : 38);
 	let figBoxed = $state(browser ? localStorage.getItem('pl-figbox-v1') === '1' : false);
 	let sheetFont = $state(
-		browser && ['paperlab', 'times', 'kokila', 'arial'].includes(localStorage.getItem('pl-sheetfont-v1'))
+		browser && ['paperlab', 'times', 'kokila', 'arial', 'cambria'].includes(localStorage.getItem('pl-sheetfont-v1'))
 			? localStorage.getItem('pl-sheetfont-v1')
 			: 'paperlab'
 	);
@@ -232,12 +232,13 @@ import { cartStore } from '$lib/carts.js';
 				class="fontsel"
 				bind:value={sheetFont}
 				aria-label="Sheet body font"
-				title="Sheet body font: Inter, Times (Chaitanya), Kokila (Allen), Arial (FITJEE)"
+				title="Sheet body font: Inter, Times (Chaitanya), Kokila (Allen), Arial (FITJEE), Cambria"
 			>
 				<option value="paperlab">Inter</option>
 				<option value="times">Times (Chaitanya)</option>
 				<option value="kokila">Kokila (Allen)</option>
 				<option value="arial">Arial (FITJEE)</option>
+				<option value="cambria">Cambria</option>
 			</select>
 			<button type="button" class="pl-btn" onclick={() => (confirmNew = true)}>New</button>
 			<button type="button" class="pl-btn pl-btn-primary" onclick={() => window.print()} title="Print or save as PDF (A4, exactly as previewed)">Print / PDF</button>
