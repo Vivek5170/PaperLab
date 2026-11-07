@@ -136,6 +136,19 @@ function isSolutionLabelPara(html) {
 	return false;
 }
 
+// A paragraph that is nothing but a filed cross-reference note ("(Q.14-15):").
+// These duplicate the sheet's own "Solution Qn" heading — drop the para,
+// or strip the marker when it leads a content paragraph.
+const QREF_BARE_RE = /^\(?\s*Q\.?\s*[\d][\d\s,.\-–]*\)?\s*:?\s*$/i;
+const QREF_PREFIX_RE = /^(\s*<p[^>]*>\s*)(?:\(\s*)?Q\.?\s*[\d][\d\s,.\-–]*\)?\s*:?\s+/i;
+
+function isQRefPara(html) {
+	const m = /^[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>\s*$/.exec(html.trim());
+	if (!m) return false;
+	const text = m[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+	return QREF_BARE_RE.test(text);
+}
+
 // A paragraph holding nothing but the filed answer line.
 function isAnswerPara(html) {
 	const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -181,10 +194,13 @@ export function dressSolution(segments, { numbers = [] } = {}) {
 	for (const s of out) {
 		if (s.kind !== 'text' || typeof s.html !== 'string') continue;
 		s.html = s.html.replace(/<p[^>]*>[\s\S]*?<\/p>/g, (m) => {
+			if (isQRefPara(m)) return '';
 			if (!isSolutionLabelPara(m)) return m;
 			if (!labelSeen) { labelSeen = true; return ''; }
 			return '<hr class="sol-div">';
 		});
+		// Cross-reference marker leading a content paragraph: strip it.
+		s.html = s.html.replace(QREF_PREFIX_RE, '$1');
 	}
 	// Drop segments left with no content (key-only solutions surface as
 	// the explicit note in AnswerSheetPreview).

@@ -231,3 +231,20 @@ describe('option/stem margin rhythm (measured originals)', () => {
 		assert.match(html, /<p class="keep">C\) keep<\/p>/);
 	});
 });
+
+describe('filed cross-reference leaks (Q.14-15 regression)', () => {
+	it('drops standalone (Q…) paras and strips leading markers', async () => {
+		const { dressSolution } = await import('../src/lib/paperDress.js');
+		const enc = (s) => encodeURIComponent(s);
+		const L = (qn) => `<p><span class="pl-math" data-tex="${enc(`\\underline{\\textbf{Solution for ${qn}}}`)}"></span></p>`;
+		const segs = [{ kind: 'text', html: `<p><strong>Answer: 14) 20.00</strong></p>${L('14')}<p>(Q.14-15):</p><p><span class="pl-math" data-tex="${enc('J_1')}"></span>...(i)</p><p>(Q.14-15): tail kept</p>` }];
+		const out = dressSolution(segs, { numbers: [13, 14] });
+		const html = out.map(s => s.html ?? '').join(' ');
+		assert.doesNotMatch(html, /Answer:/);
+		assert.doesNotMatch(html, /Solution for/);
+		assert.doesNotMatch(html, /Q\.14-15\):</);
+		assert.doesNotMatch(html, /\(Q\.14-15\):</);
+		assert.match(html, /\.\.\.\(i\)/);
+		assert.match(html, /tail kept/);
+	});
+});
