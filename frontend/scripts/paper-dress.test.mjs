@@ -124,6 +124,21 @@ describe('dressSolution', () => {
 		assert.match(html, /Sol 33/);
 		assert.match(html, /Sol 34/);
 	});
+	it('strips whole-answer key glued to first solution para (paper 17 MSQ)', () => {
+		const out = dressSolution([T('<p><strong>Answer: 5) ABCD</strong></p><p>(ABCD) Initially capacitor text.</p><p>Rest.</p>')], { numbers: [4] });
+		const html = out.map((s) => s.html || '').join(' ');
+		assert.doesNotMatch(html, /\(ABCD\)/);
+		assert.match(html, /Initially capacitor text/);
+		assert.match(html, /Rest/);
+		const nospace = dressSolution([T('<p><strong>Answer: 2) ABC</strong></p><p>(ABC)From momentum text.</p>')], { numbers: [2] });
+		assert.doesNotMatch(nospace.map((s) => s.html || '').join(' '), /\(ABC\)/);
+	});
+	it('keeps per-option (A)/(B) solution structure (papers 6, 8)', () => {
+		const out = dressSolution([T('<p><strong>Answer: 9) ACD</strong></p><p>(A) Field text.</p><p>(D) V text.</p>')], { numbers: [7] });
+		const html = out.map((s) => s.html || '').join(' ');
+		assert.match(html, /\(A\) Field text/);
+		assert.match(html, /\(D\) V text/);
+	});
 	it('extracts filed keys in block order', () => {
 		assert.deepEqual(extractAnswerKeys([T('<p><strong>Answer: A-01) A, C</strong></p>')]), ['A, C']);
 		assert.deepEqual(

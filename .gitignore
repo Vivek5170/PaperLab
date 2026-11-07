@@ -25,3 +25,6 @@ temp.md
 skills-lock.json
 *.db-shm
 *.db-wal
+
+# Local skill/agent workspaces (reinstalled via skills-lock.json)
+.impeccable/

@@ -174,6 +174,41 @@ function stripQRefPrefix(inner) {
 	return res.replace(/<(strong|em|b|i|u)(\s[^>]*)?>\s*<\/\1>/gi, '');
 }
 
+// A whole-answer key glued to the front of the first solution paragraph
+// ("(ABCD) Initially capacitor...", "(ABC)From momentum..."). Filed singly
+// in paper 17 MSQ solutions; the key table owns answers now, so strip it.
+// Requires 2+ option letters — per-option "(A)/(B)/(C)/(D)" solution
+// structure (papers 6, 8) never matches and is left alone. First content
+// paragraph only: mid-solution parentheticals are never touched.
+const KEY_LEAK_TEXT_RE = /^\(\s*[A-D](?:\s*,?\s*[A-D])+\s*\)\s*/;
+
+function stripKeyLeakPrefix(inner) {
+	// Same tag-skipping deletion as stripQRefPrefix: match in text space,
+	// delete exactly those text chars from the HTML, never touching tags.
+	const text = inner.replace(/<[^>]*>/g, '');
+	const mm = KEY_LEAK_TEXT_RE.exec(text);
+	if (!mm) return inner;
+	let take = mm[0].length;
+	let res = '';
+	let i = 0;
+	while (i < inner.length) {
+		if (inner[i] === '<') {
+			const j = inner.indexOf('>', i);
+			res += j < 0 ? inner.slice(i) : inner.slice(i, j + 1);
+			i = j < 0 ? inner.length : j + 1;
+			continue;
+		}
+		if (take > 0) {
+			take--;
+			i++;
+			continue;
+		}
+		res += inner[i];
+		i++;
+	}
+	return res.replace(/<(strong|em|b|i|u)(\s[^>]*)?>\s*<\/\1>/gi, '');
+}
+
 function isQRefPara(html) {
 	const m = /^[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>\s*$/.exec(html.trim());
 	if (!m) return false;
@@ -234,6 +269,7 @@ export function dressSolution(segments, { numbers = [] } = {}) {
 	// group solhead); unmappable extras become dividers.
 	let labelSeen = false;
 	let labelIdx = 0;
+	let keyLeakDone = false;
 	const multi = numbers.length > 1;
 	for (const s of out) {
 		if (s.kind !== 'text' || typeof s.html !== 'string') continue;
@@ -245,8 +281,23 @@ export function dressSolution(segments, { numbers = [] } = {}) {
 				// reduced to a lone math span is real content — kept.
 				const pm = /^<p([^>]*)>([\s\S]*?)<\/p>$/.exec(m);
 				if (!pm) return m;
-				const stripped = stripQRefPrefix(pm[2]);
-				if (stripped === pm[2]) return m;
+				let inner = pm[2];
+				// Whole-answer key glued to the first solution para
+				// ("(ABCD) Initially..."): strip once, first text-bearing
+				// content para only. Math-only paras don't consume the
+				// slot; single "(A)" option labels never match.
+				if (!keyLeakDone && inner.replace(/<[^>]*>/g, '').trim() !== '') {
+					keyLeakDone = true;
+					inner = stripKeyLeakPrefix(inner);
+				}
+				const stripped = stripQRefPrefix(inner);
+				if (stripped === pm[2]) {
+					if (inner !== pm[2]) {
+						if (inner.replace(/<[^>]*>/g, '').trim() === '' && !/data-tex/.test(inner)) return '';
+						return `<p${pm[1]}>${inner}</p>`;
+					}
+					return m;
+				}
 				if (stripped.replace(/<[^>]*>/g, '').trim() === '' && !/data-tex/.test(stripped)) return '';
 				return `<p${pm[1]}>${stripped}</p>`;
 			}
