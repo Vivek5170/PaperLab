@@ -31,6 +31,9 @@
 	let mode = $state('sequential');
 	let force = $state(false);
 	let starting = $state(false);
+	let armDelPapers = $state(false);
+	let deletingPapers = $state(false);
+	let runMsg = $state('');
 
 	const tabs = [
 		{ id: 'stage', label: 'Stage files' },
@@ -135,6 +138,7 @@
 
 	async function run() {
 		if (!selected.length) return;
+		armDelPapers = false;
 		starting = true;
 		try {
 			await api.runPapers(selected, mode, force);
@@ -143,6 +147,30 @@
 			error = e.message;
 		} finally {
 			starting = false;
+		}
+	}
+
+	async function deleteSelectedPapers() {
+		if (!selected.length || starting || deletingPapers) {
+			armDelPapers = false;
+			return;
+		}
+		if (!armDelPapers) {
+			armDelPapers = true;
+			return;
+		}
+		armDelPapers = false;
+		deletingPapers = true;
+		runMsg = '';
+		try {
+			for (const id of selected) await api.deletePaper(Number(id));
+			runMsg = `Deleted ${selected.length} queued paper${selected.length === 1 ? '' : 's'} (row, outputs, managed PDFs).`;
+			selected = [];
+			await Promise.all([loadPapers(), loadJobs()]);
+		} catch (e) {
+			runMsg = `Delete failed: ${e.message}`;
+		} finally {
+			deletingPapers = false;
 		}
 	}
 </script>
@@ -274,7 +302,17 @@
 					<button type="button" class="pl-btn pl-btn-primary" disabled={!selected.length || starting} onclick={run}>
 						{starting ? 'Starting…' : 'Run'}
 					</button>
+					<button
+						type="button"
+						class="pl-btn"
+						disabled={!selected.length || starting || deletingPapers}
+						title="Remove queued papers (DB row, outputs and managed PDFs)"
+						onclick={deleteSelectedPapers}
+					>
+						{deletingPapers ? 'Deleting…' : armDelPapers ? `Click again to delete ${selected.length}` : 'Delete selected'}
+					</button>
 				</div>
+				{#if runMsg}<p class="pl-sub" role="status">{runMsg}</p>{/if}
 			{/if}
 		</div>
 	{/if}
