@@ -5,7 +5,7 @@ library. Upload PDFs → AI extracts every question into LaTeX with cropped
 figures → browse in Archive, filter in Search Questions, tag in the Inbox.
 
 Stack: **FastAPI backend** (`backend/`, port 8000) + **SvelteKit frontend**
-(`frontend/`, port 5173 in dev). Run everything from inside the `Idk` folder.
+(`frontend/`, port 5173 in dev). Run everything from the repo root.
 
 ---
 
@@ -19,8 +19,9 @@ Stack: **FastAPI backend** (`backend/`, port 8000) + **SvelteKit frontend**
   — only for the "Render as image" button; everything else works without it.
 
 ```bash
-git clone <paste-the-repo-url-here>
-cd Idk
+git clone git@github.com:Vivek5170/PaperLab.git
+# ...or over HTTPS: git clone https://github.com/Vivek5170/PaperLab.git
+cd PaperLab
 ```
 
 ---
