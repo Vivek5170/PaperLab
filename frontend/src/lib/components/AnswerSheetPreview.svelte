@@ -108,17 +108,25 @@
 		if (d.error)
 			return [{ id: `${entry.blockId}:error`, kind: 'error', entry, message: d.error }];
 		const nums = numbering.byBlock[entry.blockId] ?? [];
-		const out = [{
-			id: `${entry.blockId}:solhead`,
-			kind: 'solhead',
-			label: nums.length <= 1 ? `Solution Q${nums[0] ?? '—'}` : `Solutions Q${nums[0]}–Q${nums[nums.length - 1]}`,
-			keepWithNext: true
-		}];
+		const dressed = dressSolution(d.data ?? [], { numbers: nums });
+		const hasSubHeads = dressed.some(
+			(s) => s.kind === 'text' && typeof s.html === 'string' && s.html.includes('class="subsolhead"')
+		);
+		// Group heading only when sub-headings don't already carry it:
+		// multi-number blocks with filed labels get "Solution Qn" each.
+		const out = [];
+		if (!(nums.length > 1 && hasSubHeads)) {
+			out.push({
+				id: `${entry.blockId}:solhead`,
+				kind: 'solhead',
+				label: nums.length <= 1 ? `Solution Q${nums[0] ?? '—'}` : `Solutions Q${nums[0]}–Q${nums[nums.length - 1]}`,
+				keepWithNext: true
+			});
+		}
 		if (d.missing) {
 			out.push({ id: `${entry.blockId}:nosol`, kind: 'nosol' });
 			return out;
 		}
-		const dressed = dressSolution(d.data ?? [], { numbers: nums });
 		let n = 0;
 		let pushed = 0;
 		for (const seg of dressed) {
@@ -126,7 +134,13 @@
 				const parts = splitTopBlocks(seg.html);
 				if (parts.length === 0) continue;
 				for (const piece of parts) {
-					out.push({ id: `${entry.blockId}:s${n++}`, kind: 'seg', seg: { kind: 'text', html: piece } });
+					out.push({
+						id: `${entry.blockId}:s${n++}`,
+						kind: 'seg',
+						seg: { kind: 'text', html: piece },
+						// Sub-solution headings never strand at a page bottom.
+						keepWithNext: piece.includes('class="subsolhead"')
+					});
 					pushed++;
 				}
 				continue;
@@ -218,6 +232,11 @@
 		color: #5c6066;
 		font-size: 0.8rem;
 		margin: 4px 0 8px;
+	}
+	:global(p.subsolhead) {
+		font-size: 0.9rem;
+		font-weight: 700;
+		margin: 10px 0 6px;
 	}
 	:global(hr.sol-div) {
 		border: none;

@@ -93,7 +93,7 @@ describe('dressSolution', () => {
 		assert.doesNotMatch(html, /Solution for/);
 		assert.match(html, /Work shown/);
 	});
-	it('turns later Solution-for labels into sub-solution dividers', () => {
+	it('turns per-sub-solution labels into Solution Qn sub-headings', () => {
 		const enc = (s) => encodeURIComponent(s);
 		const L = (qn) => `<p><span class="pl-math" data-tex="${enc(`\\underline{\\textbf{Solution for ${qn}}}`)}"></span></p>`;
 		const segs = [T(`<p><strong>Answer: 33) A</strong></p>${L('33')}<p>Sol 33.</p><p><strong>Answer: 34) B</strong></p>${L('34')}<p>Sol 34.</p>`)];
@@ -101,8 +101,20 @@ describe('dressSolution', () => {
 		const html = out.map((s) => s.html || '').join(' ');
 		assert.doesNotMatch(html, /Answer:/);
 		assert.doesNotMatch(html, /Solution for/);
+		assert.match(html, /<p class="subsolhead">Solution Q7<\/p>/);
+		assert.match(html, /<p class="subsolhead">Solution Q8<\/p>/);
+		assert.doesNotMatch(html, /sol-div/);
 		assert.match(html, /Sol 33/);
 		assert.match(html, /Sol 34/);
+	});
+	it('single-number blocks still drop the label; extras become dividers', () => {
+		const enc = (s) => encodeURIComponent(s);
+		const L = (qn) => `<p><span class="pl-math" data-tex="${enc(`\\underline{\\textbf{Solution for ${qn}}}`)}"></span></p>`;
+		const segs = [T(`${L('33')}<p>Only.</p>${L('33')}<p>More.</p>`)];
+		const out = dressSolution(segs, { numbers: [7] });
+		const html = out.map((s) => s.html || '').join(' ');
+		assert.doesNotMatch(html, /Solution for/);
+		assert.doesNotMatch(html, /subsolhead/);
 		assert.match(html, /<hr class="sol-div">/);
 	});
 	it('strips every repeated Answer block in group solutions', () => {

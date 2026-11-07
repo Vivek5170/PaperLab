@@ -223,12 +223,18 @@ export function dressSolution(segments, { numbers = [] } = {}) {
 	for (const s of segments ?? []) {
 		if (s?.kind !== 'text' || typeof s.html !== 'string') { out.push(s); continue; }
 		// Strip answer-only paragraphs entirely; Solution-for labels are
-		// handled in the next pass (first dropped, later ones -> dividers).
+		// handled in the next pass (sub-headings, drop, or dividers).
 		const stripped = s.html.replace(/<p[^>]*>[\s\S]*?<\/p>/g, (m) => (isAnswerPara(m) ? '' : m));
 		out.push({ ...s, html: stripped });
 	}
 	// Dedup filed "Solution for X" labels against the sheet's own heading.
+	// Single-number block: first label dropped (solhead covers it), extras
+	// become neutral dividers. Multi-number block: every mappable label
+	// becomes its own "Solution Qn" sub-heading (blockRows then skips the
+	// group solhead); unmappable extras become dividers.
 	let labelSeen = false;
+	let labelIdx = 0;
+	const multi = numbers.length > 1;
 	for (const s of out) {
 		if (s.kind !== 'text' || typeof s.html !== 'string') continue;
 		s.html = s.html.replace(/<p[^>]*>[\s\S]*?<\/p>/g, (m) => {
@@ -243,6 +249,12 @@ export function dressSolution(segments, { numbers = [] } = {}) {
 				if (stripped === pm[2]) return m;
 				if (stripped.replace(/<[^>]*>/g, '').trim() === '' && !/data-tex/.test(stripped)) return '';
 				return `<p${pm[1]}>${stripped}</p>`;
+			}
+			if (multi) {
+				if (labelIdx < numbers.length) {
+					return `<p class="subsolhead">Solution Q${numbers[labelIdx++]}</p>`;
+				}
+				return '<hr class="sol-div">';
 			}
 			if (!labelSeen) { labelSeen = true; return ''; }
 			return '<hr class="sol-div">';
