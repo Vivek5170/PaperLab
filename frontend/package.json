@@ -9,6 +9,7 @@
 		"preview": "vite preview",
 		"smoke": "node scripts/smoke.mjs",
 		"test:cart": "node --test scripts/cart-model.test.mjs",
+		"test:sheet": "node --test scripts/sheet-fetch.test.mjs",
 		"test:builder": "node --test scripts/builder-model.test.mjs",
 		"test:dress": "node --test scripts/paper-dress.test.mjs"
 	},

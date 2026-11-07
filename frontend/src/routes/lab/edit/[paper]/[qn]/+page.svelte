@@ -312,13 +312,17 @@
 	});
 
 	onMount(async () => {
-		try {
-			figures = await api.listFigures(paper, qn);
-		} catch (e) {
-			figures = [];
-			figuresError = `Could not load figures: ${e.message}`;
-		}
-		await Promise.all([loadPart('question'), loadPart('solution')]);
+		// Figures and tex parts are independent: fetch together so a slow
+		// figure list never delays the editor text (errors stay per-part).
+		const [figs] = await Promise.all([
+			api.listFigures(paper, qn).catch((e) => {
+				figuresError = `Could not load figures: ${e.message}`;
+				return [];
+			}),
+			loadPart('question'),
+			loadPart('solution')
+		]);
+		figures = figs;
 	});
 </script>
 

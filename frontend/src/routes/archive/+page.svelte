@@ -25,8 +25,11 @@
 
 	onMount(async () => {
 		try {
-			papers = await api.listPapers();
-			const summary = await api.getLibrarySummary().catch(() => null);
+			const [ps, summary] = await Promise.all([
+				api.listPapers(),
+				api.getLibrarySummary().catch(() => null)
+			]);
+			papers = ps;
 			questionsByPaper = summary?.counts ?? {};
 			typesByPaper = summary?.types ?? {};
 		} catch (e) {

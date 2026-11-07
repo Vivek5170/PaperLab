@@ -11,9 +11,11 @@
 	import { isParagraphId, parseParagraphRange } from '$lib/paragraph.js';
 	import { sectionMeta } from '$lib/sectionMeta.js';
 	import { dressQuestion } from '$lib/paperDress.js';
-	import { getQuestionDetail, dropQuestionDetail } from '$lib/questionCache.js';
+	import { getQuestionDetail, dropQuestionDetail, seedQuestionDetail } from '$lib/questionCache.js';
 	import { splitTopBlocks } from '$lib/flowsplit.js';
-	import { withTimeout } from '$lib/async.js';
+	import { withTimeout, backoffDelay, pool, sleep } from '$lib/async.js';
+	import { bulkSeedPlan, applyBulkSeed } from '$lib/bulkSeed.js';
+	import { api } from '$lib/api.js';
 	import Segments from '$lib/components/Segments.svelte';
 	import PagedSheet from '$lib/components/PagedSheet.svelte';
 
@@ -22,7 +24,6 @@
 	const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 	let details = $state({});
-	let rev = $state(0);
 
 	const idsKey = $derived(ordered.map((e) => `${e.blockId}:${e.paperId}:${e.number}`).join(','));
 
@@ -35,56 +36,90 @@
 
 	$effect(() => {
 		void idsKey;
-		void rev;
 		let cancelled = false;
 		// details reads are untracked: otherwise marking loading:true would
 		// retrigger this effect and cancel the in-flight fetches (eternal
-		// skeletons). idsKey/rev are the only retriggers.
+		// skeletons). idsKey is the only retrigger.
 		const missing = untrack(() =>
 			ordered.filter((e) => {
 				const k = details[e.blockId];
+				if (k && k.waiting) return false; // a direct retry owns it
 				const fresh = k && k.loading && Date.now() - (k.at ?? 0) < 25000;
 				return !(k && (k.ready || k.missing || fresh));
 			})
 		);
 		if (missing.length === 0) return;
-		for (const e of missing) details[e.blockId] = { loading: true, at: Date.now() };
+		for (const e of missing) {
+			details[e.blockId] = { loading: true, at: Date.now(), attempts: details[e.blockId]?.attempts ?? 0 };
+		}
 		(async () => {
-			await Promise.all(missing.map(async (e) => {
-				try {
-					const d = await withTimeout(
-						getQuestionDetail(e.paperId, e.number), 20000, 'Backend timed out — is it running on port 8000?');
-					if (cancelled) return;
-					// Store RAW; dressing happens in rows (pure, current numbering).
-					details[e.blockId] = { ready: true, data: d.question ?? [] };
-				} catch (err) {
-					if (cancelled) return;
-					const msg = String(err?.message ?? err);
-					// Our 20s timeout leaves the shared cached promise pending
-					// until the 30s api abort; evict it so Retry fetches fresh.
-					if (msg.includes('Backend timed out')) {
-						try { dropQuestionDetail(e.paperId, e.number); } catch { /* ignore */ }
+			// Bulk-seed groups of 3+: one getQuestions per paper fills the
+			// session cache, so the individual fetches below mostly resolve
+			// without network. Same objects the singles would return (same
+			// backend constructor); bulk failure falls through to singles.
+			const { bulk } = bulkSeedPlan(missing);
+			if (bulk.length > 0) {
+				await Promise.all(bulk.map(async ({ paperId, numbers }) => {
+					try {
+						const items = await withTimeout(
+							api.getQuestions(paperId), 20000, 'Backend timed out — is it running on port 8000?');
+						if (cancelled) return;
+						applyBulkSeed(seedQuestionDetail, paperId, items, numbers);
+					} catch {
+						/* fall through to individual fetches */
 					}
-					details[e.blockId] = { error: msg };
-				}
-			}));
+				}));
+				if (cancelled) return;
+			}
+			// First load stays fully parallel; retries go through the
+			// bounded paths below (reload / retryAll).
+			await Promise.all(missing.map((e) => fetchOne(e, () => cancelled)));
 		})();
 		return () => {
 			cancelled = true;
 		};
 	});
 
-	function retryAll() {
-		for (const e of ordered) {
-			const k = details[e.blockId];
-			if (!k) continue;
-			const stale = k.loading && Date.now() - (k.at ?? 0) > 10000;
-			if (k.error || stale) {
+	/** Fetch one block and record the outcome; shared by all paths. */
+	async function fetchOne(e, isCancelled = () => false) {
+		try {
+			const d = await withTimeout(
+				getQuestionDetail(e.paperId, e.number), 20000, 'Backend timed out — is it running on port 8000?');
+			if (isCancelled()) return;
+			if (!ordered.some((o) => o.blockId === e.blockId)) return; // block gone meanwhile
+			// Store RAW; dressing happens in rows (pure, current numbering).
+			details[e.blockId] = { ready: true, data: d.question ?? [] };
+		} catch (err) {
+			if (isCancelled()) return;
+			if (!ordered.some((o) => o.blockId === e.blockId)) return;
+			const msg = String(err?.message ?? err);
+			// Our 20s timeout leaves the shared cached promise pending
+			// until the 30s api abort; evict it so Retry fetches fresh.
+			if (msg.includes('Backend timed out')) {
 				try { dropQuestionDetail(e.paperId, e.number); } catch { /* ignore */ }
-				delete details[e.blockId];
 			}
+			details[e.blockId] = { error: msg, attempts: (details[e.blockId]?.attempts ?? 0) + 1 };
 		}
-		rev++;
+	}
+
+	async function retryAll() {
+		const failed = ordered.filter((e) => details[e.blockId]?.error);
+		if (failed.length === 0) return;
+		// Retries run at most 3-wide with per-question backoff — never the
+		// all-at-once storm that wedges a weak server. Rows resolve in place.
+		const now = Date.now();
+		for (const e of failed) {
+			try { dropQuestionDetail(e.paperId, e.number); } catch { /* ignore */ }
+			details[e.blockId] = { waiting: true, at: now, attempts: details[e.blockId]?.attempts ?? 0 };
+		}
+		await pool(failed, 3, async (e) => {
+			const cur = details[e.blockId];
+			if (!cur?.waiting) return; // superseded
+			await sleep(backoffDelay(cur.attempts ?? 0));
+			if (details[e.blockId] !== cur) return; // superseded mid-wait
+			if (!ordered.some((o) => o.blockId === e.blockId)) return;
+			await fetchOne(e);
+		});
 	}
 
 	const failedIds = $derived(
@@ -97,15 +132,23 @@
 	function reload(bid) {
 		const entry = ordered.find((o) => o.blockId === bid);
 		if (!entry) return;
-		dropQuestionDetail(entry.paperId, entry.number);
-		delete details[bid];
-		rev++;
+		// Single-question retry with backoff; the row shows a skeleton
+		// while waiting and the shared effect leaves it alone.
+		const attempts = details[bid]?.attempts ?? 0;
+		try { dropQuestionDetail(entry.paperId, entry.number); } catch { /* ignore */ }
+		const mark = (details[bid] = { waiting: true, at: Date.now(), attempts });
+		(async () => {
+			await sleep(backoffDelay(attempts));
+			if (details[bid] !== mark) return; // superseded meanwhile
+			if (!ordered.some((o) => o.blockId === bid)) return;
+			await fetchOne(entry);
+		})();
 	}
 
 	/** Flatten one loaded block into measurable rows. */
 	function blockRows(entry) {
 		const d = details[entry.blockId];
-		if (!d || d.loading)
+		if (!d || d.loading || d.waiting)
 			return [{ id: `${entry.blockId}:loading`, kind: 'loading' }];
 		if (d.error)
 			return [{ id: `${entry.blockId}:error`, kind: 'error', entry, message: d.error }];

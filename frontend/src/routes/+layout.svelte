@@ -21,25 +21,30 @@
 	});
 
 	onMount(async () => {
+		// Independent shell fetches run together; each degrades on its own
+		// so the shell still renders when the backend is offline.
+		const [meRes, sumRes, inboxRes] = await Promise.all([
+			api.me().catch(() => null),
+			api.getLibrarySummary().catch(() => null),
+			api.getInbox().catch(() => null)
+		]);
 		try {
-			const me = await api.me();
-			role.set(me.authed ? 'archivist' : 'student');
+			role.set(meRes?.authed ? 'archivist' : 'student');
 		} catch {
 			/* backend offline: stay in student view */
 		}
 		try {
-			const summary = await api.getLibrarySummary();
 			counts = {
-				done: summary.buckets?.done ?? 0,
-				queued: summary.buckets?.queued ?? 0,
-				running: summary.buckets?.running ?? 0,
-				failed: summary.buckets?.failed ?? 0
+				done: sumRes?.buckets?.done ?? 0,
+				queued: sumRes?.buckets?.queued ?? 0,
+				running: sumRes?.buckets?.running ?? 0,
+				failed: sumRes?.buckets?.failed ?? 0
 			};
 		} catch {
 			/* backend offline: shell still renders */
 		}
 		try {
-			inboxItems.set(inboxList(await api.getInbox().catch(() => null)));
+			inboxItems.set(inboxList(inboxRes));
 		} catch {
 			/* students / offline: no badge */
 		}
