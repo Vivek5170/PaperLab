@@ -47,3 +47,7 @@ Check read-only source access, lossless body cropping, continuation ordering, ru
 AI transcription still needs review for source fidelity. Native submission validates syntax/references; it does not prove a full TeX compile. Eleven Morin Chapter 1 exercises lack mapped source solutions. The importer does not fabricate them. Additional books need explicit validated chapter/part adapters; this contribution does not bulk-import all EJEE content.
 
 Earlier local work also repaired the contributor's main app startup by deferring optional extraction imports. That pre-existing local edit is **not included** here; the PR contains only the independent importer and test package.
+
+## Rendering compatibility correction
+
+Normalize plain-TeX equation labels (`\eqno(1.21)`) into browser-supported `\tag{1.21}`. Preserve literal program operators, comments and line order by converting verbatim blocks to monospace math arrays: the unchanged native renderer otherwise strips the verbatim wrapper and Markdown merges/italicizes code. Apply normalization both before native submission and during packing; update existing demo and bundled sample files. No application-source edits or additional AI calls are required. Regression coverage exercises the actual upstream TeX/HTML bridge, and 307 rendered math segments pass KaTeX with throwOnError enabled.

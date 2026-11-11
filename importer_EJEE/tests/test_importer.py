@@ -8,7 +8,31 @@ import pytest
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from importer import body_image, part_order, source_connect, validate_item, load_config, valid_classification, strip_problem_heading
+from importer import body_image, part_order, source_connect, validate_item, load_config, valid_classification, strip_problem_heading, normalize_rendering
+
+
+def test_equation_tags_and_literal_program_rows_survive_native_rendering():
+    from bootstrap import REPO
+    sys.path.insert(0,str(REPO))
+    from backend.segments import rich_text
+    from app.render import tex_to_markdown
+    from urllib.parse import unquote
+    import re
+    original = '$$x=1. '+r'\eqno(1.21)'+'$$\n'+r'\begin{verbatim}'+'\n'+ 'r:=r+e*r1: # first row\nr2:=q1^2: # second row\ni*e;\n'+r'\end{verbatim}'
+    fixed = normalize_rendering(original)
+    assert normalize_rendering(fixed) == fixed
+    assert r'\eqno' not in fixed and r'\tag{1.21}' in fixed
+    assert r'\begin{verbatim}' not in fixed
+    html = rich_text(tex_to_markdown(fixed))
+    maths = [unquote(v) for v in re.findall(r'data-tex="([^"]+)"',html)]
+    assert len(maths)==2
+    assert r'\tag{1.21}' in maths[0]
+    assert r'\begin{array}{ll}' in maths[1]
+    assert maths[1].count(r'\\')==2
+    assert r'\texttt{r:=r+e*r1:}' in maths[1]
+    assert r'\texttt{\# first row}' in maths[1]
+    assert r'q1\textasciicircum{}2' in maths[1]
+    assert '<em>' not in html
 
 
 def test_strip_verified_heading_preserves_inline_statement():

@@ -268,6 +268,28 @@ def strip_problem_heading(tex, heading):
     return body.lstrip() if body.strip() else tex
 
 
+def normalize_rendering(tex):
+    """Keep valid TeX while targeting the unchanged PaperLab/KaTeX bridge."""
+    tex = re.sub(r'\\eqno\s*\(([^)\n]+)\)', lambda m: r'\tag{' + m[1] + '}', tex)
+    escapes = {'\\': r'\textbackslash{}', '{': r'\{', '}': r'\}',
+               '$': r'\$', '%': r'\%', '#': r'\#', '&': r'\&', '_': r'\_',
+               '^': r'\textasciicircum{}', '~': r'\textasciitilde{}'}
+
+    def program(match):
+        # The native renderer strips verbatim environments, then Markdown
+        # interprets code asterisks as emphasis and collapses line breaks.
+        # A math array preserves rows and protects literal monospace text in
+        # both KaTeX and LaTeX without requiring a PaperLab source change.
+        rows = []
+        for line in match[1].strip('\r\n').splitlines():
+            code, marker, comment = line.partition('#')
+            literal = lambda s: ''.join(escapes.get(ch,ch) for ch in s)
+            rows.append(r'\texttt{' + literal(code.rstrip()) + '} & ' +
+                        r'\texttt{' + literal(('#' + comment) if marker else '') + '}')
+        return '\n\n$$\n' + r'\begin{array}{ll}' + '\n' + (' \\\\\n'.join(rows)) + '\n' + r'\end{array}' + '\n$$\n\n'
+    return re.sub(r'\\begin\{verbatim\}\s*\n?(.*?)\\end\{verbatim\}', program, tex, flags=re.DOTALL)
+
+
 def validate_item(pid, number, has_solution):
     import directory_manager
     qdir = directory_manager.get_question_dir(pid, number)
@@ -336,6 +358,8 @@ def extract_item(manifest, item, cfg, run):
                 if name not in by_name: raise ValueError('Tool not allowed')
                 if name == 'submit_question':
                     args['latex_content'] = strip_problem_heading(args['latex_content'], source_heading(item))
+                if name in ('submit_question', 'submit_solution'):
+                    args['latex_content'] = normalize_rendering(args['latex_content'])
                 if 'paper_id' in args and args['paper_id'] != pid: raise ValueError('Wrong paper ID')
                 if 'question_number' in args and str(args['question_number']) != number: raise ValueError('Wrong question number')
                 if 'pdf_path' in args:
@@ -537,12 +561,12 @@ def pack(cfg, run):
             before = path.read_text(encoding='utf-8')
             # A printed difficulty star inside textbf becomes *** in upstream's
             # Markdown bridge. Move only that symbol outside bold, as math.
-            after = strip_problem_heading(before, source_heading(item)) if side == 'question' else before
+            after = normalize_rendering(strip_problem_heading(before, source_heading(item)) if side == 'question' else before)
             if after != before:
                 path.write_text(after, encoding='utf-8')
-                changes.append({'kind': 'problem_statement_only', 'question': new, 'side': side,
+                changes.append({'kind': 'content_and_rendering_normalization', 'question': new, 'side': side,
                                 'before_sha256': hashlib.sha256(before.encode()).hexdigest(), 'after_sha256': sha(path),
-                                'reason': 'User requested only the problem statement; remove verified textbook title, leading label and difficulty stars. Preserve inline stem text.'})
+                                'reason': 'Keep statement-only questions; normalize equation tags and preserve literal code rows for the unchanged native renderer.'})
     dump(run / 'manifest.json', manifest)
     dump(run / 'progress.json', progress)
     previous = json.loads((run / 'data_normalizations.json').read_text(encoding='utf-8')) if (run / 'data_normalizations.json').exists() else []
