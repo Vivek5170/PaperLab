@@ -1,0 +1,10 @@
+{
+  "source_db": "../ejee_sample.db",
+  "asset_root": "../source_assets",
+  "book_source": "David Morin · Introduction to Classical Mechanics",
+  "group_pattern": "^morin-(?P<chapter>\\d+)\\.(?P<number>\\d+)$",
+  "chapter": "1",
+  "chapter_title": "Strategies for solving problems",
+  "run_dir": "runs/reproduce-morin-chapter-01",
+  "max_turns_per_question": 36
+}

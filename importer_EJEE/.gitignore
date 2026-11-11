@@ -1,0 +1,10 @@
+.venv/
+reference/
+runs/
+__pycache__/
+.pytest_cache/
+release/
+!sample_data/Outputs/
+!sample_data/Outputs/**
+!sample_data/data/
+!sample_data/data/**

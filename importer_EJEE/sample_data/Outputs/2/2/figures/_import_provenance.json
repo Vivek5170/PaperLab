@@ -1,0 +1,24 @@
+{
+  "sfig1.png": {
+    "source_body": "data/sources/2\\67794-body.png",
+    "source_sha256": "65b07ed56ad847483fef64b2768dd0160b06df04148ed5745f7cfd754fff6d4d",
+    "tool_final_box": [
+      300,
+      300,
+      500,
+      550
+    ],
+    "source_pixel_box": [
+      640,
+      315,
+      1715,
+      897
+    ],
+    "size": [
+      1075,
+      582
+    ],
+    "sha256": "a15e4b8bd7ad22e83de46775c063a4fefb28c424ecef8b02b4babfbde80d764f",
+    "method": "lossless source-pixel crop; one normalized unit safety margin"
+  }
+}

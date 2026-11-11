@@ -1,0 +1,36 @@
+{
+  "qfig1.png": {
+    "source_body": "data/sources/1\\67777-body.png",
+    "source_sha256": "ba26139dfea9665b15e44d036ba7f4faf6c34d1169d5d0bde4d95e0d12065f3f",
+    "tool_final_box": [
+      730,
+      10,
+      265,
+      474
+    ],
+    "source_pixel_box": [
+      2257,
+      12,
+      2948,
+      676
+    ],
+    "size": [
+      691,
+      664
+    ],
+    "sha256": "f437b412e8b839a61222fd51c624aea8097e4f6927bdeedb132d1d185054bdf0",
+    "method": "reviewed source-pixel crop reused by exact image hash",
+    "review_override": {
+      "group": "morin-1.7",
+      "filename": "qfig1.png",
+      "source_body_sha256": "ba26139dfea9665b15e44d036ba7f4faf6c34d1169d5d0bde4d95e0d12065f3f",
+      "source_pixel_box": [
+        2257,
+        12,
+        2948,
+        676
+      ],
+      "reason": "Visual review: remove foreign paragraph fragments on the left while preserving both supports, both masses, theta/r labels and clear margin."
+    }
+  }
+}
