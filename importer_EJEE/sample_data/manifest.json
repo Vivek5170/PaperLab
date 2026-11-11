@@ -1,0 +1,77 @@
+{
+  "papers": [
+    {
+      "paper_id": 1,
+      "book": "David Morin · Introduction to Classical Mechanics",
+      "chapter": "1",
+      "title": "Strategies for solving problems",
+      "questions": 18,
+      "full_chapter": true,
+      "source_groups": [
+        "morin-1.1",
+        "morin-1.2",
+        "morin-1.3",
+        "morin-1.4",
+        "morin-1.5",
+        "morin-1.6",
+        "morin-1.7",
+        "morin-1.8",
+        "morin-1.9",
+        "morin-1.10",
+        "morin-1.11",
+        "morin-1.12",
+        "morin-1.13",
+        "morin-1.14",
+        "morin-1.15",
+        "morin-1.16",
+        "morin-1.17",
+        "morin-1.18"
+      ]
+    },
+    {
+      "paper_id": 2,
+      "book": "David Morin · Introduction to Classical Mechanics",
+      "chapter": "2",
+      "title": "Statics (two-question sample)",
+      "questions": 2,
+      "full_chapter": false,
+      "source_groups": [
+        "morin-2.1",
+        "morin-2.2"
+      ]
+    },
+    {
+      "paper_id": 3,
+      "book": "Hibbeler Dynamics 14e",
+      "chapter": "12",
+      "title": "Kinematics of a Particle (two-question sample)",
+      "questions": 2,
+      "full_chapter": false,
+      "source_groups": [
+        "hb-12–1",
+        "hb-12–5"
+      ]
+    }
+  ],
+  "questions": 22,
+  "usage": [
+    {
+      "phase": "extractor",
+      "calls": 72,
+      "input": 829340,
+      "cached": 416085,
+      "output": 27976,
+      "reasoning": 10827
+    },
+    {
+      "phase": "topics",
+      "calls": 22,
+      "input": 262740,
+      "cached": 207090,
+      "output": 11453,
+      "reasoning": 10801
+    }
+  ],
+  "contains_student_data": false,
+  "sample_scope": "One full chapter and two two-question chapter excerpts; no full textbook PDFs."
+}

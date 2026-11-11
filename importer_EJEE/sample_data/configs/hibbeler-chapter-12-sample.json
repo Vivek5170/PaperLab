@@ -1,0 +1,14 @@
+{
+  "source_db": "../ejee_sample.db",
+  "asset_root": "../source_assets",
+  "max_turns_per_question": 36,
+  "book_source": "Hibbeler Dynamics 14e",
+  "group_pattern": "^hb-(?P<chapter>\\d+)[–-](?P<number>\\d+)$",
+  "chapter": "12",
+  "chapter_title": "Kinematics of a Particle (two-question sample)",
+  "groups": [
+    "hb-12–1",
+    "hb-12–5"
+  ],
+  "run_dir": "runs/reproduce-hibbeler-chapter-12-sample"
+}

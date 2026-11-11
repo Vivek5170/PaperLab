@@ -1,0 +1,24 @@
+{
+  "qfig1.png": {
+    "source_body": "data/sources/1\\67786-body.png",
+    "source_sha256": "3a36e46f91e15961f038b1686220d07152bcc822fdf9ad4c9a0efbf508ba9a1b",
+    "tool_final_box": [
+      740,
+      10,
+      255,
+      600
+    ],
+    "source_pixel_box": [
+      2200,
+      8,
+      2966,
+      567
+    ],
+    "size": [
+      766,
+      559
+    ],
+    "sha256": "0d1cbd1e692103d222c14dfd3bbdde1cff8b5da31046be4b309b5e2839ae1cf9",
+    "method": "lossless source-pixel crop; one normalized unit safety margin"
+  }
+}

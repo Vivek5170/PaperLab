@@ -1,0 +1,26 @@
+\textbf{Answer: 1.7) $\approx 8.15 \,\text{s}$}
+
+\underline{\textbf{Solution for 1.7}}
+
+As in Section 1.4, we'll write a Maple program. We'll let q stand for $\theta$, and we'll use the notation where q1 stands for $\dot{\theta}$, and q2 stands for $\ddot{\theta}$. Likewise for $r$. We'll run the program for as long as $r < 2$. As soon as $r$ exceeds 2, the program will stop and print the value of the time.
+
+\begin{verbatim}
+r:=1:                 # initial r value
+r1:=0:                # initial r velocity
+q:=3.14/18:           # initial angle
+q1:=0:                # initial angular velocity
+e:=.001:              # small time interval
+i:=0:                 # i counts the number of time steps
+while r<2 do          # run the program until r=2
+i:=i+1:               # increase the counter by 1
+r2:=(r*q1^2-9.8*(1-cos(q)))/2:  # the first of the given eqs
+r:=r+e*r1:            # how r changes, by definition of r1
+r1:=r1+e*r2:          # how r1 changes, by definition of r2
+q2:=-2*r1*q1/r-9.8*sin(q)/r:    # the second of the given eqs
+q:=q+e*q1:            # how q changes, by definition of q1
+q1:=q1+e*q2:          # how q1 changes, by definition of q2
+end do:               # the Maple command to stop the do loop
+i*e;                  # print the value of the time
+\end{verbatim}
+
+This yields a time of $t = 8.057 \,\text{s}$. If we instead use a time interval of $0.0001 \,\text{s}$, we obtain $t = 8.1377 \,\text{s}$. And a time interval of $0.00001 \,\text{s}$ gives $t = 8.14591 \,\text{s}$. So the correct time must be somewhere around $8.15 \,\text{s}$.

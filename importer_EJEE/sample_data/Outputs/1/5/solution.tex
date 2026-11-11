@@ -1,0 +1,35 @@
+\textbf{Answer: 1.5) Not explicitly stated in source.}
+
+\underline{\textbf{Solution for 1.5}}
+
+1.5. \textbf{Damping}
+
+(a) The constant $b$ has units $[b] = [\text{Force}][v^{-n}] = (ML/T^2)(T^n/L^n)$. The other quantities are $[m] = M$ and $[V] = L/T$. There is also $n$, which is dimensionless. You can show that the only combination of these quantities that has units of $T$ is
+
+$$t = f(n)\frac{m}{bV^{n-1}}, \eqno(1.25)$$
+
+where $f(n)$ is a dimensionless function of $n$.
+
+For $n = 0$, we have $t = f(0)\, mV/b$. This increases with $m$ and $V$, and decreases with $b$, as it should.
+
+For $n = 1$, we have $t = f(1)\, m/b$. So we \textit{seem} to have $t \sim m/b$. This, however, cannot be correct, because $t$ should definitely grow with $V$. A large initial speed $V_1$ requires some nonzero time to slow down to a smaller speed $V_2$, after which time we simply have the same scenario with initial speed $V_2$. So where did we go wrong? After all, dimensional analysis tells us that the answer \textit{does} have to look like $t = f(1)\, m/b$, where $f(1)$ is a numerical factor. The resolution to this puzzle is that $f(1)$ is infinite. If we worked out the problem using $F = ma$, we would encounter an integral that diverges. So for any $V$, we would find an infinite $t$.\footnote{Footnote 6 in source.}
+
+Similarly, for $n \ge 2$, there is at least one power of $V$ in the denominator of $t$. This certainly cannot be correct, because $t$ should not decrease with $V$. So $f(n)$ must likewise be infinite for all of these cases.
+
+The moral of this exercise is that sometimes you have to be careful when using dimensional analysis. The numerical factor in front of your answer nearly always turns out to be of order 1, but in some strange cases it turns out to be 0 or $\infty$.
+
+\textsc{Remark:} For $n \ge 1$, the expression in Eq.\ (1.25) still has relevance. For example, for $n = 2$, the $m/(Vb)$ expression is relevant if you want to know how long it takes to go from $V$ to some final speed $V_{\text{f}}$. The answer involves $m/(V_{\text{f}}b)$, which diverges as $V_{\text{f}} \to 0$. $\clubsuit$
+
+(b) You can show that the only combination of the quantities that has units of $L$ is
+
+$$\ell = g(n)\frac{m}{bV^{n-2}}, \eqno(1.26)$$
+
+where $g(n)$ is a dimensionless function of $n$.
+
+For $n = 0$, we have $\ell = g(0)\, mV^2/b$. This increases with $V$, as it should.
+
+For $n = 1$, we have $\ell = g(1)\, mV/b$. This increases with $V$, as it should.
+
+For $n = 2$ we have $\ell = g(2)\, m/b$. So we \textit{seem} to have $\ell \sim m/b$. But as in part (a), this cannot be correct, because $\ell$ should definitely depend on $V$. A large initial speed $V_1$ requires some nonzero distance to slow down to a smaller speed $V_2$, after which point we simply have the same scenario with initial speed $V_2$. So, from the reasoning in part (a), the total distance is infinite for $n \ge 2$, because the function $g$ is infinite.
+
+\textsc{Remark:} Note that for integral $n \ne 1$, $t$ and $\ell$ are either both finite or both infinite. For $n = 1$, however, the total time is infinite, whereas the total distance is finite. This situation actually holds for $1 \le n < 2$, if we want to consider fractional $n$. $\clubsuit$
