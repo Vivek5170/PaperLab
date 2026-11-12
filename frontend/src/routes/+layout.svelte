@@ -1,5 +1,26 @@
 <script>
 	import '../app.css';
+	// Bundled webfonts (Fontsource, OFL): zero-apt, deterministic on bare
+	// Ubuntu / phones / print. Each ships its own woff2 via Vite.
+	import '@fontsource/inter/400.css';
+	import '@fontsource/inter/500.css';
+	import '@fontsource/inter/600.css';
+	import '@fontsource/inter/700.css';
+	import '@fontsource/inter/400-italic.css';
+	import '@fontsource/source-serif-4/400.css';
+	import '@fontsource/source-serif-4/600.css';
+	import '@fontsource/tinos/400.css';
+	import '@fontsource/tinos/700.css';
+	import '@fontsource/tinos/400-italic.css';
+	import '@fontsource/tinos/700-italic.css';
+	import '@fontsource/arimo/400.css';
+	import '@fontsource/arimo/700.css';
+	import '@fontsource/arimo/400-italic.css';
+	import '@fontsource/arimo/700-italic.css';
+	import '@fontsource/caladea/400.css';
+	import '@fontsource/caladea/700.css';
+	import '@fontsource/caladea/400-italic.css';
+	import '@fontsource/caladea/700-italic.css';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import Sidebar from '$lib/components/Sidebar.svelte';

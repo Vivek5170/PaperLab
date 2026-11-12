@@ -1,0 +1,14 @@
+{
+  "source_db": "../ejee_sample.db",
+  "asset_root": "../source_assets",
+  "max_turns_per_question": 36,
+  "book_source": "David Morin · Introduction to Classical Mechanics",
+  "group_pattern": "^morin-(?P<chapter>\\d+)\\.(?P<number>\\d+)$",
+  "chapter": "2",
+  "chapter_title": "Statics (two-question sample)",
+  "groups": [
+    "morin-2.1",
+    "morin-2.2"
+  ],
+  "run_dir": "runs/reproduce-morin-chapter-02-sample"
+}

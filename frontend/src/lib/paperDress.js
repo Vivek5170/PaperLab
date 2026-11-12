@@ -24,14 +24,29 @@
 
 const LEAD_TEXT_RE = /^(\s*(?:<p[^>]*>)?\s*)(?:<strong>\s*)?(?:[A-Za-z]+-)?\d+[a-z]?\.(?:\s*<\/strong>)?\s+/;
 const FIRST_OL_RE = /^(\s*)<ol([^>]*)>/;
-// Option paragraphs ("A) …") align under the stem text, not at the body
-// margin — see the measured FITJEE/GTA/ADV rhythm. Tagged with pl-opt so
-// sheet CSS can indent them exactly like list-item stems.
+// Question-body paragraphs (stem continuations after a display, second
+// paragraphs, notes) align at the stem indent, not the body margin — the
+// measured original-paper rhythm ("ALL text aligns at one indent").
+// Display-math-only paragraphs stay centered; options are tagged by
+// markOptionParas below. Solutions are NOT touched (answer sheet has its
+// own headings and flow).
+function markStemParas(html) {
+	return String(html ?? '').replace(/<p([^>]*)>([\s\S]*?)<\/p>/g, (m, attrs, inner) => {
+		if (/class\s*=/.test(attrs)) return m;
+		if (/pl-math-block/.test(inner)) return m;
+		if (inner.replace(/<[^>]*>/g, '').trim() === '' && !/data-tex|<img\b/i.test(inner)) return m;
+		return `<p${attrs} class="pl-opt">${inner}</p>`;
+	});
+}
+// Option paragraphs ("A) …" through "E) …" — five-option textbook sets
+// exist alongside native four-option ones) align under the stem text, not
+// at the body margin — see the measured FITJEE/GTA/ADV rhythm. Tagged with
+// pl-opt so sheet CSS can indent them exactly like list-item stems.
 function markOptionParas(html) {
 	return String(html ?? '').replace(/<p([^>]*)>([\s\S]*?)<\/p>/g, (m, attrs, inner) => {
 		if (/class\s*=/.test(attrs)) return m;
 		const text = inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-		if (!/^[A-D]\)/.test(text)) return m;
+		if (!/^[A-E]\)/.test(text)) return m;
 		return `<p${attrs} class="pl-opt">${inner}</p>`;
 	});
 }
@@ -86,12 +101,21 @@ export function dressQuestion(segments, { numbers = [], para = null } = {}) {
 			if (s.kind === 'text') s.html = html[i];
 		});
 		for (const s of out) {
+			if (s.kind === 'text' && typeof s.html === 'string') s.html = markStemParas(s.html);
+		}
+		for (const s of out) {
 			if (s.kind === 'text' && typeof s.html === 'string') s.html = markOptionParas(s.html);
 		}
 		return out;
 	}
 
 	// Single: the stem wrapper carries the original number as its position.
+	// Numbered native stems arrive as a leading <ol> (mistune listifies
+	// "NN. stem") and only need their start rewritten. Statement-only
+	// stems (importer tex has no baked-in number) have nothing to relabel,
+	// so the first paragraph is wrapped as the numbered item instead —
+	// byte-identical in shape to what mistune emits, so sheet CSS,
+	// splitTopBlocks (ol stays one row) and print all behave the same.
 	if (FIRST_OL_RE.test(firstText.html)) {
 		firstText.html = firstText.html.replace(FIRST_OL_RE, (m, sp, attrs) =>
 			/\bstart="/.test(attrs)
@@ -100,6 +124,14 @@ export function dressQuestion(segments, { numbers = [], para = null } = {}) {
 		);
 	} else {
 		firstText.html = firstText.html.replace(LEAD_TEXT_RE, '$1');
+		firstText.html = firstText.html.replace(
+			/^(\s*)<p([^>]*)>([\s\S]*?)(<\/p>)/,
+			(mm, sp, attrs, inner, close) =>
+				`${sp}<ol start="${numbers[0]}"${attrs}><li>${inner}</li></ol>`
+		);
+	}
+	for (const s of out) {
+		if (s.kind === 'text' && typeof s.html === 'string') s.html = markStemParas(s.html);
 	}
 	for (const s of out) {
 		if (s.kind === 'text' && typeof s.html === 'string') s.html = markOptionParas(s.html);
@@ -180,7 +212,7 @@ function stripQRefPrefix(inner) {
 // Requires 2+ option letters — per-option "(A)/(B)/(C)/(D)" solution
 // structure (papers 6, 8) never matches and is left alone. First content
 // paragraph only: mid-solution parentheticals are never touched.
-const KEY_LEAK_TEXT_RE = /^\(\s*[A-D](?:\s*,?\s*[A-D])+\s*\)\s*/;
+const KEY_LEAK_TEXT_RE = /^\(\s*[A-E](?:\s*,?\s*[A-E])+\s*\)\s*/;
 
 function stripKeyLeakPrefix(inner) {
 	// Same tag-skipping deletion as stripQRefPrefix: match in text space,

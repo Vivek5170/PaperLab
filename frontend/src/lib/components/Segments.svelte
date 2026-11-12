@@ -287,6 +287,7 @@
 		display: block;
 		text-align: center;
 		margin: 0.75em 0;
+		overflow-x: auto;
 	}
 	.fig {
 		margin: 18px 0 22px;

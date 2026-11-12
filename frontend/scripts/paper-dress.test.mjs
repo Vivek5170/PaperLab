@@ -27,20 +27,27 @@ describe('dressQuestion singles', () => {
 		assert.match(out[0].html, /^<ol start="5">/);
 		assert.doesNotMatch(out[0].html, /start="8"/);
 	});
-	it('bold II-/B- lead numbers stripped as text', () => {
+	it('bold II-/B- lead numbers stripped as text, then numbered', () => {
 		assert.equal(
 			dressQuestion([T('<p><strong>18.</strong> A container.</p>')], { numbers: [7] })[0].html,
-			'<p>A container.</p>');
+			'<ol start="7"><li>A container.</li></ol>');
 		assert.equal(
 			dressQuestion([T('<p>II-1. An ammeter.</p>')], { numbers: [3] })[0].html,
-			'<p>An ammeter.</p>');
+			'<ol start="3"><li>An ammeter.</li></ol>');
 	});
-	it('bare stems untouched; decimals safe; input never mutated', () => {
+	it('statement-only stems gain the generated number; decimals safe; input never mutated', () => {
 		const seg = T('<p>The velocity graph.</p>');
-		assert.equal(dressQuestion([seg], { numbers: [1] })[0].html, '<p>The velocity graph.</p>');
+		assert.match(dressQuestion([seg], { numbers: [1] })[0].html,
+			/^<ol start="1"><li>The velocity graph\.<\/li><\/ol>$/);
 		assert.equal(dressQuestion([T('<p>3.16 is the value.</p>')], { numbers: [2] })[0].html,
-			'<p>3.16 is the value.</p>');
+			'<ol start="2"><li>3.16 is the value.</li></ol>');
 		assert.equal(seg.html, '<p>The velocity graph.</p>');
+	});
+	it('only the first paragraph is wrapped; options keep flowing', () => {
+		const out = dressQuestion(
+			[T('<p>Which one is it?</p><p>A) one</p><p>E) five</p>')], { numbers: [4] })[0].html;
+		assert.match(out, /^<ol start="4"><li>Which one is it\?<\/li><\/ol>/);
+		assert.match(out, /<p class="pl-opt">E\) five<\/p>/);
 	});
 });
 
@@ -246,7 +253,7 @@ describe('key-only solutions', () => {
 });
 
 describe('option/stem margin rhythm (measured originals)', () => {
-	it('tags A)-led paragraphs pl-opt, leaves prose alone', async () => {
+	it('tags A)-led paragraphs pl-opt; body prose aligns at the same indent', async () => {
 		const { dressQuestion } = await import('../src/lib/paperDress.js');
 		const out = dressQuestion([
 			{ kind: 'text', html: '<ol start="4"><li>Stem text.</li></ol><p>A) one</p><p><strong>B)</strong> two</p><p>A ball of mass m.</p><p class="keep">C) keep</p>' }
@@ -254,8 +261,17 @@ describe('option/stem margin rhythm (measured originals)', () => {
 		const html = out.map(s => s.html ?? '').join(' ');
 		assert.match(html, /<p class="pl-opt">A\) one<\/p>/);
 		assert.match(html, /<p class="pl-opt"><strong>B\)<\/strong> two<\/p>/);
-		assert.doesNotMatch(html, /pl-opt">A ball/);
+		assert.match(html, /<p class="pl-opt">A ball of mass m\.<\/p>/);
 		assert.match(html, /<p class="keep">C\) keep<\/p>/);
+	});
+	it('display-math paragraphs stay centered, empties untouched', async () => {
+		const { dressQuestion } = await import('../src/lib/paperDress.js');
+		const out = dressQuestion([
+			{ kind: 'text', html: '<p>Stem.</p><p><span class="pl-math-block" data-tex="x"></span></p><p>  </p><p>Tail.</p>' }
+		], { numbers: [4], para: null });
+		const html = out.map(s => s.html ?? '').join(' ');
+		assert.doesNotMatch(html, /pl-opt"><span class="pl-math-block"/);
+		assert.match(html, /<p class="pl-opt">Tail\.<\/p>/);
 	});
 });
 

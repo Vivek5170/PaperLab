@@ -1,0 +1,32 @@
+\textbf{Answer: 7)} $\approx 8.15 \,\text{s}$
+
+\underline{\textbf{Solution for 7}}
+
+As in Section 1.4, we'll write a Maple program. We'll let q stand for $\theta$, and we'll use the notation where q1 stands for $\dot{\theta}$, and q2 stands for $\ddot{\theta}$. Likewise for $r$. We'll run the program for as long as $r < 2$. As soon as $r$ exceeds 2, the program will stop and print the value of the time.
+
+
+
+$$
+\begin{array}{ll}
+\texttt{r:=1:} & \texttt{\# initial r value} \\
+\texttt{r1:=0:} & \texttt{\# initial r velocity} \\
+\texttt{q:=3.14/18:} & \texttt{\# initial angle} \\
+\texttt{q1:=0:} & \texttt{\# initial angular velocity} \\
+\texttt{e:=.001:} & \texttt{\# small time interval} \\
+\texttt{i:=0:} & \texttt{\# i counts the number of time steps} \\
+\texttt{while r<2 do} & \texttt{\# run the program until r=2} \\
+\texttt{i:=i+1:} & \texttt{\# increase the counter by 1} \\
+\texttt{r2:=(r*q1\textasciicircum{}2-9.8*(1-cos(q)))/2:} & \texttt{\# the first of the given eqs} \\
+\texttt{r:=r+e*r1:} & \texttt{\# how r changes, by definition of r1} \\
+\texttt{r1:=r1+e*r2:} & \texttt{\# how r1 changes, by definition of r2} \\
+\texttt{q2:=-2*r1*q1/r-9.8*sin(q)/r:} & \texttt{\# the second of the given eqs} \\
+\texttt{q:=q+e*q1:} & \texttt{\# how q changes, by definition of q1} \\
+\texttt{q1:=q1+e*q2:} & \texttt{\# how q1 changes, by definition of q2} \\
+\texttt{end do:} & \texttt{\# the Maple command to stop the do loop} \\
+\texttt{i*e;} & \texttt{\# print the value of the time}
+\end{array}
+$$
+
+
+
+This yields a time of $t = 8.057 \,\text{s}$. If we instead use a time interval of $0.0001 \,\text{s}$, we obtain $t = 8.1377 \,\text{s}$. And a time interval of $0.00001 \,\text{s}$ gives $t = 8.14591 \,\text{s}$. So the correct time must be somewhere around $8.15 \,\text{s}$.

@@ -219,17 +219,21 @@
 		display: flow-root;
 		min-width: 0;
 	}
-	/* Publisher body faces: paperlab default inherits Inter; the rest
-	   mirror the measured originals (GTA/Chaitanya Times, Allen Kokila,
-	   FITJEE Arial). KaTeX math keeps its own fonts regardless. */
+	/* Publisher body faces — all bundled webfonts (Fontsource, OFL), so bare
+	   Ubuntu / phones / print render identically with zero apt installs.
+	   Fallbacks are what a minimal Ubuntu ships (Liberation/DejaVu/Noto)
+	   then the proprietary originals. KaTeX math keeps its own fonts. */
+	.apage.font-paperlab {
+		font-family: 'Inter', system-ui, -apple-system, 'Liberation Sans', 'DejaVu Sans', 'Noto Sans', Arial, sans-serif;
+	}
 	.apage.font-times {
-		font-family: 'Times New Roman', Times, Georgia, serif;
+		font-family: 'Tinos', 'Liberation Serif', 'Times New Roman', Times, Georgia, 'Noto Serif', serif;
 	}
 	.apage.font-arial {
-		font-family: Arial, Helvetica, sans-serif;
+		font-family: 'Arimo', Arial, 'Liberation Sans', Helvetica, 'DejaVu Sans', 'Noto Sans', sans-serif;
 	}
 	.apage.font-cambria {
-		font-family: Cambria, 'Cambria Math', Georgia, 'Times New Roman', serif;
+		font-family: 'Caladea', Cambria, 'Cambria Math', Georgia, 'Times New Roman', serif;
 	}
 	.apage.font-stix {
 		font-family: 'STIX Two Text', Georgia, 'Times New Roman', serif;
