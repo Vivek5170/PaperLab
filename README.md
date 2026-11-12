@@ -119,6 +119,16 @@ Don't touch `data/` mid-run.
 | Intake and Pipeline | Upload, pair, register, run papers (archivist) |
 | Usage Ledger | Token costs + reclaimable-disk cleanup (archivist) |
 
+## Textbook imports (EJEE)
+
+Bulk textbook chapters go through a two-step flow documented in
+[`importer_EJEE/README.md`](importer_EJEE/README.md): **step 1** stages the
+chapter into an isolated temp database (`runs/<name>/`, browsable without
+touching the archive), **step 2** (`merge` phase) promotes the verified run
+into this repo's `physics_archive.db` with fresh ids, a pre-merge backup,
+and duplicate/idempotency guards. Keep imports staged until verified; merge
+only what you intend to publish.
+
 Search and reading are open to everyone; uploads, tagging, topics, ledger,
 and figure management need the archivist login.
 
