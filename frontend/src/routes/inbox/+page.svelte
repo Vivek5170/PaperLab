@@ -32,6 +32,7 @@
 			if (force || $inboxItems === null) {
 				const res = await api.getInbox();
 				inboxItems.set(inboxList(res));
+				index = Math.min(index, Math.max(0, (inboxList(res) ?? []).length - 1));
 			}
 		} catch (e) {
 			if (e.message.startsWith('401')) {
@@ -73,7 +74,9 @@
 			loading = false;
 			return;
 		}
-		await load();
+		// Always refetch: auto-tagging runs (Node 3) tag questions behind
+		// this page's back, so a cached list would keep showing tagged ones.
+		await load(true);
 	});
 </script>
 
@@ -130,6 +133,7 @@
 		>
 			Next
 		</button>
+		<button type="button" class="pl-btn" onclick={() => load(true)}>Refresh</button>
 	</div>
 	{#if current}
 		<div class="pl-card">
