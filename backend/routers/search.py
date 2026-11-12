@@ -150,6 +150,11 @@ def _build_facets() -> dict:
             " FROM question_topics qt JOIN questions q ON q.id = qt.question_id"
             " JOIN papers p ON p.id = q.paper_id"
             " WHERE p.status = 'done' GROUP BY qt.topic_code").fetchall()}
+        main_topic_counts = {r["topic_code"]: r["c"] for r in conn.execute(
+            "SELECT qt.topic_code, COUNT(DISTINCT qt.question_id) AS c"
+            " FROM question_topics qt JOIN questions q ON q.id = qt.question_id"
+            " JOIN papers p ON p.id = q.paper_id"
+            " WHERE p.status = 'done' AND qt.rank = 0 GROUP BY qt.topic_code").fetchall()}
         # Distinct-question counts per subtree root (any level): a question
         # with two tags under one module counts once. The recursive CTE
         # walks topics(parent) down from every node; UNION dedupes.
@@ -164,6 +169,17 @@ def _build_facets() -> dict:
             " JOIN questions q ON q.id = qt.question_id"
             " JOIN papers p ON p.id = q.paper_id"
             " WHERE p.status = 'done' GROUP BY d.root").fetchall()}
+        main_subtree_counts = {r["node"]: r["c"] for r in conn.execute(
+            "WITH RECURSIVE d(root, code) AS ("
+            " SELECT code, code FROM topics"
+            " UNION"
+            " SELECT d.root, t.code FROM topics t"
+            " JOIN d ON t.parent = d.code)"
+            " SELECT d.root AS node, COUNT(DISTINCT qt.question_id) AS c"
+            " FROM d JOIN question_topics qt ON qt.topic_code = d.code"
+            " JOIN questions q ON q.id = qt.question_id"
+            " JOIN papers p ON p.id = q.paper_id"
+            " WHERE p.status = 'done' AND qt.rank = 0 GROUP BY d.root").fetchall()}
         papers = _papers_snapshot(conn)
         institutes = _institute_groups(conn)
     finally:
@@ -190,6 +206,8 @@ def _build_facets() -> dict:
         "years": [{"value": y, "count": c} for y, c in sorted(years.items())],
         "topicCounts": topic_counts,
         "topicSubtreeCounts": subtree_counts,
+        "mainTopicCounts": main_topic_counts,
+        "mainTopicSubtreeCounts": main_subtree_counts,
     }
 
 
@@ -281,6 +299,7 @@ def search_questions(
     institute: list[str] = Query(default=[]),
     year: list[int] = Query(default=[]),
     topic: list[str] = Query(default=[]),
+    main_topic: list[str] = Query(default=[]),
     limit: int = Query(default=PAGE_DEFAULT, ge=1, le=PAGE_MAX),
     cursor: str | None = None,
 ):
@@ -290,6 +309,7 @@ def search_questions(
     inst_names = _norm_list(institute)
     years = sorted(set(year or []))
     topics = _norm_list(topic)
+    main_topics = _norm_list(main_topic)
 
     bad_q = [v for v in qtypes if v not in database.QTYPE_VALUES]
     if bad_q:
@@ -304,7 +324,7 @@ def search_questions(
 
     filters = {"qtype": qtypes, "difficulty": diffs, "exam": exams,
                "institute": inst_names, "year": years, "topic": topics,
-               "limit": limit}
+               "main_topic": main_topics, "limit": limit}
     fp = _fingerprint(filters)
     last_id = 0
     if cursor:
@@ -330,12 +350,16 @@ def search_questions(
                     "filters": filters}
         by_paper = {p["id"]: p for p in papers}
         tmap = _topics_map(conn)
-        if topics:
+        if topics or main_topics:
             known = set(tmap)
             bad_t = [t for t in topics if t not in known]
             if bad_t:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST,
                                     f"unknown topic {bad_t}")
+            bad_m = [t for t in main_topics if t not in known]
+            if bad_m:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                    f"unknown main_topic {bad_m}")
 
         where = ["p.status = 'done'"]
         cursor_where = "q.id > :last"
@@ -351,6 +375,17 @@ def search_questions(
                 " SELECT code FROM d) dd ON dd.code = qt.topic_code"
                 " WHERE qt.question_id = q.id)")
             params["topics"] = json.dumps(topics)
+        if main_topics:
+            where.append(
+                "EXISTS (SELECT 1 FROM question_topics qt"
+                " JOIN (WITH RECURSIVE"
+                " sel(code) AS (SELECT value FROM json_each(:main_topics)),"
+                " d(code) AS (SELECT code FROM sel"
+                " UNION SELECT t.code FROM topics t"
+                " JOIN d ON t.parent = d.code)"
+                " SELECT code FROM d) dd ON dd.code = qt.topic_code"
+                " WHERE qt.question_id = q.id AND qt.rank = 0)")
+            params["main_topics"] = json.dumps(main_topics)
         if qtypes:
             where.append("q.qtype IN (%s)" % ",".join(
                 f":qt{i}" for i in range(len(qtypes))))

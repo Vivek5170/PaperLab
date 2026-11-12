@@ -193,6 +193,7 @@ def test_bad_values_rejected(search_client):
     for path in ["/api/search?qtype=bogus",
                  "/api/search?difficulty=Extreme",
                  "/api/search?topic=NOPE",
+                 "/api/search?main_topic=NOPE",
                  "/api/search?institute=Nowhere Academy"]:
         assert client.get(path).status_code == 400, path
 
@@ -270,6 +271,35 @@ def test_overlapping_selection_dedupes(search_client):
     m1 = _get(client, "/api/search?topic=M1&limit=100")
     both = _get(client, "/api/search?topic=M1&topic=PH01&limit=100")
     assert both["total"] == m1["total"] == 3
+
+
+def test_main_topic_only_matches_rank_zero(search_client):
+    client, ids = search_client
+    # p1q1 tags PH01.02 at rank 1 only; p1q2 tags it at rank 0.
+    any_tag = _get(client, "/api/search?topic=PH01.02&limit=100")
+    main = _get(client, "/api/search?main_topic=PH01.02&limit=100")
+    got_any = {(i["paperId"], i["number"]) for i in any_tag["items"]}
+    got_main = {(i["paperId"], i["number"]) for i in main["items"]}
+    assert got_any == {(ids["p1"], "1"), (ids["p1"], "2")}
+    assert got_main == {(ids["p1"], "2")}
+    # Parent expansion works the same way: M1-main matches all three
+    # rank-0-M1 questions, and the rank-1-only tag never leaks in.
+    m1_main = _get(client, "/api/search?main_topic=M1&limit=100")
+    assert {(i["paperId"], i["number"]) for i in m1_main["items"]} == {
+        (ids["p1"], "1"), (ids["p1"], "2"), (ids["p2"], "2")}
+    # Both filters intersect.
+    both = _get(client, "/api/search?topic=PH01.02&main_topic=PH13.14&limit=100")
+    assert {(i["paperId"], i["number"]) for i in both["items"]} == {
+        (ids["p1"], "2")}
+
+
+def test_main_topic_facets_count_rank_zero_only(search_client):
+    client, _ = search_client
+    f = _get(client, "/api/search/facets")
+    assert f["mainTopicCounts"]["PH01.02"] == 1  # rank-0 only, not 2
+    assert f["mainTopicCounts"]["PH01.01"] == 2
+    assert f["mainTopicSubtreeCounts"]["M1"] == 3
+    assert f["mainTopicSubtreeCounts"]["PH01-W1"] == 3
 
 
 def test_chapters_deterministic_first_plus_overflow(search_client):

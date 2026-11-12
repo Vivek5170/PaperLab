@@ -43,6 +43,7 @@
 		};
 	});
 	const topicCounts = $derived(facets?.topicSubtreeCounts ?? facets?.topicCounts ?? {});
+	const mainTopicCounts = $derived(facets?.mainTopicSubtreeCounts ?? facets?.mainTopicCounts ?? {});
 	const gradedCount = $derived(
 		facets ? facets.difficulties.reduce((n, o) => n + o.count, 0) : 0
 	);
@@ -147,7 +148,7 @@
 <svelte:window onpagehide={rememberScroll} />
 
 <h1>Search questions</h1>
-<p class="pl-sub">Filter {total > 0 ? `${total} ` : ''}questions by type, topic, source, exam, year or difficulty.</p>
+<p class="pl-sub">Filter {total > 0 ? `${total} ` : ''}questions by type, topic, main topic, source, exam, year or difficulty.</p>
 
 <div class="bar" role="group" aria-label="Question filters">
 	<FilterDropdown label="Type" options={facetOpts.qtype} bind:selected={filters.qtype} format={qtypeLabel} />
@@ -155,6 +156,7 @@
 	<FilterDropdown label="Source" options={facetOpts.institute} bind:selected={filters.institute} />
 	<FilterDropdown label="Exam" options={facetOpts.exam} bind:selected={filters.exam} />
 	<FilterDropdown label="Year" options={facetOpts.year} bind:selected={filters.year} />
+	<TopicTreePicker nodes={topics} counts={mainTopicCounts} bind:selected={filters.main_topic} label="Main topics" />
 	<TopicTreePicker nodes={topics} counts={topicCounts} bind:selected={filters.topic} />
 	{#if activeCount > 0}
 		<button type="button" class="clear-all" onclick={clearAll}>

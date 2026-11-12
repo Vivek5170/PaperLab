@@ -5,7 +5,7 @@
 	 * selects it plus every descendant (backend expands union); unchecking
 	 * one child keeps its siblings. Selection is an explicit code list.
 	 */
-	let { nodes = [], counts = {}, selected = $bindable([]), mode = 'filter' } = $props();
+	let { nodes = [], counts = {}, selected = $bindable([]), mode = 'filter', label = 'Topics' } = $props();
 	// mode 'filter' (search): checking a parent selects it plus every
 	// descendant. mode 'tag' (classify/inbox): only subtopics are
 	// selectable (parents just expand); checking one tags exactly it.
@@ -141,7 +141,7 @@
 		aria-haspopup="tree"
 		onclick={() => (open = !open)}
 	>
-		<span class="dd-label">Topics{selCount > 0 ? ` · ${selCount}` : ''}</span>
+		<span class="dd-label">{label}{selCount > 0 ? ` · ${selCount}` : ''}</span>
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
 	</button>
 	{#if open}

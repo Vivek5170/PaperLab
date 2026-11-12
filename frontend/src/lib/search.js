@@ -9,10 +9,10 @@ import { browser } from '$app/environment';
 export const SEARCH_KEY = 'pl-search-v2';
 export const PAGE_SIZE = 15;
 
-export const FILTER_KEYS = ['qtype', 'difficulty', 'exam', 'institute', 'year', 'topic'];
+export const FILTER_KEYS = ['qtype', 'difficulty', 'exam', 'institute', 'year', 'topic', 'main_topic'];
 
 export function defaultFilters() {
-	return { qtype: [], difficulty: [], exam: [], institute: [], year: [], topic: [] };
+	return { qtype: [], difficulty: [], exam: [], institute: [], year: [], topic: [], main_topic: [] };
 }
 
 export function activeFilterCount(filters) {
