@@ -178,8 +178,13 @@
 <svelte:head><title>Search Questions - PaperLab</title></svelte:head>
 <svelte:window onpagehide={rememberScroll} />
 
-<h1>Search questions</h1>
-<p class="pl-sub">Filter {total > 0 ? `${total} ` : ''}questions by type, topic, main topic, source, exam, year or difficulty.</p>
+<div class="pagewrap" class:focus={sideOn}>
+{#if sideOn}
+	<a class="back" href="/search">← Back</a>
+{:else}
+	<h1>Search questions</h1>
+	<p class="pl-sub">Filter {total > 0 ? `${total} ` : ''}questions by type, topic, main topic, source, exam, year or difficulty.</p>
+{/if}
 
 <div class="bar" role="group" aria-label="Question filters">
 	<FilterDropdown label="Type" options={facetOpts.qtype} bind:selected={filters.qtype} format={qtypeLabel} />
@@ -294,6 +299,7 @@
 		{/if}
 	</div>
 {/if}
+</div>
 
 <style>
 	h1 {
@@ -330,11 +336,36 @@
 	.count {
 		margin: 14px 0 12px;
 	}
+	.pagewrap.focus {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		padding: 14px 20px 0;
+	}
+	.pagewrap.focus .back {
+		display: inline-block;
+		margin-bottom: 6px;
+		font-weight: 600;
+		font-size: 0.85rem;
+	}
+	.pagewrap.focus .bar {
+		margin: 4px 0 10px;
+		flex-shrink: 0;
+	}
 	.split.side {
+		flex: 1;
+		min-height: 0;
 		display: grid;
 		grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-		gap: 24px;
-		align-items: start;
+		gap: 0;
+		align-items: stretch;
+	}
+	.split.side .results {
+		min-height: 0;
+		overflow-y: auto;
+		padding-right: 20px;
+		padding-bottom: 24px;
 	}
 	.split.side .grid {
 		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -344,12 +375,11 @@
 		box-shadow: var(--pl-shadow-sm);
 	}
 	.reader {
-		position: sticky;
-		top: 84px;
-		max-height: calc(100dvh - 104px);
+		min-height: 0;
 		overflow-y: auto;
 		border-left: 1px solid var(--pl-line);
 		padding-left: 24px;
+		padding-bottom: 24px;
 		min-width: 0;
 	}
 	.readerbar {
@@ -367,17 +397,25 @@
 		white-space: nowrap;
 	}
 	@media (max-width: 900px) {
+		.pagewrap.focus {
+			flex: none;
+			display: block;
+			padding-bottom: 24px;
+		}
 		.split.side {
-			grid-template-columns: 1fr;
+			display: block;
+		}
+		.split.side .results {
+			overflow: visible;
+			padding-right: 0;
 		}
 		.reader {
-			position: static;
-			max-height: none;
 			overflow: visible;
 			border-left: none;
 			padding-left: 0;
 			border-top: 1px solid var(--pl-line);
 			padding-top: 20px;
+			margin-top: 8px;
 		}
 	}
 	.grid {

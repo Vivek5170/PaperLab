@@ -133,8 +133,8 @@
 		<p class="pl-mono">{error}</p>
 	</div>
 {:else}
-		<h1>{paper.title || `Paper ${paper.id}`}</h1>
-	{#if !compact}
+		{#if !compact}
+	<h1>{paper.title || `Paper ${paper.id}`}</h1>
 	<p class="pl-mono pl-sub">
 		Paper #{paper.id} - {paper.exam || 'Unknown exam'} - {questions.length} questions
 	</p>

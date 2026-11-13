@@ -81,7 +81,7 @@
 		<LoginDialog />
 	</div>
 {:else}
-	<div class="shell" class:wide={isWide}>
+	<div class="shell" class:wide={isWide || isFocus}>
 		{#if !isFocus}
 			<Sidebar {counts} {inboxCount} />
 		{/if}
