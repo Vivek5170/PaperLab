@@ -26,6 +26,11 @@
 		}
 		return m;
 	});
+	const parentOf = $derived.by(() => {
+		const m = new Map();
+		for (const n of nodes) m.set(n.code, n.parent ?? null);
+		return m;
+	});
 	const roots = $derived(byParent.get('') ?? []);
 
 	function descendants(node) {
@@ -39,16 +44,67 @@
 		return out;
 	}
 
+	function subtreeCodes(code) {
+		const out = [];
+		const stack = [...(byParent.get(code) ?? [])];
+		while (stack.length) {
+			const c = stack.pop();
+			out.push(c.code);
+			stack.push(...(byParent.get(c.code) ?? []));
+		}
+		return out;
+	}
+
 	function collect(node) {
 		return [node.code, ...descendants(node)];
 	}
 
+	// Minimal-set semantics: the backend expands every selected code to its
+	// whole subtree (union), so storing a parent already covers all its
+	// children. Selection is kept minimal (a parent replaces its
+	// descendants) and deselecting a child while an ancestor is selected
+	// expands the ancestor into its remaining siblings.
+	function coveredDown(code, set) {
+		if (set.has(code)) return true;
+		const kids = byParent.get(code) ?? [];
+		if (!kids.length) return false;
+		return kids.every((k) => coveredDown(k.code, set));
+	}
+
 	function stateOf(node) {
-		const codes = collect(node);
-		const n = codes.filter(inSel).length;
-		if (n === codes.length) return 'on';
-		if (n > 0) return 'part';
+		const sel = new Set(selected);
+		// An explicitly selected self or ancestor covers the whole subtree.
+		let cur = node.code;
+		while (cur) {
+			if (sel.has(cur)) return 'on';
+			cur = parentOf.get(cur);
+		}
+		// Otherwise fully covered only if every child subtree is covered
+		// (e.g. each leaf checked one by one).
+		if (coveredDown(node.code, sel)) return 'on';
+		// Partial if anything inside the subtree is selected.
+		const stack = [...(byParent.get(node.code) ?? [])];
+		while (stack.length) {
+			const c = stack.pop();
+			if (sel.has(c.code)) return 'part';
+			stack.push(...(byParent.get(c.code) ?? []));
+		}
 		return 'off';
+	}
+
+	function prune(set) {
+		const out = new Set(set);
+		for (const code of set) {
+			let p = parentOf.get(code);
+			while (p) {
+				if (out.has(p)) {
+					out.delete(code);
+					break;
+				}
+				p = parentOf.get(p);
+			}
+		}
+		return out;
 	}
 
 	function toggle(node) {
@@ -60,14 +116,56 @@
 				: [...selected, node.code];
 			return;
 		}
-		const codes = collect(node);
 		if (stateOf(node) === 'on') {
-			const drop = new Set(codes);
-			selected = selected.filter((c) => !drop.has(c));
+			// Turn off: drop the node's subtree. If an ancestor was
+			// explicitly selected, it would otherwise keep covering the
+			// node via backend expansion — so expand that ancestor into
+			// the surviving siblings at every level down to the node.
+			const orig = new Set(selected);
+			const chain = [node.code];
+			let p = parentOf.get(node.code);
+			while (p) {
+				chain.push(p);
+				p = parentOf.get(p);
+			}
+			const work = new Set(orig);
+			for (const c of chain) work.delete(c);
+			for (const d of descendants(node)) work.delete(d);
+			let highest = -1;
+			for (let i = chain.length - 1; i >= 0; i--) {
+				if (orig.has(chain[i])) {
+					highest = i;
+					break;
+				}
+			}
+			if (highest !== -1) {
+				for (let l = highest; l >= 1; l--) {
+					const sibs = byParent.get(chain[l]) ?? [];
+					for (const s of sibs) {
+						if (s.code !== chain[l - 1]) work.add(s.code);
+					}
+				}
+				selected = [...prune(work)];
+			} else {
+				selected = [...work];
+			}
 		} else {
-			const have = new Set(selected);
-			for (const c of codes) have.add(c);
-			selected = [...have];
+			// Turn on: one code covers the subtree; drop redundant
+			// descendants, then collapse upward while all siblings agree.
+			const work = new Set(selected);
+			work.add(node.code);
+			for (const d of descendants(node)) work.delete(d);
+			let up = parentOf.get(node.code);
+			while (up) {
+				const kids = (byParent.get(up) ?? []).map((k) => k.code);
+				if (kids.length && kids.every((k) => coveredDown(k, work))) {
+					work.delete(up);
+					for (const d of subtreeCodes(up)) work.delete(d);
+					work.add(up);
+					up = parentOf.get(up);
+				} else break;
+			}
+			selected = [...prune(work)];
 		}
 	}
 
