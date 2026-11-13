@@ -4,6 +4,8 @@
 	import FilterDropdown from '$lib/components/FilterDropdown.svelte';
 	import TopicTreePicker from '$lib/components/TopicTreePicker.svelte';
 	import AddToCart from '$lib/components/AddToCart.svelte';
+	import QuestionReader from '$lib/components/QuestionReader.svelte';
+	import { searchSide } from '$lib/stores.js';
 	import { qtypeLabel } from '$lib/qtypes.js';
 	import {
 		PAGE_SIZE,
@@ -31,6 +33,34 @@
 
 	const activeCount = $derived(activeFilterCount(filters));
 	const shown = $derived(items.length);
+
+	// Side-by-side reader: the topbar toggle splits results (left) and a
+	// compact reader (right). Clicking a card previews it in place.
+	const sideOn = $derived($searchSide === true);
+	let sideSel = $state(null); // { paperId, number }
+	const sideKey = $derived(sideSel ? `${sideSel.paperId}/${sideSel.number}` : '');
+	const isSideActive = (item) =>
+		sideOn && sideSel?.paperId === item.paperId && sideSel?.number === item.number;
+
+	function pickSide(e, item) {
+		e.preventDefault();
+		sideSel = { paperId: item.paperId, number: item.number };
+		if (window.matchMedia('(max-width: 900px)').matches) {
+			document.getElementById('side-reader')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		}
+	}
+
+	$effect(() => {
+		if (!sideOn) {
+			sideSel = null;
+		} else if (items.length > 0) {
+			if (!sideSel || !items.some((i) => i.paperId === sideSel.paperId && i.number === sideSel.number)) {
+				sideSel = { paperId: items[0].paperId, number: items[0].number };
+			}
+		} else {
+			sideSel = null;
+		}
+	});
 
 	const facetOpts = $derived.by(() => {
 		if (!facets) return { qtype: [], difficulty: [], exam: [], institute: [], year: [] };
@@ -177,22 +207,25 @@
 		<button type="button" class="pl-btn" onclick={() => fetchPage(null, false)}>Retry</button>
 	</div>
 {:else}
-	<p class="count" aria-live="polite"><strong>{total} question{total === 1 ? '' : 's'}</strong>{shown < total ? ` · showing ${shown}` : ''}</p>
-	{#if items.length === 0}
-		<div class="pl-card">
-			<p>No questions match these filters. Clear a filter or two to widen the net.</p>
-			<button type="button" class="pl-btn" onclick={clearAll}>Clear all filters</button>
-		</div>
-	{:else}
-		<div class="grid">
-			{#each items as item (`${item.paperId}/${item.number}`)}
-				<div class="cell">
-					<a
-						class="card pl-card"
-						href={`/search/${item.paperId}/${encodeURIComponent(item.number)}`}
-						onclick={rememberScroll}
-						aria-label={`Paper ${item.paperId}, question ${item.number}`}
-					>
+	<div class="split" class:side={sideOn}>
+		<div class="results">
+			<p class="count" aria-live="polite"><strong>{total} question{total === 1 ? '' : 's'}</strong>{shown < total ? ` · showing ${shown}` : ''}</p>
+			{#if items.length === 0}
+				<div class="pl-card">
+					<p>No questions match these filters. Clear a filter or two to widen the net.</p>
+					<button type="button" class="pl-btn" onclick={clearAll}>Clear all filters</button>
+				</div>
+			{:else}
+				<div class="grid">
+					{#each items as item (`${item.paperId}/${item.number}`)}
+						<div class="cell" class:active={isSideActive(item)}>
+							<a
+								class="card pl-card"
+								href={`/search/${item.paperId}/${encodeURIComponent(item.number)}`}
+								onclick={sideOn ? (e) => pickSide(e, item) : rememberScroll}
+								aria-label={`Paper ${item.paperId}, question ${item.number}`}
+								aria-current={isSideActive(item) ? 'true' : undefined}
+							>
 						<span class="top">
 							<span class="preview">{item.preview || 'No text preview available.'}</span>
 							{#if item.thumb}
@@ -239,7 +272,26 @@
 				</button>
 			</div>
 		{/if}
-	{/if}
+			{/if}
+		</div>
+		{#if sideOn}
+			<aside class="reader" id="side-reader" aria-label="Question preview">
+				{#if sideSel}
+					<div class="readerbar">
+						<span class="pl-mono">Paper {sideSel.paperId} · Q{sideSel.number}</span>
+						<a class="openfull" href={`/search/${sideSel.paperId}/${encodeURIComponent(sideSel.number)}`}>
+							Open full page
+						</a>
+					</div>
+					{#key sideKey}
+						<QuestionReader paperId={sideSel.paperId} initialQ={sideSel.number} compact />
+					{/key}
+				{:else}
+					<p class="pl-sub">Select a question to preview it here.</p>
+				{/if}
+			</aside>
+		{/if}
+	</div>
 {/if}
 
 <style>
@@ -276,6 +328,56 @@
 	}
 	.count {
 		margin: 14px 0 12px;
+	}
+	.split.side {
+		display: grid;
+		grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+		gap: 24px;
+		align-items: start;
+	}
+	.split.side .grid {
+		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	}
+	.cell.active .card {
+		border-color: var(--pl-seal);
+		box-shadow: var(--pl-shadow-sm);
+	}
+	.reader {
+		position: sticky;
+		top: 84px;
+		max-height: calc(100dvh - 104px);
+		overflow-y: auto;
+		border-left: 1px solid var(--pl-line);
+		padding-left: 24px;
+		min-width: 0;
+	}
+	.readerbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin-bottom: 4px;
+		font-size: 0.82rem;
+		color: var(--pl-ink-soft);
+	}
+	.openfull {
+		font-weight: 600;
+		font-size: 0.82rem;
+		white-space: nowrap;
+	}
+	@media (max-width: 900px) {
+		.split.side {
+			grid-template-columns: 1fr;
+		}
+		.reader {
+			position: static;
+			max-height: none;
+			overflow: visible;
+			border-left: none;
+			padding-left: 0;
+			border-top: 1px solid var(--pl-line);
+			padding-top: 20px;
+		}
 	}
 	.grid {
 		display: grid;

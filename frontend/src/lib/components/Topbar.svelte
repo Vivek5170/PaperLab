@@ -1,12 +1,13 @@
 <script>
 	import { page } from '$app/stores';
-	import { role, searchQuery, theme, loginOpen, sidebarOpen } from '$lib/stores.js';
+	import { role, searchQuery, theme, loginOpen, sidebarOpen, searchSide } from '$lib/stores.js';
 	import { api } from '$lib/api.js';
 
 	let { crumbs = [] } = $props();
 
 	const isArchivist = $derived($role === 'archivist');
 	const onArchive = $derived($page.url.pathname.startsWith('/archive'));
+	const onSearch = $derived($page.url.pathname === '/search');
 
 	function onKeydown(event) {
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -69,6 +70,22 @@
 			/>
 			<kbd>Ctrl K</kbd>
 		</div>
+		{/if}
+
+		{#if onSearch}
+			<button
+				type="button"
+				class="icon-btn"
+				class:active={$searchSide}
+				aria-label="Toggle side-by-side reader"
+				aria-pressed={$searchSide}
+				title="Side-by-side reader"
+				onclick={() => searchSide.set(!$searchSide)}
+			>
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+					<rect x="3" y="4" width="7" height="16" rx="1.5" /><rect x="14" y="4" width="7" height="16" rx="1.5" />
+				</svg>
+			</button>
 		{/if}
 
 		<button
@@ -184,6 +201,10 @@
 	}
 	.icon-btn:hover {
 		background: var(--pl-raised);
+	}
+	.icon-btn.active {
+		background: var(--pl-raised);
+		color: var(--pl-seal);
 	}
 	.icon-btn svg {
 		width: 22px;

@@ -26,7 +26,7 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Topbar from '$lib/components/Topbar.svelte';
 	import LoginDialog from '$lib/components/LoginDialog.svelte';
-	import { inboxItems, inboxList, role, theme } from '$lib/stores.js';
+	import { inboxItems, inboxList, role, theme, searchSide } from '$lib/stores.js';
 	import { api } from '$lib/api.js';
 
 	let { children } = $props();
@@ -35,7 +35,11 @@
 	// Experimental fullscreen workspaces (e.g. /lab/...) render bare chrome.
 	const isLab = $derived($page.url.pathname.startsWith('/lab'));
 	// Full-bleed workspace routes fill the shell instead of the narrow column.
-	const isWide = $derived($page.url.pathname === '/builder');
+	// The search split view also goes full-bleed so both panes breathe.
+	const isWide = $derived(
+		$page.url.pathname === '/builder' ||
+			($page.url.pathname === '/search' && $searchSide)
+	);
 
 	$effect(() => {
 		document.documentElement.dataset.theme = $theme;

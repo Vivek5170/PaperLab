@@ -15,7 +15,7 @@
 	import AddToCart from '$lib/components/AddToCart.svelte';
 	import { qtypeLabel } from '$lib/qtypes.js';
 
-	let { paperId, initialQ = null, backHref = '/archive', backLabel = 'Back to Archive' } = $props();
+	let { paperId, initialQ = null, backHref = '/archive', backLabel = 'Back to Archive', compact = false } = $props();
 
 	const isArchivist = $derived($role === 'archivist');
 
@@ -121,7 +121,9 @@
 
 <svelte:head><title>{paper ? paper.title : 'Reading Desk'} - PaperLab</title></svelte:head>
 
-<a class="back" href={backHref}>{backLabel}</a>
+{#if !compact}
+	<a class="back" href={backHref}>{backLabel}</a>
+{/if}
 
 {#if loading}
 	<p class="pl-sub">Loading paper…</p>
@@ -132,6 +134,7 @@
 	</div>
 {:else}
 		<h1>{paper.title || `Paper ${paper.id}`}</h1>
+	{#if !compact}
 	<p class="pl-mono pl-sub">
 		Paper #{paper.id} - {paper.exam || 'Unknown exam'} - {questions.length} questions
 	</p>
@@ -140,8 +143,10 @@
 		<button type="button" role="tab" aria-selected={mobTab === 'list'} class:active={mobTab === 'list'} onclick={() => (mobTab = 'list')}>List</button>
 		<button type="button" role="tab" aria-selected={mobTab === 'question'} class:active={mobTab === 'question'} onclick={() => (mobTab = 'question')}>Question</button>
 	</div>
+	{/if}
 
-	<div class="desk" data-view={mobTab}>
+	<div class="desk" class:solo={compact} data-view={mobTab}>
+		{#if !compact}
 		<nav class="index" aria-label="Questions">
 			{#if questions.length > 40}
 				<select
@@ -168,6 +173,7 @@
 				{/each}
 			{/if}
 		</nav>
+		{/if}
 
 		<article class="pane">
 			{#if currentQ}
@@ -316,6 +322,10 @@
 		gap: 16px;
 		margin-top: 20px;
 		align-items: start;
+	}
+	.desk.solo {
+		grid-template-columns: minmax(0, 1fr);
+		margin-top: 0;
 	}
 	.index {
 		display: flex;
