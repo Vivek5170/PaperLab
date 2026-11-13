@@ -42,29 +42,3 @@ export const inboxItems = writable(null);
  * stay harmless because both writers store the same shape).
  */
 export const inboxList = (res) => (Array.isArray(res) ? res : (res?.items ?? null));
-
-/**
- * Search side-by-side reader. Boolean persisted as '1'/'0' in localStorage
- * so the split view survives reloads; defaults off.
- */
-function booleanStore(key, fallback) {
-	let initial = fallback;
-	try {
-		const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
-		if (raw === '1') initial = true;
-		else if (raw === '0') initial = false;
-	} catch {
-		/* private mode: stay in memory */
-	}
-	const store = writable(initial);
-	store.subscribe((value) => {
-		try {
-			localStorage.setItem(key, value ? '1' : '0');
-		} catch {
-			/* private mode: stay in memory */
-		}
-	});
-	return store;
-}
-
-export const searchSide = booleanStore('pl-search-side', false);

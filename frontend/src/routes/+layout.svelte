@@ -26,7 +26,7 @@
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import Topbar from '$lib/components/Topbar.svelte';
 	import LoginDialog from '$lib/components/LoginDialog.svelte';
-	import { inboxItems, inboxList, role, theme, searchSide } from '$lib/stores.js';
+	import { inboxItems, inboxList, role, theme } from '$lib/stores.js';
 	import { api } from '$lib/api.js';
 
 	let { children } = $props();
@@ -35,11 +35,10 @@
 	// Experimental fullscreen workspaces (e.g. /lab/...) render bare chrome.
 	const isLab = $derived($page.url.pathname.startsWith('/lab'));
 	// Full-bleed workspace routes fill the shell instead of the narrow column.
-	// The search split view also goes full-bleed so both panes breathe.
-	const isWide = $derived(
-		$page.url.pathname === '/builder' ||
-			($page.url.pathname === '/search' && $searchSide)
-	);
+	const isWide = $derived($page.url.pathname === '/builder');
+	// Focus pages (e.g. the search split view) keep the topbar but drop the
+	// sidebar so the workspace gets the full width, like the lab editor.
+	const isFocus = $derived($page.url.pathname === '/search/side');
 
 	$effect(() => {
 		document.documentElement.dataset.theme = $theme;
@@ -83,10 +82,12 @@
 	</div>
 {:else}
 	<div class="shell" class:wide={isWide}>
-		<Sidebar {counts} {inboxCount} />
-		<div class="main">
+		{#if !isFocus}
+			<Sidebar {counts} {inboxCount} />
+		{/if}
+		<div class="main" class:noside={isFocus}>
 			<Topbar crumbs={['Physics']} />
-			<main class="content" class:wide={isWide}>
+			<main class="content" class:wide={isWide || isFocus}>
 				{@render children()}
 			</main>
 		</div>
@@ -106,6 +107,9 @@
 		margin-left: 264px;
 		display: flex;
 		flex-direction: column;
+	}
+	.main.noside {
+		margin-left: 0;
 	}
 	.content {
 		padding: 28px;
