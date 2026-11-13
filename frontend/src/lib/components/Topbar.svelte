@@ -9,7 +9,6 @@
 	const isArchivist = $derived($role === 'archivist');
 	const onArchive = $derived($page.url.pathname.startsWith('/archive'));
 	const onSearch = $derived($page.url.pathname === '/search');
-	const onSide = $derived($page.url.pathname === '/search/side');
 
 	function onKeydown(event) {
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -74,15 +73,13 @@
 		</div>
 		{/if}
 
-		{#if onSearch || onSide}
+		{#if onSearch}
 			<button
 				type="button"
 				class="icon-btn"
-				class:active={onSide}
-				aria-label={onSide ? 'Back to search results' : 'Open side-by-side reader'}
-				aria-pressed={onSide}
-				title={onSide ? 'Back to search results' : 'Side-by-side reader'}
-				onclick={() => goto(onSide ? '/search' : '/search/side')}
+				aria-label="Open side-by-side reader"
+				title="Side-by-side reader"
+				onclick={() => goto('/search/side')}
 			>
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
 					<rect x="3" y="4" width="7" height="16" rx="1.5" /><rect x="14" y="4" width="7" height="16" rx="1.5" />

@@ -80,14 +80,17 @@
 		{@render children()}
 		<LoginDialog />
 	</div>
+{:else if isFocus}
+	<div class="focusshell">
+		{@render children()}
+		<LoginDialog />
+	</div>
 {:else}
-	<div class="shell" class:wide={isWide || isFocus}>
-		{#if !isFocus}
-			<Sidebar {counts} {inboxCount} />
-		{/if}
-		<div class="main" class:noside={isFocus}>
+	<div class="shell" class:wide={isWide}>
+		<Sidebar {counts} {inboxCount} />
+		<div class="main">
 			<Topbar crumbs={['Physics']} />
-			<main class="content" class:wide={isWide || isFocus}>
+			<main class="content" class:wide={isWide}>
 				{@render children()}
 			</main>
 		</div>
@@ -108,8 +111,17 @@
 		display: flex;
 		flex-direction: column;
 	}
-	.main.noside {
-		margin-left: 0;
+	.focusshell {
+		height: 100dvh;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+	@media (max-width: 900px) {
+		.focusshell {
+			height: auto;
+			overflow: visible;
+		}
 	}
 	.content {
 		padding: 28px;

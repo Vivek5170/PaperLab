@@ -178,14 +178,7 @@
 <svelte:head><title>Search Questions - PaperLab</title></svelte:head>
 <svelte:window onpagehide={rememberScroll} />
 
-<div class="pagewrap" class:focus={sideOn}>
-{#if sideOn}
-	<a class="back" href="/search">← Back</a>
-{:else}
-	<h1>Search questions</h1>
-	<p class="pl-sub">Filter {total > 0 ? `${total} ` : ''}questions by type, topic, main topic, source, exam, year or difficulty.</p>
-{/if}
-
+{#snippet filterbar()}
 <div class="bar" role="group" aria-label="Question filters">
 	<FilterDropdown label="Type" options={facetOpts.qtype} bind:selected={filters.qtype} format={qtypeLabel} />
 	<FilterDropdown label="Difficulty" options={facetOpts.difficulty} bind:selected={filters.difficulty} />
@@ -200,6 +193,9 @@
 		</button>
 	{/if}
 </div>
+{/snippet}
+
+{#snippet resultlist()}
 {#if facets && facets.ungradedDifficulty > 0}
 	<p class="pl-sub note">Difficulty is graded on {gradedCount} of {gradedCount + facets.ungradedDifficulty} questions — ungraded ones appear only when no difficulty filter is active.</p>
 {/if}
@@ -213,8 +209,6 @@
 		<button type="button" class="pl-btn" onclick={() => fetchPage(null, false)}>Retry</button>
 	</div>
 {:else}
-	<div class="split" class:side={sideOn}>
-		<div class="results">
 			<p class="count" aria-live="polite"><strong>{total} question{total === 1 ? '' : 's'}</strong>{shown < total ? ` · showing ${shown}` : ''}</p>
 			{#if items.length === 0}
 				<div class="pl-card">
@@ -278,28 +272,49 @@
 				</button>
 			</div>
 		{/if}
-			{/if}
-		</div>
-		{#if sideOn}
-			<aside class="reader" id="side-reader" aria-label="Question preview">
-				{#if sideSel}
-					<div class="readerbar">
-						<span class="pl-mono">Paper {sideSel.paperId} · Q{sideSel.number}</span>
-						<a class="openfull" href={`/search/${sideSel.paperId}/${encodeURIComponent(sideSel.number)}`}>
-							Open full page
-						</a>
-					</div>
-					{#key sideKey}
-						<QuestionReader paperId={sideSel.paperId} initialQ={sideSel.number} compact />
-					{/key}
-				{:else}
-					<p class="pl-sub">Select a question to preview it here.</p>
-				{/if}
-			</aside>
+	{/if}
+{/if}
+{/snippet}
+
+{#snippet readerpane()}
+	<aside class="reader" id="side-reader" aria-label="Question preview">
+		{#if sideSel}
+			<div class="readerbar">
+				<span class="pl-mono">Paper {sideSel.paperId} · Q{sideSel.number}</span>
+				<a class="openfull" href={`/search/${sideSel.paperId}/${encodeURIComponent(sideSel.number)}`}>
+					Open full page
+				</a>
+			</div>
+			{#key sideKey}
+				<QuestionReader paperId={sideSel.paperId} initialQ={sideSel.number} compact />
+			{/key}
+		{:else}
+			<p class="pl-sub">Select a question to preview it here.</p>
 		{/if}
+	</aside>
+{/snippet}
+
+{#if sideOn}
+	<div class="pagewrap focus">
+		<div class="wsbar">
+			<a class="back" href="/search">← Back</a>
+			{@render filterbar()}
+		</div>
+		<div class="dual">
+			<section class="results" aria-label="Results">
+				{@render resultlist()}
+			</section>
+			{@render readerpane()}
+		</div>
+	</div>
+{:else}
+	<div class="pagewrap">
+		<h1>Search questions</h1>
+		<p class="pl-sub">Filter {total > 0 ? `${total} ` : ''}questions by type, topic, main topic, source, exam, year or difficulty.</p>
+		{@render filterbar()}
+		{@render resultlist()}
 	</div>
 {/if}
-</div>
 
 <style>
 	h1 {
@@ -341,33 +356,43 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
-		padding: 14px 20px 0;
 	}
-	.pagewrap.focus .back {
-		display: inline-block;
-		margin-bottom: 6px;
-		font-weight: 600;
-		font-size: 0.85rem;
-	}
-	.pagewrap.focus .bar {
-		margin: 4px 0 10px;
+	.wsbar {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex-wrap: wrap;
+		padding: 10px 20px;
+		background: var(--pl-surface);
+		border-bottom: 1px solid var(--pl-line);
 		flex-shrink: 0;
 	}
-	.split.side {
+	.wsbar .back {
+		font-weight: 600;
+		font-size: 0.85rem;
+		white-space: nowrap;
+	}
+	.wsbar .bar {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin: 0;
+		flex: 1;
+		min-width: 0;
+	}
+	.dual {
 		flex: 1;
 		min-height: 0;
 		display: grid;
 		grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-		gap: 0;
 		align-items: stretch;
 	}
-	.split.side .results {
+	.dual .results {
 		min-height: 0;
 		overflow-y: auto;
-		padding-right: 20px;
-		padding-bottom: 24px;
+		padding: 16px 20px 24px;
 	}
-	.split.side .grid {
+	.dual .grid {
 		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 	}
 	.cell.active .card {
@@ -402,12 +427,17 @@
 			display: block;
 			padding-bottom: 24px;
 		}
-		.split.side {
+		.wsbar {
+			position: sticky;
+			top: 0;
+			z-index: 30;
+		}
+		.dual {
 			display: block;
 		}
-		.split.side .results {
+		.dual .results {
 			overflow: visible;
-			padding-right: 0;
+			padding-right: 20px;
 		}
 		.reader {
 			overflow: visible;
