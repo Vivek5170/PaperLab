@@ -384,7 +384,7 @@
 		flex: 1;
 		min-height: 0;
 		display: grid;
-		grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+		grid-template-columns: 1fr 1fr;
 		align-items: stretch;
 	}
 	.dual .results {

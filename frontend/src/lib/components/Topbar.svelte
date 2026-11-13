@@ -76,7 +76,7 @@
 		{#if onSearch}
 			<button
 				type="button"
-				class="icon-btn"
+				class="icon-btn sidebtn"
 				aria-label="Open side-by-side reader"
 				title="Side-by-side reader"
 				onclick={() => goto('/search/side')}
@@ -215,6 +215,9 @@
 	@media (max-width: 900px) {
 		.hamburger {
 			display: grid;
+		}
+		.sidebtn {
+			display: none;
 		}
 		.crumbs {
 			display: none;
