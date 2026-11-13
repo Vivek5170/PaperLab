@@ -392,6 +392,9 @@
 		overflow-y: auto;
 		padding: 16px 20px 24px;
 	}
+	.dual .count {
+		margin-top: 0;
+	}
 	.dual .grid {
 		grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 	}
@@ -403,7 +406,7 @@
 		min-height: 0;
 		overflow-y: auto;
 		border-left: 1px solid var(--pl-line);
-		padding: 0 20px 24px 24px;
+		padding: 16px 20px 24px 24px;
 		min-width: 0;
 	}
 	.readerbar {
