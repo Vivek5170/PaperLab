@@ -403,8 +403,7 @@
 		min-height: 0;
 		overflow-y: auto;
 		border-left: 1px solid var(--pl-line);
-		padding-left: 24px;
-		padding-bottom: 24px;
+		padding: 0 20px 24px 24px;
 		min-width: 0;
 	}
 	.readerbar {
