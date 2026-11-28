@@ -211,7 +211,7 @@ selections stay in the current browser.
 
 | Source | Start here |
 |---|---|
-| EJEE database and uploads | [EJEE importer](importer_EJEE/README.md): plan books into **15-question parts**, stage, review, and export. See the [13 live pilots and cost tables](importer_EJEE/EJEE_SOURCES.md) and [pilot handoff](importer_EJEE/STATUS.md). |
+| EJEE database and uploads | [EJEE importer](importer_EJEE/README.md): plan books into **15-question parts**, stage, review, and export. The separate [EJEE Importer app](importer_EJEE/app/README.md) does search → cart → process → publish in a browser. See the [13 live pilots and cost tables](importer_EJEE/EJEE_SOURCES.md) and [pilot handoff](importer_EJEE/STATUS.md). |
 | Other textbook, worksheet, or paper | [Custom importer](custom_importer/README.md) for manual or agent-assisted transcription; send agents the [transcription skill](custom_importer/SKILL.md). |
 | A portable `.plbundle` already exported | [PaperLab bundle guide](paperlab_bundle/README.md): inspect, dry-run, and merge through the local CLI or [the deployed archivist API](paperlab_bundle/README.md#upload-to-a-deployed-server). |
 

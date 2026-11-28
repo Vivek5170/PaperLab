@@ -37,7 +37,7 @@ Physics Galaxy are split into chapter/exercise sections).
 
 ## 2. Material from coaching institutes
 
-### 2a. Institute test papers (currently EXCLUDED by the importer)
+### 2a. Institute test papers
 
 | Institute | Questions | With solution | Contents |
 |---|---:|---:|---|
@@ -52,7 +52,7 @@ Physics Galaxy are split into chapter/exercise sections).
 | Source | Questions | With solution | Key only | Status |
 |---|---:|---:|---:|---|
 | BIIT chapter sheets | 6,831 | 0 | 6,712 | supported |
-| **Allen study material** (Revision Assignment 2024: 2,630; JEE Adv modules: 1,723; JEE Main modules: 1,077; Guided Revision 2026: 680) | 6,110 | 2,997 | 3,113 | **EXCLUDED** (inside source `ALLEN`; decision pending) |
+| Allen study material (Revision Assignment 2024: 2,630; JEE Adv modules: 1,723; JEE Main modules: 1,077; Guided Revision 2026: 680) | 6,110 | 2,997 | 3,113 | converted live via the app (§4a, P506) |
 | JEE Digital / Jeenious modules | 3,879 | 3,879 | 0 | supported |
 | INSP sheets | 2,697 | 0 | 2,697 | supported |
 | Unbranded chapter sheets (4A-4E, 5A-5C, 25A-26C) | 595 | 442 | 153 | supported |
@@ -103,6 +103,12 @@ keeps cheap.
 | Irodov P1 | handwritten notes, dense | 123 | 15 | 0.0755 | 0.0050 | ₹7.01 | ₹8.28 | ₹0.55 |
 | Aakash BC1 P1 | dense printed modules | — | — | 0.0785 | 0.0052 | ₹7.29 | ₹8.60 | ₹0.57 |
 | APhO P1 | olympiad, photos, multi-page (3 figs/Q) | 245 | 15 | 0.2152 | 0.0143 | ₹19.99 | ₹23.59 | ₹1.57 |
+| ALLEN test paper P187 | institute test paper via app, direct publish (allowed +3 more) | auto-approved holds | — | 0.0750 | 0.0050 | ₹6.97 | ₹8.22 | ₹0.55 |
+| ALLEN test paper P187 | institute test paper via app, direct publish | auto-approved holds | — | 0.0750 | 0.0050 | ₹6.97 | ₹8.22 | ₹0.55 |
+| ALLEN revision module P506 | institute study material via app, direct publish | auto-approved holds | — | 0.0514 | 0.0034 | ₹4.77 | ₹5.64 | ₹0.38 |
+| Sri Chaitanya GTA P1 | institute test paper via app, direct publish | auto-approved holds | — | 0.0627 | 0.0042 | ₹5.82 | ₹6.87 | ₹0.46 |
+| FIITJEE AITS 2025 P1 | institute test paper via app, direct publish | auto-approved holds | — | 0.0538 | 0.0036 | ₹5.00 | ₹5.90 | ₹0.39 |
+| JEE Advanced 2021 Paper 1 P1 | actual exam paper via app, direct publish | auto-approved holds | — | 0.0814 | 0.0054 | ₹7.56 | ₹8.92 | ₹0.59 |
 
 ### 4a-2. Cache A/B: append-only history (current default)
 
@@ -154,14 +160,16 @@ printed books ₹0.11-₹0.33, handwritten ~₹0.55, photo olympiads ₹1.10-₹
 | Other textbook docs | 43 | Meriam (0.0020) | 0.0020 | **<$1** | ₹8 | ₹9 |
 | **Textbooks total** | **39,535** |  |  | **~$106** | **₹9,842** | **₹11,614** |
 | BIIT sheets | 6,831 | BIIT measured (0.0011) | 0.0011 | **~$8** | ₹698 | ₹824 |
-| Allen study material | 6,110 | Y&F many-fig (0.0031) | 0.0031 | excluded (user decision) | — | — |
+| Allen study material | 6,110 | ALLEN revision measured (0.0034) | 0.0034 | **~$21** | ₹1,928 | ₹2,275 |
 | JEE Digital / Jeenious | 3,879 | JEE Digital measured (0.0024) | 0.0024 | **~$9** | ₹865 | ₹1,020 |
+| Institute test papers | 15,325 | ALLEN test-paper rate applied (0.0050) | 0.0050 | **~$77** | ₹7,119 | ₹8,401 |
 | INSP sheets | 2,697 | INSP measured (0.0013) | 0.0013 | **~$4** | ₹326 | ₹384 |
 | Unbranded chapter sheets | 595 | BIIT key-only (0.0011) | 0.0011 | **<$1** | ₹61 | ₹72 |
 | Aakash Book Crunch | 462 | Aakash measured (0.0052) | 0.0052 | **~$2** | ₹223 | ₹263 |
 | PYQ+ (official past papers) | 6,410 | PYQ+ measured (0.0032) | 0.0032 | **~$21** | ₹1,905 | ₹2,248 |
-| Institute test papers (excluded) | 15,325 | — | — | — | — | — |
-| **Grand total, convertible scope (Allen excluded)** | **60,409** |  |  | **~$150** | **₹13,920** | **₹16,425** |
+| JEE Advanced actual papers | 38 | JEE Adv 2021 measured (0.0054) | 0.0054 | **<$1** | ₹19 | ₹23 |
+| Institute test papers | 15,325 | ALLEN test measured (0.0050) | 0.0050 | **~$77** | ₹7,119 | ₹8,401 |
+| **Grand total, convertible (everything)** | **81,782** |  |  | **~$249** | **₹23,100** | **₹27,257** |
 
 Session spend so far (all pilots, retries, benchmarks, cache A/B): **≈ $1.68 = ₹156.06 (₹184.15 incl. GST)**
 (token_usage summed over `runs/*/paperlab.db` + `runs/books/*/part-*/paperlab.db`).
@@ -202,11 +210,12 @@ Session spend so far (all pilots, retries, benchmarks, cache A/B): **≈ $1.68 =
 
 ### Not supported / not yet proven
 
-1. **Excluded by design:** institute test papers (Allen, Sri Chaitanya,
-   FIITJEE, the GTM paper) and actual JEE Advanced papers. `run_book.py`
-   refuses them. **Allen study material (6,110)** is excluded only because it
-   shares the source name `ALLEN` with Allen tests; supporting it needs a
-   title-level split (decision: excluded for now, per user).
+1. **CLI exclusions:** `run_book.py` still refuses institute test papers
+   (Allen, Sri Chaitanya, FIITJEE, the GTM paper) and actual JEE Advanced
+   papers, so those categories remain CLI-unproven outside the app. The
+   app now converts every EJEE source (including Allen study material and
+   actual exam papers) and proved each of these categories live in §4a;
+   the app is the path for them.
 2. **Not yet converted live:** Pathfinder, Savchenko, Anurag, Kalda,
    Jitender Singh, Morin, Purcell, Hibbeler Fluid Mech, SBT-2, Thermal/Waves/
    SHM sets, Galaxy (other chapters), unbranded chapter sheets. They share

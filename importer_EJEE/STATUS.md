@@ -90,15 +90,20 @@ larger, so extraction is only ~2% cheaper. The total rose because the
 unchanged topic-tagging step got a poor cache rate from the provider that run
 (96% → 57%). The projections therefore keep the measured pilot rates.
 
-| Scope (Allen excluded) | Questions | USD | INR | INR incl. 18% GST |
+| Scope | Questions | USD | INR | INR incl. 18% GST |
 |---|---:|---:|---:|---:|
 | Textbooks | 39,535 | ~$106 | ₹9,842 | ₹11,614 |
-| Everything convertible | 60,409 | ~$150 | ₹13,920 | ₹16,425 |
+| Institute test papers | 15,325 | ~$77 | ₹7,119 | ₹8,401 |
+| Institute study material (incl. Allen) | 20,574 | ~$43 | ₹3,973 | ₹4,689 |
+| Past-year, exam papers, olympiads | 6,348 | ~$21 | ₹1,924 | ₹2,271 |
+| **Everything convertible** | **81,782** | **~$249** | **₹23,100** | **₹27,257** |
 
-Per 15-question part incl. GST: ~₹1.7 for key-only cards, ₹3–5 for printed
-books, ~₹9 for Aakash, ~₹24 for a photo olympiad. Spent so far ≈ $1.68
-(₹156; ₹184 incl. GST). The earlier "~$170" total counted Allen study
-material, which is excluded.
+Per 15-question part incl. GST: ~₹2 for key-only cards, ₹3–6 for printed
+books and institute sheets, ~₹6 for an Allen module, ~₹9 for Aakash, ~₹24
+for a photo olympiad. Session spend so far ≈ $2.01 (≈₹187, ₹220 incl. GST):
+$1.68 on the earlier pilots and cache A/B, $0.32 on the five app pilots
+below. The old "~$170"/"~$150 (Allen excluded)" figures predate user
+approval to convert institute material and test papers.
 
 What was considered and **not** done, to protect quality: lowering the crop
 cap from 8 to 6 attempts, and smaller preview images.
@@ -106,10 +111,11 @@ cap from 8 to 6 attempts, and smaller preview images.
 ## 5. Rules (unchanged)
 
 Transcribe, never solve; `[UNREADABLE]` instead of guessing. Figures are
-original pixels only, cropped with `exact_crop`. Nothing is dropped silently;
-holds block EJEE export until a human approves the exact files.
-Excluded: Allen (including study material), Sri Chaitanya, FIITJEE and actual
-JEE Advanced papers. Olympiads are left out of counts but can be run.
+original pixels only, cropped with `exact_crop`. Nothing is dropped silently.
+The CLI rules are unchanged: holds block EJEE export until a human approves
+the exact files, and `run_book.py` still refuses institute test papers and
+actual JEE Advanced papers. The app converts everything and publishes
+directly (held figures approved automatically as "no human review").
 
 ## 6. Not verified / open
 
@@ -121,9 +127,20 @@ JEE Advanced papers. Olympiads are left out of counts but can be run.
 
 ## 7. Next
 
-1. EJEE Importer sub-app (`importer_EJEE/app/`, PaperLab theme, Svelte):
-   search page with filters and book cards, load 15-question parts into a
-   cart (temp DB), export page (convert to LaTeX + crops, rerun, download
-   bundle), settings (EJEE DB path, uploads, optional PaperLab DB to merge).
-2. Experimental: a PaperLab server accepts a bundle over HTTP with an
-   archivist password.
+Both items from the pilot handoff are now done:
+
+1. **EJEE Importer app** ([app/README.md](app/README.md)): a separate local
+   app in PaperLab's style. It searches every EJEE question from every
+   source (institute material and test papers included, all convertible),
+   converts whole books or single 15-question parts, and publishes each
+   part straight to a PaperLab server. There is no review step: held
+   figures get an approval recorded as "automatic, no human review". A
+   wrong key, link or password pauses the queue, and resume continues at
+   the step that stopped.
+2. **HTTP handoff**: PaperLab's `POST /api/bundles/import` (upstream). The
+   app uses it; a live check against a scratch archive published the
+   Meriam pilot bundle once and returned `already_imported` on a repeat.
+
+Open: the app's live checks ran on Windows; macOS and Linux are covered by
+the offline tests in CI only. No full paid run through the app yet; the
+first one should be a single cheap part (e.g. a BIIT part, ~₹2 incl. GST).

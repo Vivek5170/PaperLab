@@ -7,8 +7,16 @@ named `<Book> — Part N`, with local numbers starting at 1. Source labels are
 preserved in provenance. Missing or ambiguous source items are listed in the
 plan; they are not guessed or silently inserted into later runs.
 
+Prefer a UI? The [EJEE Importer app](app/README.md) is a separate local app
+in PaperLab's style: search every EJEE question, convert whole books or
+single parts, and publish them straight to a PaperLab server, with safe
+pause/resume. It drives the same phases and run folders described below,
+but it has no exclusion list and no human review step (it records an
+explicit "no human review" approval). The CLI rules below are unchanged.
+
 | Read next | What it contains |
 |---|---|
+| [EJEE Importer app](app/README.md) | Search, cart, process and publish without the command line |
 | [EJEE_SOURCES.md](EJEE_SOURCES.md) | Source inventory, exclusions, all 13 live pilots, per-part costs, full-book estimates and the cache A/B test |
 | [STATUS.md](STATUS.md) | Historical pilot handoff, known source defects and outstanding work |
 | [Mapped extraction prompt](prompts/mapped_extractor.md) | The EJEE adapter to PaperLab's [base extractor prompt](../prompts/extractor_prompt.md) |
@@ -126,11 +134,11 @@ with the same `.plbundle`.
 
 ## Pilot evidence and cost
 
-The contribution reports **13 paid pilot parts (195 planned questions)**,
-about **US$0.69** for that pilot set; its broader historical spend includes
-additional iteration. The full convertible scope estimate, excluding
-Allen, is **US$150 / ₹13,920 / ₹16,425 including 18% GST**, using
-₹92.89/USD (22 Nov 2026). These are historical measurements and projections,
+The contribution reports **18 paid pilot parts (270 questions)**:
+13 earlier pilots (~US$0.69) plus 5 app pilots of institute material, test
+papers and an actual JEE Advanced paper (~US$0.32), each published direct.
+The full conversion scope is **~US$249 / ₹23,100 / ₹27,257 including 18%
+GST**, using ₹92.89/USD (22 Nov 2026). These are historical measurements and projections,
 not a quote or a guarantee. See the [pilot tables and cost methodology](EJEE_SOURCES.md)
 for source-specific results, holds, and the separate cache experiment.
 `USD_INR` overrides the runner's display rate. For new conversions,

@@ -8,3 +8,10 @@ release/
 *.bak
 *.plbundle
 inputs/
+
+# EJEE Importer app: private state (settings, key, password, index, thumbs)
+# and web build output.
+app/data/
+app/web/node_modules/
+app/web/build/
+app/web/.svelte-kit/

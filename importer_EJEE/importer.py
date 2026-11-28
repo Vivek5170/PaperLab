@@ -935,6 +935,15 @@ def extract(cfg, run):
     print(f'Extraction complete: {len(manifest["items"])} questions. Run classify next.', flush=True)
 
 
+def is_abstention(report):
+    """Node 3 answered but could not tag fully: no topic (e.g. 'TOPICS: NONE'
+    with a suggestion) or no difficulty ('DIFFICULTY: NONE'). Not an error:
+    with ``allow_untagged`` the question is published untagged and lands in
+    PaperLab's Tagging Inbox for a person to tag."""
+    return bool(report) and not report.get('ok') and not report.get('errors') and bool(report.get('raw_reply')) \
+        and (not report.get('codes') or not report.get('difficulty'))
+
+
 def valid_classification(report):
     # Upstream explicitly permits no matching topic with a new-topic suggestion.
     return bool(report.get('difficulty') and (report.get('codes') or report.get('suggestion')) and not report.get('errors'))
@@ -1380,6 +1389,7 @@ def verify(cfg, run):
     manifest = json.loads((run / 'manifest.json').read_text(encoding='utf-8'))
     progress = json.loads((run / 'progress.json').read_text(encoding='utf-8'))
     errors = []
+    untagged = []
     approved_unreadable = set()
     for review in (run / 'review_required').glob('*.json'):
         record = json.loads(review.read_text(encoding='utf-8'))
@@ -1415,7 +1425,12 @@ def verify(cfg, run):
                 errors.append(f'{item["number"]}: extraction incomplete')
             errors.extend(f'{item["number"]}: {e}' for e in validate_item(pid, item['number'], bool(item['solution_rows']), item_has_key(item))
                           if not (item['number'] in approved_unreadable and 'unreadable content requires review' in e))
-            if not progress['node3'].get(item['number'], {}).get('ok'): errors.append(f'{item["number"]}: Node 3 incomplete')
+            node3 = progress['node3'].get(item['number'], {})
+            if not node3.get('ok'):
+                if cfg.get('allow_untagged') and is_abstention(node3):
+                    untagged.append(item['number'])  # PaperLab's Tagging Inbox takes it
+                else:
+                    errors.append(f'{item["number"]}: Node 3 incomplete')
             for side in ('question', 'solution'):
                 for row in item[f'{side}_rows']:
                     ev = row['asset_evidence']
@@ -1426,7 +1441,8 @@ def verify(cfg, run):
             if manifest.get(key) and sha(manifest[key]) != manifest[key+'_sha256']: errors.append(f'{key} changed')
         usage = [dict(r) for r in c.execute('SELECT phase,count(*) calls,sum(input) input,sum(cache_read) cached,sum(output) output,sum(reasoning) reasoning FROM token_usage WHERE paper_id=? GROUP BY phase', (pid,))]
         topics = c.execute('SELECT count(*) FROM question_topics qt JOIN questions q ON q.id=qt.question_id WHERE q.paper_id=? AND qt.src=?', (pid, 'auto')).fetchone()[0]
-    report = {'ok': not errors, 'paper_id': pid, 'questions': count, 'auto_topic_links': topics, 'usage': usage,
+    report = {'ok': not errors, 'paper_id': pid, 'questions': count, 'auto_topic_links': topics, 'untagged': untagged,
+              'usage': usage,
               'errors': errors, 'upstream_commit': manifest['upstream_commit']}
     dump(run / 'verification.json', report)
     print(json.dumps(report, indent=2), flush=True)
