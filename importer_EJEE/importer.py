@@ -936,11 +936,12 @@ def extract(cfg, run):
 
 
 def is_abstention(report):
-    """Node 3 answered but chose no topic (e.g. 'TOPICS: NONE' with a
-    suggestion). Not an error: with ``allow_untagged`` the question is
-    published untagged and lands in PaperLab's Tagging Inbox."""
+    """Node 3 answered but could not tag fully: no topic (e.g. 'TOPICS: NONE'
+    with a suggestion) or no difficulty ('DIFFICULTY: NONE'). Not an error:
+    with ``allow_untagged`` the question is published untagged and lands in
+    PaperLab's Tagging Inbox for a person to tag."""
     return bool(report) and not report.get('ok') and not report.get('errors') and bool(report.get('raw_reply')) \
-        and not report.get('codes')
+        and (not report.get('codes') or not report.get('difficulty'))
 
 
 def valid_classification(report):

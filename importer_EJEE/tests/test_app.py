@@ -418,6 +418,11 @@ def test_tagging_abstention_publishes_untagged_but_errors_still_fail(env):
     assert cfg["allow_untagged"] is True
     from importer import is_abstention
     assert not is_abstention({"ok": False, "errors": ["parse failed"], "raw_reply": "garbage"})
+    # topic chosen but 'DIFFICULTY: NONE' (seen on SBT-2): publish untagged -> Tagging Inbox
+    assert is_abstention({"ok": False, "errors": [], "codes": ["PH14.05"], "difficulty": None,
+                          "raw_reply": "TOPICS: 104\nDIFFICULTY: NONE\nSUGGESTION: NONE"})
+    assert not is_abstention({"ok": True, "errors": [], "codes": ["PH14.05"], "difficulty": "Medium",
+                              "raw_reply": "TOPICS: 104\nDIFFICULTY: Medium"})
 
 
 def test_stale_run_is_rebuilt_from_prepare_after_replan(env):
